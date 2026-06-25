@@ -5,14 +5,18 @@ using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json;
 using Godot;
+using MegaCrit.Sts2.Core.Combat;
 using MegaCrit.Sts2.Core.Entities.Cards;
+using MegaCrit.Sts2.Core.Entities.Merchant;
 using MegaCrit.Sts2.Core.HoverTips;
 using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Nodes.CommonUi;
 using MegaCrit.Sts2.Core.Nodes.GodotExtensions;
 using MegaCrit.Sts2.Core.Models.Modifiers;
+using MegaCrit.Sts2.Core.Nodes.Rooms;
 using MegaCrit.Sts2.Core.Nodes.Screens.CustomRun;
 using MegaCrit.Sts2.Core.Nodes.Screens.Map;
+using MegaCrit.Sts2.Core.Nodes.Screens.Shops;
 
 namespace STS2_MCP;
 
@@ -160,6 +164,98 @@ public static partial class McpMod
     private static Dictionary<string, object?> Error(string message)
     {
         return new Dictionary<string, object?> { ["status"] = "error", ["error"] = message };
+    }
+
+    private static bool IsCombatPlayPhase()
+    {
+        var manager = CombatManager.Instance;
+        if (manager == null || !manager.IsInProgress)
+            return false;
+
+        try
+        {
+            var property = manager.GetType().GetProperty(
+                "IsPlayPhase",
+                System.Reflection.BindingFlags.Instance |
+                System.Reflection.BindingFlags.Public |
+                System.Reflection.BindingFlags.NonPublic);
+
+            if (property?.PropertyType == typeof(bool) &&
+                property.GetValue(manager) is bool isPlayPhase)
+                return isPlayPhase;
+        }
+        catch
+        {
+            // STS2 0.107 removed the compiled IsPlayPhase accessor. Fall back below.
+        }
+
+        try
+        {
+            var combatState = manager.DebugOnlyGetState();
+            var currentSide = combatState?.CurrentSide.ToString();
+            if (!string.IsNullOrEmpty(currentSide))
+                return currentSide.Contains("player", StringComparison.OrdinalIgnoreCase);
+        }
+        catch
+        {
+            // Keep state reads best-effort so one compatibility edge does not break MCP.
+        }
+
+        try { return !manager.PlayerActionsDisabled; }
+        catch { return false; }
+    }
+
+    private static MerchantInventory? GetMerchantInventory(object? owner)
+    {
+        return TryGetMerchantInventory(owner) ??
+               TryGetMerchantInventory(NMerchantRoom.Instance) ??
+               TryGetMerchantInventory(NMerchantRoom.Instance?.Inventory);
+    }
+
+    private static MerchantInventory? TryGetMerchantInventory(object? source)
+    {
+        if (source == null)
+            return null;
+        if (source is MerchantInventory inventory)
+            return inventory;
+
+        const System.Reflection.BindingFlags Flags =
+            System.Reflection.BindingFlags.Instance |
+            System.Reflection.BindingFlags.Public |
+            System.Reflection.BindingFlags.NonPublic |
+            System.Reflection.BindingFlags.DeclaredOnly;
+
+        for (var type = source.GetType(); type != null; type = type.BaseType)
+        {
+            foreach (var property in type.GetProperties(Flags))
+            {
+                if (property.GetIndexParameters().Length != 0 ||
+                    !typeof(MerchantInventory).IsAssignableFrom(property.PropertyType))
+                    continue;
+
+                try
+                {
+                    if (property.GetValue(source) is MerchantInventory propertyInventory)
+                        return propertyInventory;
+                }
+                catch { }
+            }
+
+            foreach (var field in type.GetFields(Flags))
+            {
+                if (!typeof(MerchantInventory).IsAssignableFrom(field.FieldType))
+                    continue;
+
+                try
+                {
+                    if (field.GetValue(source) is MerchantInventory fieldInventory)
+                        return fieldInventory;
+                }
+                catch { }
+            }
+        }
+
+        return null;
     }
 
     private static object? GetInstanceFieldValue(object source, string fieldName)

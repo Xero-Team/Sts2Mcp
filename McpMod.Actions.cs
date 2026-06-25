@@ -168,7 +168,7 @@ public static partial class McpMod
     {
         if (!CombatManager.Instance.IsInProgress)
             return Error("Not in combat");
-        if (!IsPlayPhase(player))
+        if (!IsCombatPlayPhase())
             return Error("Not in play phase - cannot act during enemy turn");
         if (CombatManager.Instance.PlayerActionsDisabled)
             return Error("Player actions are currently disabled");
@@ -223,7 +223,7 @@ public static partial class McpMod
     {
         if (!CombatManager.Instance.IsInProgress)
             return Error("Not in combat");
-        if (!IsPlayPhase(player))
+        if (!IsCombatPlayPhase())
             return Error("Not in play phase - cannot act during enemy turn");
         if (CombatManager.Instance.PlayerActionsDisabled)
             return Error("Player actions are currently disabled (turn may already be ending)");
@@ -266,7 +266,7 @@ public static partial class McpMod
         {
             if (!inCombat)
                 return Error($"Potion '{SafeGetText(() => potion.Title)}' can only be used in combat");
-            if (!IsPlayPhase(player))
+            if (!IsCombatPlayPhase())
                 return Error("Cannot use potions outside of play phase");
         }
         else if (potion.Usage == PotionUsage.Automatic)
@@ -435,8 +435,7 @@ public static partial class McpMod
             var merchUI = NMerchantRoom.Instance;
             if (merchUI?.Inventory != null && !merchUI.Inventory.IsOpen)
                 merchUI.OpenInventory();
-            // v0.107 split the merchant into per-player inventories; take the local one.
-            inventory = merchantRoom.GetLocalInventory();
+            inventory = GetMerchantInventory(merchantRoom);
         }
         else if (player.RunState.CurrentRoom is EventRoom eventRoom
                  && eventRoom.CanonicalEvent is FakeMerchant

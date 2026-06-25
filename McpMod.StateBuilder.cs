@@ -1236,7 +1236,7 @@ public static partial class McpMod
 
         battle["round"] = combatState.RoundNumber;
         battle["turn"] = combatState.CurrentSide.ToString().ToLower();
-        battle["is_play_phase"] = IsPlayPhase(combatState);
+        battle["is_play_phase"] = IsCombatPlayPhase();
         // Scripted combat moments disable player input while turn/is_play_phase still
         // look actionable; clients must wait on this instead of hammering errors.
         bool actionsDisabled = false;
@@ -1250,7 +1250,7 @@ public static partial class McpMod
         var handUi = NCombatRoom.Instance?.Ui?.Hand;
         battle["action_running"] = !executorIdle;
         battle["action_queue_empty"] = queueEmpty;
-        battle["ready_for_action"] = IsPlayPhase(combatState)
+        battle["ready_for_action"] = IsCombatPlayPhase()
             && executorIdle && queueEmpty
             && !actionsDisabled
             && handUi != null && !handUi.InCardPlay
@@ -1842,7 +1842,7 @@ public static partial class McpMod
         state["is_open"] = isOpen;
         state["available_actions"] = BuildShopAvailableActions(isOpen);
 
-        var inventory = merchantRoom.GetLocalInventory();
+        var inventory = GetMerchantInventory(merchantRoom);
         if (inventory == null)
         {
             state["items"] = new List<Dictionary<string, object?>>();
