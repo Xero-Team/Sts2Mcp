@@ -780,7 +780,7 @@ public static partial class McpMod
                 _ => lobby.NetService.Type.ToString().ToLowerInvariant()
             },
             ["game_mode"] = lobby.GameMode.ToString().ToLowerInvariant(),
-            ["max_players"] = lobby.MaxPlayers,
+            ["max_players"] = SafeGetMaxPlayers(lobby),
             ["ascension"] = lobby.Ascension,
             ["max_ascension"] = lobby.MaxAscension,
             ["all_ready"] = lobby.Players.Count > 0 && lobby.Players.All(p => p.isReady),
@@ -835,6 +835,16 @@ public static partial class McpMod
     {
         try { return lobby.IsAboutToBeginGame(); }
         catch { return false; }
+    }
+
+    // v0.111.0 compat: StartRunLobby.MaxPlayers (a public property) was replaced with a
+    // private _maxPlayers field -- same "public API surface shrank, fall back to reflection"
+    // gap as SafeIsAboutToBeginGame's own IsAboutToBeginGame handling above. Multiplayer
+    // lobby state only, never consumed by this project's own singleplayer-only client code.
+    private static int? SafeGetMaxPlayers(StartRunLobby lobby)
+    {
+        try { return GetInstanceFieldValue(lobby, "_maxPlayers") as int?; }
+        catch { return null; }
     }
 
     private static string? SafeGetPlayerName(PlatformType platform, ulong playerId)
