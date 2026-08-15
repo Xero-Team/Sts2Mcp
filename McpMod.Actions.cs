@@ -92,6 +92,8 @@ public static partial class McpMod
             "open_pause_menu" => ExecuteOpenPauseMenu(),
             "resume" => ExecuteResumeFromPauseMenu(),
             "give_up" => ExecuteGiveUp(),
+            "debug_start_encounter" => ExecuteDebugStartEncounter(data),
+            "debug_force_play_phase" => ExecuteDebugForcePlayPhase(player),
             _ => Error($"Unknown action: {action}")
         };
     }
