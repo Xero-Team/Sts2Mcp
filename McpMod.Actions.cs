@@ -94,6 +94,7 @@ public static partial class McpMod
             "give_up" => ExecuteGiveUp(),
             "debug_start_encounter" => ExecuteDebugStartEncounter(data),
             "debug_force_play_phase" => ExecuteDebugForcePlayPhase(player),
+            "return_to_main_menu" => ExecuteReturnToMainMenu(),
             _ => Error($"Unknown action: {action}")
         };
     }
