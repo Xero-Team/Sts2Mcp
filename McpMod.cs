@@ -88,6 +88,9 @@ public static partial class McpMod
             if (!OperatingSystem.IsMacOS()) TryApplyHarmonyPatches();
             GD.Print("[STS2 MCP] Initializing REST bridge (macOS: no settings detours)");
 
+            // Expose a completion signal for async room entry; see TrackRoomEntries.
+            TrackRoomEntries();
+
             // Connect to main thread process frame for action execution
             var tree = (SceneTree)Engine.GetMainLoop();
             tree.Connect(SceneTree.SignalName.ProcessFrame, Callable.From(ProcessMainThreadQueue));
