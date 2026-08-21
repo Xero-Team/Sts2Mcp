@@ -1208,29 +1208,34 @@ public static partial class McpMod
         state["max_hp"] = creature.MaxHp;
         state["block"] = creature.Block;
 
-        // Master deck (run deck, not combat piles) — needed by deck-building
-        // policies outside combat (card rewards, shop removal, upgrades).
+        // The run deck, which is not a combat pile and so was reported nowhere: on every
+        // screen the piles below are empty, and the deck is exactly what the screens that
+        // matter outside combat act on. An event that transforms, upgrades, adds or
+        // removes a card was invisible to any harness reading this state, and so was the
+        // deck an agent is supposed to be building.
         try
         {
-            var deck = new List<Dictionary<string, object?>>();
-            int deckIndex = 0;
-            foreach (var card in player.Deck.Cards)
+            var deckPile = CardPile.Get(PileType.Deck, player);
+            if (deckPile != null)
             {
-                deck.Add(new Dictionary<string, object?>
+                var deck = new List<Dictionary<string, object?>>();
+                int deckIndex = 0;
+                foreach (var card in deckPile.Cards)
                 {
-                    ["index"] = deckIndex++,
-                    ["id"] = card.Id.Entry,
-                    ["name"] = SafeGetText(() => card.Title),
-                    ["type"] = card.Type.ToString(),
-                    ["cost"] = GetCostDisplay(card),
-                    ["star_cost"] = GetStarCostDisplay(card),
-                    ["rarity"] = card.Rarity.ToString(),
-                    ["is_upgraded"] = card.IsUpgraded
-                });
+                    var info = BuildCardInfo(card, PileType.Deck);
+                    info["index"] = deckIndex;
+                    deck.Add(info);
+                    deckIndex++;
+                }
+
+                state["deck"] = deck;
             }
-            state["deck"] = deck;
         }
-        catch { /* deck serialization must never break state */ }
+        catch (Exception)
+        {
+            // A screen with no deck to read is not an error worth failing the whole
+            // state over; the field is simply absent.
+        }
 
         // PlayerCombatState can linger after combat while on map/rest/shop. Energy/MaxEnergy getters
         // run hooks (e.g. Hook.ModifyMaxEnergy) that null-ref without a live combat - only serialize
