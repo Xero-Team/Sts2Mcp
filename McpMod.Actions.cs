@@ -94,6 +94,7 @@ public static partial class McpMod
             "give_up" => ExecuteGiveUp(),
             "debug_start_encounter" => ExecuteDebugStartEncounter(data),
             "debug_start_event" => ExecuteDebugStartEvent(data),
+            "debug_start_shop" => ExecuteDebugStartShop(),
             "debug_force_play_phase" => ExecuteDebugForcePlayPhase(player),
             "debug_add_card" => ExecuteDebugAddCard(player, data),
             "debug_set_energy" => ExecuteDebugSetEnergy(player, data),
