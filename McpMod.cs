@@ -39,9 +39,6 @@ public static partial class McpMod
         return typeof(McpMod).Assembly.GetName().Version?.ToString(3) ?? "0.0.0";
     }
 
-    public const int DefaultPort = 15526;
-    private const string ConfigFileName = "STS2_MCP.conf";
-
     private static HttpListener? _listener;
     private static Thread? _serverThread;
     private static readonly ConcurrentQueue<Action> _mainThreadQueue = new();
@@ -52,53 +49,6 @@ public static partial class McpMod
         PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower,
         Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping
     };
-
-    private static int LoadPort()
-    {
-        int ResolvePort(int? configuredPort) =>
-            McpPortResolver.Resolve(Godot.OS.GetCmdlineArgs(), configuredPort);
-
-        try
-        {
-            string? modDir = Path.GetDirectoryName(
-                System.Reflection.Assembly.GetExecutingAssembly().Location);
-            if (modDir == null) return ResolvePort(null);
-
-            string configPath = Path.Combine(modDir, ConfigFileName);
-            if (!File.Exists(configPath))
-            {
-                try
-                {
-                    var defaultConfig = new Dictionary<string, object> { ["port"] = DefaultPort };
-                    string json = JsonSerializer.Serialize(defaultConfig, _jsonOptions);
-                    File.WriteAllText(configPath, json);
-                    GD.Print($"[STS2 MCP] Created default config at {configPath}");
-                }
-                catch (Exception ex) when (ex is UnauthorizedAccessException or IOException)
-                {
-                    GD.Print($"[STS2 MCP] No config found at {configPath}; using default port {DefaultPort}");
-                }
-                return ResolvePort(DefaultPort);
-            }
-
-            string content = File.ReadAllText(configPath);
-            using var doc = JsonDocument.Parse(content);
-            if (doc.RootElement.TryGetProperty("port", out var portElem)
-                && portElem.TryGetInt32(out int port)
-                && port is > 0 and <= 65535)
-            {
-                return ResolvePort(port);
-            }
-
-            GD.PrintErr($"[STS2 MCP] Invalid or missing 'port' in {configPath}, using default {DefaultPort}");
-            return ResolvePort(null);
-        }
-        catch (Exception ex)
-        {
-            GD.PrintErr($"[STS2 MCP] Failed to load config: {ex.Message}, using default port {DefaultPort}");
-            return ResolvePort(null);
-        }
-    }
 
     public static void Initialize()
     {
@@ -117,7 +67,8 @@ public static partial class McpMod
             var tree = (SceneTree)Engine.GetMainLoop();
             tree.Connect(SceneTree.SignalName.ProcessFrame, Callable.From(ProcessMainThreadQueue));
 
-            int port = LoadPort();
+            _config = LoadConfig();
+            int port = _config.Port;
 
             _listener = new HttpListener();
             _listener.Prefixes.Add($"http://localhost:{port}/");
@@ -130,6 +81,8 @@ public static partial class McpMod
                 Name = "STS2_MCP_Server"
             };
             _serverThread.Start();
+
+            ApplyInstantModeFromConfig();
 
             GD.Print($"[STS2 MCP] v{Version} server started on http://localhost:{port}/");
         }
