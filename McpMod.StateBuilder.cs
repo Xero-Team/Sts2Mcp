@@ -1102,8 +1102,22 @@ public static partial class McpMod
         battle["is_play_phase"] = IsPlayPhase(combatState);
         // Scripted combat moments disable player input while turn/is_play_phase still
         // look actionable; clients must wait on this instead of hammering errors.
-        try { battle["actions_disabled"] = CombatManager.Instance.PlayerActionsDisabled; }
+        bool actionsDisabled = false;
+        try { actionsDisabled = CombatManager.Instance.PlayerActionsDisabled; battle["actions_disabled"] = actionsDisabled; }
         catch { }
+
+        // Pre-flight readiness so a controller can decide to act without provoking an error.
+        var runManager = RunManager.Instance;
+        bool executorIdle = runManager.ActionExecutor?.CurrentlyRunningAction == null;
+        bool queueEmpty = runManager.ActionQueueSet?.IsEmpty ?? false;
+        var handUi = NCombatRoom.Instance?.Ui?.Hand;
+        battle["action_running"] = !executorIdle;
+        battle["action_queue_empty"] = queueEmpty;
+        battle["ready_for_action"] = IsPlayPhase(combatState)
+            && executorIdle && queueEmpty
+            && !actionsDisabled
+            && handUi != null && !handUi.InCardPlay
+            && handUi.CurrentMode == NPlayerHand.Mode.Play;
 
         // Enemies
         var enemies = new List<Dictionary<string, object?>>();
@@ -2004,6 +2018,9 @@ public static partial class McpMod
 
         // Cards in the grid (sorted by visual position - MoveToFront can reorder children)
         var cardHolders = FindAllSortedByPosition<NGridCardHolder>(screen);
+        var selectedCards = GetInstanceFieldValue(screen, "_selectedCards") as HashSet<CardModel>;
+        state["selection_observable"] = selectedCards != null;
+        var selectedIndices = new List<int>();
         var cards = new List<Dictionary<string, object?>>();
         int index = 0;
         foreach (var holder in cardHolders)
@@ -2013,10 +2030,21 @@ public static partial class McpMod
 
             var cardInfo = BuildCardInfo(card);
             cardInfo["index"] = index;
+            if (selectedCards != null)
+            {
+                bool selected = selectedCards.Contains(card);
+                cardInfo["is_selected"] = selected;
+                if (selected) selectedIndices.Add(index);
+            }
             cards.Add(cardInfo);
             index++;
         }
         state["cards"] = cards;
+        if (selectedCards != null)
+        {
+            state["selected_count"] = selectedCards.Count;
+            state["selected_indices"] = selectedIndices;
+        }
 
         // Preview container showing? (selection complete, awaiting confirm)
         // Upgrade screens use UpgradeSinglePreviewContainer / UpgradeMultiPreviewContainer

@@ -83,7 +83,10 @@ public static partial class McpMod
         try
         {
             // Optional settings UI patches should not block the HTTP bridge itself.
-            TryApplyHarmonyPatches();
+            // The optional speed-settings detours stall startup on this macOS
+            // host. The REST bridge does not depend on them.
+            if (!OperatingSystem.IsMacOS()) TryApplyHarmonyPatches();
+            GD.Print("[STS2 MCP] Initializing REST bridge (macOS: no settings detours)");
 
             // Connect to main thread process frame for action execution
             var tree = (SceneTree)Engine.GetMainLoop();
@@ -178,9 +181,18 @@ public static partial class McpMod
         {
             var request = context.Request;
             var response = context.Response;
-            response.Headers.Add("Access-Control-Allow-Origin", "*");
-            response.Headers.Add("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
-            response.Headers.Add("Access-Control-Allow-Headers", "Content-Type");
+            // This bridge is for the local controller, never browser pages.
+            if (!string.IsNullOrEmpty(request.Headers["Origin"]))
+            {
+                SendError(response, 403, "Browser origins are not permitted");
+                return;
+            }
+            if (request.HttpMethod == "POST"
+                && !(request.ContentType?.StartsWith("application/json", StringComparison.OrdinalIgnoreCase) ?? false))
+            {
+                SendError(response, 415, "application/json required");
+                return;
+            }
 
             if (request.HttpMethod == "OPTIONS")
             {
