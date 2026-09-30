@@ -7,10 +7,15 @@ as MCP tools for Claude Desktop / Claude Code.
 import argparse
 import asyncio
 import json
+from pathlib import Path
 import sys
 
 import httpx
 from mcp.server.fastmcp import FastMCP
+
+_server_dir = str(Path(__file__).resolve().parent)
+if _server_dir not in sys.path:
+    sys.path.insert(0, _server_dir)
 
 mcp = FastMCP("sts2")
 
@@ -234,6 +239,70 @@ async def get_compendium() -> str:
     """
     try:
         return await _compendium_get()
+    except Exception as e:
+        return _handle_error(e)
+
+
+@mcp.tool()
+async def get_playtest_metrics(
+    ledger_path: str | None = None,
+    character: str | None = None,
+    game_build: str | None = None,
+    mod_version: str | None = None,
+    ascension: int | None = None,
+    start_time_min: int | None = None,
+    start_time_max: int | None = None,
+    mcp_version: str | None = None,
+    report_path: str | None = None,
+    development_test: bool = False,
+) -> str:
+    """Ingest run history and report longitudinal playtest metrics.
+
+    Primary rates exclude abandoned and explicitly marked development/test runs.
+    Results include version cohorts, sample sizes, and Wilson 95% intervals.
+    Existing ledger records are immutable, so metadata applies only to newly
+    discovered runs.
+    """
+    try:
+        from telemetry import aggregate_metrics, ingest_runs
+
+        compendium = json.loads(await _compendium_get())
+        profile_id = int(compendium["profile_id"])
+        run_history = compendium["sections"]["run_history"]
+        history_path = Path(run_history["history_path"])
+        entries = run_history.get("entries") or []
+        run_id = entries[0].get("run_id", "") if entries else ""
+        save_scope = run_id.split(":", 1)[0] if ":" in run_id else (
+            "modded" if "modded" in history_path.parts else "vanilla"
+        )
+        target_ledger = (
+            Path(ledger_path)
+            if ledger_path
+            else history_path.parent / "sts2-mcp-playtest-telemetry.jsonl"
+        )
+        ingest_runs(
+            history_path=history_path,
+            ledger_path=target_ledger,
+            profile_id=profile_id,
+            save_scope=save_scope,
+            metadata={
+                "mod_version": mod_version or "unknown",
+                "mcp_version": mcp_version or "unknown",
+                "report_path": report_path,
+                "development_test": development_test,
+            },
+        )
+        metrics = aggregate_metrics(
+            target_ledger,
+            character=character,
+            game_build=game_build,
+            mod_version=mod_version,
+            ascension=ascension,
+            start_time_min=start_time_min,
+            start_time_max=start_time_max,
+        )
+        metrics["ledger_path"] = str(target_ledger)
+        return json.dumps(metrics)
     except Exception as e:
         return _handle_error(e)
 
