@@ -36,11 +36,14 @@ public static partial class McpMod
 
     private static int LoadPort()
     {
+        int ResolvePort(int? configuredPort) =>
+            McpPortResolver.Resolve(Godot.OS.GetCmdlineArgs(), configuredPort);
+
         try
         {
             string? modDir = Path.GetDirectoryName(
                 System.Reflection.Assembly.GetExecutingAssembly().Location);
-            if (modDir == null) return DefaultPort;
+            if (modDir == null) return ResolvePort(null);
 
             string configPath = Path.Combine(modDir, ConfigFileName);
             if (!File.Exists(configPath))
@@ -56,7 +59,7 @@ public static partial class McpMod
                 {
                     GD.Print($"[STS2 MCP] No config found at {configPath}; using default port {DefaultPort}");
                 }
-                return DefaultPort;
+                return ResolvePort(DefaultPort);
             }
 
             string content = File.ReadAllText(configPath);
@@ -65,16 +68,16 @@ public static partial class McpMod
                 && portElem.TryGetInt32(out int port)
                 && port is > 0 and <= 65535)
             {
-                return port;
+                return ResolvePort(port);
             }
 
             GD.PrintErr($"[STS2 MCP] Invalid or missing 'port' in {configPath}, using default {DefaultPort}");
-            return DefaultPort;
+            return ResolvePort(null);
         }
         catch (Exception ex)
         {
             GD.PrintErr($"[STS2 MCP] Failed to load config: {ex.Message}, using default port {DefaultPort}");
-            return DefaultPort;
+            return ResolvePort(null);
         }
     }
 
