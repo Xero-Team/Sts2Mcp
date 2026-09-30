@@ -40,6 +40,7 @@ using MegaCrit.Sts2.Core.Rooms;
 using MegaCrit.Sts2.Core.Runs;
 using MegaCrit.Sts2.Core.Models.RelicPools;
 using MegaCrit.Sts2.Core.Nodes.Screens.CharacterSelect;
+using MegaCrit.Sts2.Core.Nodes.Screens.CustomRun;
 using MegaCrit.Sts2.Core.Nodes.Screens.MainMenu;
 using MegaCrit.Sts2.Core.Multiplayer;
 using MegaCrit.Sts2.Core.Multiplayer.Game;
@@ -198,14 +199,14 @@ public static partial class McpMod
                     }
                 }
 
-                // Custom-run screen (seeded runs) — mounted separately like char select.
+                // Custom mode setup screen (reached via singleplayer/multiplayer-host
+                // "custom"). It replaces the normal character select and adds a seed
+                // field and run modifiers, so detect it before the plain char select.
                 if (result.ContainsKey("menu_screen") == false)
                 {
-                    var customRun = FindFirst<MegaCrit.Sts2.Core.Nodes.Screens.CustomRun.NCustomRunScreen>(tree.Root);
+                    var customRun = FindFirst<NCustomRunScreen>(tree.Root);
                     if (customRun != null && IsNodeVisible(customRun))
-                    {
                         AddCustomRunMenuState(result, customRun);
-                    }
                 }
 
                 // Check for character select screen
@@ -626,55 +627,6 @@ public static partial class McpMod
         return result;
     }
 
-    private static void AddCustomRunMenuState(
-        Dictionary<string, object?> result,
-        MegaCrit.Sts2.Core.Nodes.Screens.CustomRun.NCustomRunScreen customRun)
-    {
-        // Report as "character_select" so existing menu flows work; flag custom_run
-        // and surface the current seed + ascension the custom screen exposes.
-        result["state_type"] = "menu";
-        result["menu_screen"] = "character_select";
-        result["message"] = "Select a character (custom run).";
-        result["custom_run"] = true;
-
-        var options = new List<Dictionary<string, object?>>();
-        var characters = new List<Dictionary<string, object?>>();
-        foreach (var btn in FindAll<NCharacterSelectButton>(customRun))
-        {
-            try
-            {
-                if (btn.Character is { } cm && IsNodeVisible(btn))
-                {
-                    options.Add(new Dictionary<string, object?> { ["name"] = cm.Id.Entry, ["enabled"] = !btn.IsLocked });
-                    characters.Add(new Dictionary<string, object?>
-                    {
-                        ["name"] = SafeGetText(() => cm.Title),
-                        ["id"] = cm.Id.Entry,
-                        ["locked"] = btn.IsLocked,
-                        ["hp"] = cm.StartingHp,
-                    });
-                }
-            }
-            catch { }
-        }
-        result["characters"] = characters;
-        result["options"] = options;
-
-        try
-        {
-            if (GetInstanceFieldValue(customRun, "_ascensionPanel")
-                is MegaCrit.Sts2.Core.Nodes.Screens.CharacterSelect.NAscensionPanel panel)
-                result["ascension"] = panel.Ascension;
-        }
-        catch { }
-        try
-        {
-            if (GetInstanceFieldValue(customRun, "_seedInput") is Godot.LineEdit seedInput)
-                result["seed_input"] = seedInput.Text;
-        }
-        catch { }
-    }
-
     private static void AddCharacterSelectMenuState(
         Dictionary<string, object?> result,
         NCharacterSelectScreen charSelect)
@@ -682,10 +634,206 @@ public static partial class McpMod
         result["state_type"] = "menu";
         result["menu_screen"] = "character_select";
         result["message"] = "Select a character.";
+        AddStartRunScreenState(result, charSelect, "_embarkButton");
+    }
 
-        var buttons = FindAll<NCharacterSelectButton>(charSelect);
+    // Custom mode setup. Structurally a character-select variant (same character
+    // buttons, ascension panel, back/unready/lobby) plus a seed field and run
+    // modifiers. Confirm is _confirmButton (the plain char select uses _embarkButton).
+    private static void AddCustomRunMenuState(
+        Dictionary<string, object?> result,
+        NCustomRunScreen customRun)
+    {
+        result["state_type"] = "menu";
+        result["menu_screen"] = "custom_run";
+        result["message"] = "Custom run setup. Select a character, optionally toggle run modifiers "
+                            + "(modifier_<key>) and adjust ascension, then confirm to embark.";
+        AddStartRunScreenState(result, customRun, "_confirmButton");
+    }
+
+    // Shared body of the two "start a run" screens (NCharacterSelectScreen and
+    // NCustomRunScreen). They are separate types but expose the same controls under
+    // the same field names — _backButton, _unreadyButton, _ascensionPanel, _lobby —
+    // so everything except the confirm button's field name is identical. Fields that
+    // only one screen owns (_seedInput, the modifier tickboxes) are emitted only when
+    // that screen actually has them.
+    private static void AddStartRunScreenState(
+        Dictionary<string, object?> result,
+        Node screen,
+        string confirmField)
+    {
+        var buttons = FindAll<NCharacterSelectButton>(screen);
         var characters = new List<Dictionary<string, object?>>();
         var options = new List<Dictionary<string, object?>>();
+        PopulateCharacterButtons(buttons, options, characters);
+        if (characters.Count > 0)
+            result["characters"] = characters;
+
+        var lobby = GetInstanceFieldValue(screen, "_lobby") as StartRunLobby;
+
+        // Seed — custom run only, gated on the screen owning a seed input. The lobby is
+        // what the run actually uses and both directions flow through it (SetSeed ->
+        // SeedChanged -> _seedInput.Text, and a human submitting the field -> SetSeed),
+        // so read it from there rather than off the LineEdit.
+        if (GetInstanceFieldValue(screen, "_seedInput") != null && !string.IsNullOrWhiteSpace(lobby?.Seed))
+            result["seed"] = lobby!.Seed;
+
+        // Run modifiers — custom run only. Each is a tickbox; surface it as read info
+        // (id, title, description, ticked) plus a toggle option named "modifier_<key>",
+        // which menu_select flips via ForceClick. `key` is the id except for the
+        // per-character "character cards" modifiers, which all share one id — see
+        // GetRunModifierEntries.
+        var selectedModifiers = new List<string>();
+        var modifiers = new List<Dictionary<string, object?>>();
+        var modifierEntries = GetRunModifierEntries(screen);
+        foreach (var entry in modifierEntries)
+        {
+            try
+            {
+                bool ticked = entry.Tickbox.IsTicked;
+                var modifierState = new Dictionary<string, object?>
+                {
+                    ["id"] = entry.Id,
+                    ["key"] = entry.Key,
+                    ["option"] = ModifierOptionPrefix + entry.Key,
+                    ["title"] = SafeGetText(() => entry.Modifier.Title),
+                    ["description"] = SafeGetText(() => entry.Modifier.Description),
+                    ["ticked"] = ticked
+                };
+                if (!string.IsNullOrEmpty(entry.CharacterId))
+                    modifierState["character"] = entry.CharacterId;
+                modifiers.Add(modifierState);
+
+                options.Add(new Dictionary<string, object?>
+                {
+                    ["name"] = ModifierOptionPrefix + entry.Key,
+                    ["enabled"] = entry.Tickbox.IsEnabled
+                });
+                if (ticked)
+                    selectedModifiers.Add(entry.Key);
+            }
+            catch { }
+        }
+        if (modifiers.Count > 0)
+            result["modifiers"] = modifiers;
+
+        // Ascension. The panel is shared by both screens and drives the run's ascension
+        // level in SP as well as MP (the MP `lobby` block carries the synced value).
+        // The arrows hide themselves at the ends of the range and for MP clients, so
+        // their visibility is what says whether the level can still be changed.
+        var ascensionPanel = GetInstanceFieldValue(screen, "_ascensionPanel") as NAscensionPanel;
+        if (ascensionPanel != null && IsNodeVisible(ascensionPanel))
+        {
+            try
+            {
+                var maxAscension = GetInstanceFieldValue(ascensionPanel, "_maxAscension") as int?;
+                var ascension = new Dictionary<string, object?> { ["level"] = ascensionPanel.Ascension };
+                if (maxAscension.HasValue)
+                    ascension["max"] = maxAscension.Value;
+                result["ascension"] = ascension;
+
+                AddAscensionArrowOption(options, ascensionPanel, "_rightArrow", "ascension_up");
+                AddAscensionArrowOption(options, ascensionPanel, "_leftArrow", "ascension_down");
+            }
+            catch { }
+        }
+
+        var confirmBtn = GetInstanceFieldValue(screen, confirmField);
+        if (confirmBtn is NClickableControl confirmClickable && IsNodeVisible(confirmClickable))
+        {
+            options.Add(new Dictionary<string, object?>
+            {
+                ["name"] = "confirm",
+                ["enabled"] = confirmClickable.IsEnabled
+            });
+            options.Add(new Dictionary<string, object?>
+            {
+                ["name"] = "embark",
+                ["enabled"] = confirmClickable.IsEnabled
+            });
+        }
+
+        // _backButton and _unreadyButton are surfaced as distinct options so MP callers
+        // can distinguish "leave the lobby" from "retract my ready vote". In SP, only
+        // _backButton ever becomes enabled. See NCharacterSelectScreen.OnEmbarkPressed /
+        // OnUnreadyPressed for the toggle logic.
+        var backBtn = GetInstanceFieldValue(screen, "_backButton");
+        if (backBtn is NClickableControl backClickable && IsNodeVisible(backClickable))
+        {
+            options.Add(new Dictionary<string, object?>
+            {
+                ["name"] = "back",
+                ["enabled"] = backClickable.IsEnabled
+            });
+        }
+
+        // MP lobby block — surfaces roster / ready state / ascension when this screen
+        // is part of a host or client lobby. SP runs leave the field absent.
+        bool isMp = false;
+        try
+        {
+            if (lobby != null && lobby.NetService != null && lobby.NetService.Type.IsMultiplayer())
+            {
+                isMp = true;
+                result["lobby"] = BuildStartRunLobbyState(lobby);
+            }
+        }
+        catch { }
+
+        // _unreadyButton is part of the scene in SP too but never becomes enabled there.
+        // Only surface it as an option in MP, where it has a real role.
+        if (isMp)
+        {
+            var unreadyBtn = GetInstanceFieldValue(screen, "_unreadyButton");
+            if (unreadyBtn is NClickableControl unreadyClickable && IsNodeVisible(unreadyClickable))
+            {
+                options.Add(new Dictionary<string, object?>
+                {
+                    ["name"] = "unready",
+                    ["enabled"] = unreadyClickable.IsEnabled
+                });
+            }
+        }
+
+        var selected = new Dictionary<string, object?>
+        {
+            ["character"] = GetSelectedCharacterId(buttons)
+        };
+        if (modifiers.Count > 0)
+            selected["modifiers"] = selectedModifiers;
+        result["selected"] = selected;
+
+        if (options.Count > 0)
+            result["options"] = options;
+    }
+
+    // NAscensionPanel hides an arrow when that direction is unavailable (either end of
+    // the range, or an MP client that may not change the level), so a hidden arrow means
+    // the option should not be advertised at all.
+    private static void AddAscensionArrowOption(
+        List<Dictionary<string, object?>> options,
+        NAscensionPanel panel,
+        string arrowField,
+        string optionName)
+    {
+        if (GetInstanceFieldValue(panel, arrowField) is NClickableControl arrow && IsNodeVisible(arrow))
+        {
+            options.Add(new Dictionary<string, object?>
+            {
+                ["name"] = optionName,
+                ["enabled"] = arrow.IsEnabled
+            });
+        }
+    }
+
+    // Shared by character select and custom-run setup, which both list the same
+    // NCharacterSelectButton controls. Appends one option per selectable character
+    // and one rich entry per character to the given lists.
+    private static void PopulateCharacterButtons(
+        System.Collections.Generic.IEnumerable<NCharacterSelectButton> buttons,
+        List<Dictionary<string, object?>> options,
+        List<Dictionary<string, object?>> characters)
+    {
         foreach (var btn in buttons)
         {
             try
@@ -758,97 +906,23 @@ public static partial class McpMod
             }
             catch { }
         }
-        if (characters.Count > 0)
-            result["characters"] = characters;
+    }
 
-        // Which character the lobby will actually embark with, and whether the
-        // pending-unlock animation may still overwrite selections. Lets clients
-        // verify their pick committed before confirming (see the matching guard
-        // in the menu_select character handler).
-        try
+    // Returns the id of the currently selected character button, or null if none
+    // is selected yet. Shared by character select and custom-run setup.
+    private static string? GetSelectedCharacterId(
+        System.Collections.Generic.IEnumerable<NCharacterSelectButton> buttons)
+    {
+        foreach (var btn in buttons)
         {
-            if (GetInstanceFieldValue(charSelect, "_selectedButton") is NCharacterSelectButton selectedBtn &&
-                selectedBtn.Character is { } selectedCharacter)
+            try
             {
-                result["selected_character"] = selectedCharacter.Id.Entry;
+                if (btn.IsSelected && btn.Character is { } cm)
+                    return cm.Id.Entry;
             }
+            catch { }
         }
-        catch { }
-        result["selection_busy"] = IsCharacterSelectionBusy();
-
-        // Ascension picker state (SP: panel becomes visible once the selected
-        // character has any ascension unlocked; max is per-character).
-        try
-        {
-            if (GetInstanceFieldValue(charSelect, "_ascensionPanel") is NAscensionPanel ascPanel)
-            {
-                result["ascension"] = ascPanel.Ascension;
-                if (GetInstanceFieldValue(ascPanel, "_maxAscension") is int maxAscension)
-                    result["max_ascension"] = maxAscension;
-            }
-        }
-        catch { }
-
-        var embarkBtn = GetInstanceFieldValue(charSelect, "_embarkButton");
-        if (embarkBtn is NClickableControl embarkClickable && IsNodeVisible(embarkClickable))
-        {
-            options.Add(new Dictionary<string, object?>
-            {
-                ["name"] = "confirm",
-                ["enabled"] = embarkClickable.IsEnabled
-            });
-            options.Add(new Dictionary<string, object?>
-            {
-                ["name"] = "embark",
-                ["enabled"] = embarkClickable.IsEnabled
-            });
-        }
-
-        // _backButton and _unreadyButton are surfaced as distinct options so MP callers
-        // can distinguish "leave the lobby" from "retract my ready vote". In SP, only
-        // _backButton ever becomes enabled. See NCharacterSelectScreen.OnEmbarkPressed /
-        // OnUnreadyPressed for the toggle logic.
-        var backBtn = GetInstanceFieldValue(charSelect, "_backButton");
-        if (backBtn is NClickableControl backClickable && IsNodeVisible(backClickable))
-        {
-            options.Add(new Dictionary<string, object?>
-            {
-                ["name"] = "back",
-                ["enabled"] = backClickable.IsEnabled
-            });
-        }
-
-        // MP lobby block — surfaces roster / ready state / ascension when this character
-        // select is part of a host or client lobby. SP runs leave the field absent.
-        bool isMpCharSelect = false;
-        try
-        {
-            var lobby = charSelect.Lobby;
-            if (lobby != null && lobby.NetService != null && lobby.NetService.Type.IsMultiplayer())
-            {
-                isMpCharSelect = true;
-                result["lobby"] = BuildStartRunLobbyState(lobby);
-            }
-        }
-        catch { }
-
-        // _unreadyButton is part of the scene in SP too but never becomes enabled there.
-        // Only surface it as an option in MP, where it has a real role.
-        if (isMpCharSelect)
-        {
-            var unreadyBtn = GetInstanceFieldValue(charSelect, "_unreadyButton");
-            if (unreadyBtn is NClickableControl unreadyClickable && IsNodeVisible(unreadyClickable))
-            {
-                options.Add(new Dictionary<string, object?>
-                {
-                    ["name"] = "unready",
-                    ["enabled"] = unreadyClickable.IsEnabled
-                });
-            }
-        }
-
-        if (options.Count > 0)
-            result["options"] = options;
+        return null;
     }
 
     private static Dictionary<string, object?> BuildStartRunLobbyState(StartRunLobby lobby)
