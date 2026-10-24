@@ -1553,6 +1553,10 @@ public static partial class McpMod
             return battle;
         }
 
+        var localPlayer = LocalContext.GetMe(runState);
+        battle["special_card_rewards"] = localPlayer != null && combatRoom.ExtraRewards.TryGetValue(localPlayer, out var extraRewards)
+            ? extraRewards.OfType<SpecialCardReward>().Select(BuildSpecialCardReward).ToList()
+            : new List<Dictionary<string, object?>>();
         battle["next_creature_id"] = NextCreatureId(combatState);
         battle["round"] = combatState.RoundNumber;
         battle["turn"] = combatState.CurrentSide.ToString().ToLower();
@@ -2080,6 +2084,16 @@ public static partial class McpMod
         return relics;
     }
 
+    private sealed class CardObjectIdentity
+    {
+        public readonly long Value = System.Threading.Interlocked.Increment(ref _nextCardObjectIdentity);
+    }
+
+    private static long _nextCardObjectIdentity;
+    private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<CardModel, CardObjectIdentity> CardObjectIdentities = new();
+
+    private static long GetCardObjectIdentity(CardModel card) => CardObjectIdentities.GetValue(card, _ => new CardObjectIdentity()).Value;
+
     private sealed class CardPlayIdentity
     {
         public readonly long Value = System.Threading.Interlocked.Increment(ref _nextCardPlayIdentity);
@@ -2358,6 +2372,8 @@ public static partial class McpMod
             ["has_single_turn_sly"] = GetSingleTurnSly(card),
             ["is_sly_this_turn"] = card.IsSlyThisTurn
         };
+        if (card.IsMutable)
+            info["card_object_id"] = GetCardObjectIdentity(card);
         // Only present, and only false, when this build stripped the game's power
         // and relic baking out of the numbers above. A powered payload omits the key
         // entirely, which is the shape every existing consumer already assumes.
@@ -3508,6 +3524,22 @@ public static partial class McpMod
         }
     }
 
+    private static readonly FieldInfo? SpecialRewardCardField = typeof(SpecialCardReward).GetField("_card", BindingFlags.NonPublic | BindingFlags.Instance);
+
+    private static Dictionary<string, object?> BuildSpecialCardReward(SpecialCardReward reward)
+    {
+        var card = SpecialRewardCardField?.GetValue(reward) as CardModel
+            ?? throw new InvalidOperationException("A populated SpecialCardReward must expose its exact card");
+        var saved = reward.ToSerializable();
+        return new Dictionary<string, object?>
+        {
+            ["type"] = "special_card",
+            ["card_reference"] = GetCardObjectIdentity(card),
+            ["card"] = BuildCardInfo(card),
+            ["encounter_source"] = saved.CustomDescriptionEncounterSourceId.Entry
+        };
+    }
+
     private static Dictionary<string, object?> BuildRewardsState(NRewardsScreen rewardsScreen, RunState runState)
     {
         var state = new Dictionary<string, object?>();
@@ -3529,7 +3561,12 @@ public static partial class McpMod
             };
 
             // Type-specific details
-            if (reward is GoldReward goldReward)
+            if (reward is SpecialCardReward specialCardReward)
+            {
+                foreach (var pair in BuildSpecialCardReward(specialCardReward))
+                    item[pair.Key] = pair.Value;
+            }
+            else if (reward is GoldReward goldReward)
                 item["gold_amount"] = goldReward.Amount;
             else if (reward is PotionReward potionReward && potionReward.Potion != null)
             {
@@ -4300,6 +4337,9 @@ public static partial class McpMod
             cardState["kind"] = "card";
             cardState["pile"] = card.Pile?.Type.ToString();
             cardState["play_index"] = card.CurrentPlayIndex;
+            // A stolen combat face can have temporary upgrades/costs. Only the
+            // independently saved DeckVersion is the eventual fixed reward.
+            cardState["deck_version"] = card.DeckVersion == null ? null : BuildCardInfo(card.DeckVersion);
             return cardState;
         }
         if (value is AbstractModel model)

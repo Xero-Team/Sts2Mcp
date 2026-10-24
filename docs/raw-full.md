@@ -2306,3 +2306,10 @@ Card objects include `deck_card_index`: the current zero-based master-deck index
 ## Saved card counters
 
 Guilty card objects include `combats_seen`, its saved completed-fight counter (normally 0 through 4). `AfterCombatEnd` increments this field only for the master card in the Deck pile, removing it at 5. Combat copies retain their own saved value. The description shows `5 - combats_seen`, with singular `combat` at one remaining fight.
+
+
+### Fixed card returns and card object identity
+
+Mutable cards include `card_object_id`, an opaque positive integer stable for that physical object during the mod session. This is separate from the shifting `deck_card_index` and is not an action target. Card references in power `runtime` also include `deck_version`: the complete saved master card or `null`. For Swipe, the removed combat face and its master can have different upgrades or saved properties.
+
+`battle.special_card_rewards` lists pending local-player fixed-card rewards, including cards returned when Hopper dies. Each entry has `type: "special_card"`, `card_reference` (the master's `card_object_id`), `card` (the full master snapshot), and `encounter_source`. Reward-screen items of type `special_card` expose the same fields. A returned card remains outside the deck until `claim_reward` succeeds; repeated entries can refer to the same physical card. This list survives the dead enemy's power cleanup. An empty list means no pending fixed-card rewards.

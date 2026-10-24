@@ -299,3 +299,10 @@ MP battle state additionally exposes the full combat history for ALL players
   `card_id`, `card_name`, `target`.
 - `battle.player_damage` — per player: `by_round` (unblocked HP damage dealt
   to enemies per round, index 0 = round 1) and `total`.
+
+
+### Fixed card returns and card object identity
+
+Mutable cards include `card_object_id`, an opaque positive integer stable for that physical object during the mod session. This is separate from the shifting `deck_card_index` and is not an action target. Card references in power `runtime` also include `deck_version`: the complete saved master card or `null`. For Swipe, the removed combat face and its master can have different upgrades or saved properties.
+
+`battle.special_card_rewards` lists pending local-player fixed-card rewards, including cards returned when Hopper dies. Each entry has `type: "special_card"`, `card_reference` (the master's `card_object_id`), `card` (the full master snapshot), and `encounter_source`. Reward-screen items of type `special_card` expose the same fields. A returned card remains outside the deck until `claim_reward` succeeds; repeated entries can refer to the same physical card. This list survives the dead enemy's power cleanup. An empty list means no pending fixed-card rewards.
