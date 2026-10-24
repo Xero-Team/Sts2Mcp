@@ -215,6 +215,10 @@ live node anchors.
 
 ### Shop (`shop`)
 
+Card entries report `is_upgraded`, `enchantment`, and `enchantment_state` alongside
+their card text and costs. These describe the offered card after relic effects;
+refresh the state after a purchase because those effects can update the inventory.
+
 | Action | Parameters | When to Use |
 |---|---|---|
 | `shop_open` | _(none)_ | Open the inventory. State queries never open it automatically. |

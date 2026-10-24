@@ -969,6 +969,10 @@ them from the dedicated `GET /api/v1/mapdrawings` endpoint.
 State queries do not open the inventory. Use `shop_open` when ready to buy;
 this permits out-of-combat actions such as throwing Foul Potion first.
 
+Card entries include `is_upgraded`, `enchantment`, and `enchantment_state` from
+the offered card. These use the same fields as deck and reward cards, including
+relic effects applied when the inventory is created or updated after a purchase.
+
 ```jsonc
 {
   "state_type": "shop",
@@ -990,6 +994,9 @@ this permits out-of-combat actions such as throwing Foul Potion first.
         "card_star_cost": null,    // Regent star cost as string, null if N/A
         "card_rarity": "Rare",
         "card_description": "Lose 6 HP. Gain 2 Energy. Draw 3 cards.",
+        "is_upgraded": false,
+        "enchantment": null,
+        "enchantment_state": null,
         "keywords": [ /* Keyword Objects */ ]
       },
       // Relic entry
