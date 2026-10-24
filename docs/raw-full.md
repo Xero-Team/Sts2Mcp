@@ -215,6 +215,13 @@ Always present at the top level (except `menu`). Contains everything about the l
 }
 ```
 
+Pael's Tooth exposes `relics[].runtime.return_cards` in saved-list order. Each
+entry is a full card record rendered after its pending upgrade, with
+`stored_upgrade_level` preserving the original saved upgrade level. The list
+replaces the opaque `_serializableCards` field; reading it does not add cards,
+run global upgrade hooks, or consume RNG. `values=unpowered` applies to these
+records too. A hidden counter and an empty list mean there are no cards left.
+
 ### Card Object (in hand)
 
 ```jsonc

@@ -28,6 +28,10 @@ Singleplayer and multiplayer endpoints are mutually exclusive (HTTP 409 if misma
 
 Combat player objects include `play_pile` and `play_pile_count`, also for remote players. Play contains executing cards and reserved autoplays in the game's pile order; cards remain there through repeated plays and blocking selections. These are normal pile card objects, including `combat_card_id` and `target_type`. The pile reports physical cards, not their remaining execution commands.
 
+Pael's Tooth includes `relics[].runtime.return_cards`: full card records in saved
+order, rendered with their pending upgrade applied. Each entry also reports its
+original `stored_upgrade_level`. Reading the list changes no cards or RNG.
+
 ## GET — State Types
 
 Every JSON response includes:

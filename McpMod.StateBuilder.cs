@@ -2103,6 +2103,26 @@ public static partial class McpMod
     private static Dictionary<string, object?> BuildRelicRuntimeState(RelicModel relic)
     {
         var runtime = new Dictionary<string, object?>();
+        if (relic is MegaCrit.Sts2.Core.Models.Relics.PaelsTooth tooth)
+        {
+            // Render fresh copies as they will return. UpgradeInternal changes
+            // only this copy and runs no global hooks, deck additions, or RNG.
+            var returns = new List<Dictionary<string, object?>>();
+            foreach (var saved in tooth.SerializableCards)
+            {
+                var card = CardModel.FromSerializable(saved);
+                card.Owner = tooth.Owner;
+                if (card.IsUpgradable)
+                {
+                    card.UpgradeInternal();
+                    card.FinalizeUpgradeInternal();
+                }
+                var returned = BuildCardInfo(card, PileType.Deck);
+                returned["stored_upgrade_level"] = saved.CurrentUpgradeLevel;
+                returns.Add(returned);
+            }
+            runtime["return_cards"] = returns;
+        }
         if (relic is MegaCrit.Sts2.Core.Models.Relics.FurCoat furCoat)
         {
             var currentMapPoint = furCoat.Owner.RunState.CurrentMapPoint;
@@ -2120,6 +2140,10 @@ public static partial class McpMod
             foreach (var field in type.GetFields(BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public | BindingFlags.DeclaredOnly))
             {
                 if (field.IsStatic || field.IsLiteral)
+                    continue;
+                // The normalized return_cards above replaces the opaque save
+                // objects, retaining list order and exact rendered card values.
+                if (relic is MegaCrit.Sts2.Core.Models.Relics.PaelsTooth && field.Name == "_serializableCards")
                     continue;
                 runtime[field.Name] = SerializePowerRuntimeValue(field.GetValue(relic), seen, 0);
             }
