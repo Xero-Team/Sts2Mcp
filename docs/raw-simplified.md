@@ -154,6 +154,8 @@ multiplayer endpoint never serializes or hashes relic bags.
 
 Card objects include `deck_card_index`: the current zero-based master-deck index of the card itself (in the Deck pile) or its `DeckVersion` (in combat). It is `null` when no current deck entry exists. This position can change after deck edits; it is not a permanent ID. `has_deck_version` separately reports whether a parent pointer exists, including a parent removed from the deck.
 
+Guilty card objects include `combats_seen`, its saved completed-fight counter (normally 0 through 4). `AfterCombatEnd` increments this field only for the master card in the Deck pile, removing it at 5. Combat copies retain their own saved value. The description shows `5 - combats_seen`, with singular `combat` at one remaining fight.
+
 A `monster` / `elite` / `boss` state carries `battle` only while the fight is
 live. `combat_starting: true` (no `battle`) means the room is entered but the
 fight has not started yet — poll, don't act. `"Combat ended. Waiting for

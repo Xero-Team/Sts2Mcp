@@ -2381,6 +2381,8 @@ public static partial class McpMod
             info["current_block"] = geneticAlgorithm.CurrentBlock;
             info["increased_block"] = geneticAlgorithm.IncreasedBlock;
         }
+        if (card is Guilty guilty)
+            info["combats_seen"] = guilty.CombatsSeen;
         // The multiplayer synchronizer already assigns every mutable combat
         // card a stable 16-bit identity. Export the same identity so an MCTS
         // selection can distinguish physical copies with equal card IDs.
