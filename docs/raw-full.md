@@ -2298,3 +2298,7 @@ For Momentum and active Vigorous enchantments, `damage_var.after_play` describes
 Corrupted exports `damage_var.after_play` as `{"kind":"Corrupted"}`. After the card's own commands, it deals 2 unblockable, unpowered damage to its owner. Await damage callbacks before recording the completed play or running its post-card listeners; owner death cancels completion. The intrinsic 1.5 damage multiplier remains in `enchantment_multiplier`.
 
 Corrupted cards also export `hp_loss_var`: the card's own canonical `HpLoss` base as an exact decimal string, or null when that variable is absent. This separates intrinsic self-damage (for example Hemokinesis's first hit) from Corrupted's appended `Lose 2 HP.` description line and its later enchantment hit. Native snapshots preserve the parsed intrinsic amount in `native_self_damage`.
+
+## Master-deck card links
+
+Card objects include `deck_card_index`: the current zero-based master-deck index of the card itself (in the Deck pile) or its `DeckVersion` (in combat). It is `null` when no current deck entry exists. This position can change after deck edits; it is not a permanent ID. `has_deck_version` separately reports whether a parent pointer exists, including a parent removed from the deck.

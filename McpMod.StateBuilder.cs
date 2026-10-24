@@ -2320,6 +2320,12 @@ public static partial class McpMod
     /// </summary>
     private static Dictionary<string, object?> BuildCardInfo(CardModel card, PileType pile = PileType.None)
     {
+        // NetDeckCard addresses the current deck order. A combat card can
+        // retain a DeckVersion pointer after that parent left the deck.
+        var deckCard = card.Pile?.Type == PileType.Deck ? card : card.DeckVersion;
+        uint? deckCardIndex = deckCard?.Pile?.Type == PileType.Deck
+            ? NetDeckCard.FromModel(deckCard).DeckIndex
+            : null;
         var info = new Dictionary<string, object?>
         {
             ["id"] = card.Id.Entry,
@@ -2335,6 +2341,7 @@ public static partial class McpMod
             ["enchantment_state"] = BuildEnchantmentState(card),
             ["affliction"] = card.Affliction?.Id.Entry,
             ["has_deck_version"] = card.DeckVersion != null,
+            ["deck_card_index"] = deckCardIndex,
             ["is_upgraded"] = card.IsUpgraded,
             ["base_replay_count"] = card.BaseReplayCount,
             ["exhaust_on_next_play"] = card.ExhaustOnNextPlay,
