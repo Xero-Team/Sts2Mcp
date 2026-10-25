@@ -809,7 +809,8 @@ public static partial class McpMod
         {
             result["profile"] = new Dictionary<string, object?>
             {
-                ["number_of_runs"] = SaveManager.Instance.Progress.NumberOfRuns
+                ["number_of_runs"] = SaveManager.Instance.Progress.NumberOfRuns,
+                ["first_run_ironclad_present"] = HasFirstRunIronclad(runState)
             };
         }
         catch { }

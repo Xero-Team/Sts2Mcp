@@ -289,7 +289,8 @@ public static partial class McpMod
         {
             result["profile"] = new Dictionary<string, object?>
             {
-                ["number_of_runs"] = runState.UnlockState.NumberOfRuns
+                ["number_of_runs"] = runState.UnlockState.NumberOfRuns,
+                ["first_run_ironclad_present"] = HasFirstRunIronclad(runState)
             };
         }
         catch { }

@@ -121,7 +121,10 @@ Every response (except `menu`) includes these top-level fields alongside the sta
   "profile": {
     // UnknownMapPointOdds.Roll forces the first three "?" rooms on a profile
     // that has never finished a run, consuming no RNG while it does.
-    "number_of_runs": 42
+    "number_of_runs": 42,
+    // True if any party Ironclad has UnlockState.NumberOfRuns == 0.
+    // Lasting Candy uses this per-player fact, not the shared party maximum.
+    "first_run_ironclad_present": false
   },
   "player": { ... },        // Full player state (see Player Object below)
   // ... state-specific fields

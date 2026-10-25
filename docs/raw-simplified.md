@@ -195,6 +195,8 @@ rewards..."` (no `battle`) is the corresponding tail end.
 
 `map.point_history` lists the current act's visited points with the rooms they resolved into — the only place a `?` reports what it actually became. The top-level `act` block carries the act's pre-rolled encounter and event queues, boss identity, and consumed counters, so a client can name every fight or event behind a map node; `run.visited_event_ids` and `profile.number_of_runs` are the extra inputs needed to replay the game's event skip and its first-run `?` override.
 
+`profile.first_run_ironclad_present` reports whether any party Ironclad has zero completed runs, using each player's own unlock state. Lasting Candy eligibility reads this fact; multiplayer `profile.number_of_runs` is the shared maximum and cannot substitute for it.
+
 Every entry in `map.nodes` includes a live `draw_position` in the documented
 `map.drawing_coordinate_space`. These positions include the map's random visual
 jitter. Existing strokes are deliberately excluded from game state; use
