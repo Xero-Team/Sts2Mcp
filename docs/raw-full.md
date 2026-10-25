@@ -2091,6 +2091,8 @@ deques:
 }
 ```
 
+`mp_fallback` is always exported, including an empty list. If its private source queue cannot be read, the bag export is unavailable rather than claiming exhaustion. After the normal rarity escalation is exhausted, front rewards and filtered merchant back pulls draw from this queue.
+
 Reward sources pull from the front, merchants pull from the back, and declined
 relics have already left the lists. Never sort or cache these deques across
 rooms.

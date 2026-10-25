@@ -454,9 +454,8 @@ public static partial class McpMod
     ///
     /// The bag is per PLAYER, which is what multiplayer needs: every player
     /// draws from their own deques. RunState.SharedRelicGrabBag is deliberately
-    /// NOT exported - every use of it in the game is a Remove() and nothing
-    /// ever pulls from it, so it is a de-duplication ledger rather than a
-    /// source. The MP fallback queue IS exported: NTreasureRoomRelicCollection
+    /// NOT exported by this player endpoint; treasure rooms draw from the
+    /// shared bag separately. The MP fallback queue IS exported: NTreasureRoomRelicCollection
     /// moves a relic a teammate claimed into it, and GetAvailableDeque falls
     /// back to it once a rarity is exhausted.
     ///
@@ -487,8 +486,9 @@ public static partial class McpMod
             }
 
             var fallback = ReadMpFallback(bag);
-            if (fallback != null && fallback.Count > 0)
-                result["mp_fallback"] = fallback;
+            if (fallback == null)
+                return null; // An unreadable queue cannot certify exhaustion.
+            result["mp_fallback"] = fallback;
 
             return result.Count > 0 ? result : null;
         }

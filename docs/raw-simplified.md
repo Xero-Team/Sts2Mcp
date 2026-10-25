@@ -109,7 +109,7 @@ Added in 0.5.5. **Order is load-bearing** — `PotionFactory.CreateRandomPotion`
 Static for a run but not across runs (multiplayer unlock state is the union over all players), so fetch it at each run start — the same lifecycle as `/api/v1/cardpools`, unlike the mutating `/api/v1/relicbag`.
 
 
-`GET /api/v1/relicbag` returns each player's **relic grab bag**: the per-rarity deques (`common` / `uncommon` / `rare` / `shop`, plus `mp_fallback`) that every relic in the run is drawn from, in draw order.
+`GET /api/v1/relicbag` returns each player's **relic grab bag**: the ordered deques (`common` / `uncommon` / `rare` / `shop`, plus `mp_fallback`) used by individual reward factories and merchants. Treasure rooms draw from a separate shared bag. The `mp_fallback` list is always present, including when empty; an unreadable queue refuses the bag export.
 
 ```json
 {"relic_bag_generation": 42,
