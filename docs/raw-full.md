@@ -1245,7 +1245,7 @@ Boss relic selection. Pick is immediate.
   "crystal_sphere": {
     "instructions_title": "Crystal Sphere",
     "instructions_description": "Use divination tools to reveal cells...",
-    "grid_width": 9,
+    "grid_width": 11,
     "grid_height": 11,
     "cells": [
       {
@@ -1273,7 +1273,14 @@ Boss relic selection. Pick is immediate.
     "can_use_big_tool": true,
     "can_use_small_tool": true,
     "divinations_left_text": "3 divinations remaining",
-    "can_proceed": false
+    "can_proceed": false,
+    "minigame": {
+      "rng_at_start": { "seed": 1234567, "counter": 1 },  // beta builds: { "state": [..4..], "counter": 1 }
+      "divinations_left": 2,
+      "clicks": [ { "tool": "big", "x": 5, "y": 5 } ],
+      "click_in_flight": false,   // a click is still resolving (a curse reveal awaits a ~2s preview)
+      "trace_complete": true
+    }
   },
   "run": { ... },
   "player": { ... }

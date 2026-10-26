@@ -105,12 +105,34 @@ public static partial class McpMod
                 characterPoolOrder.Add(poolTitle);
         }
 
+        // `UnlockState.CharacterCardPools`: the character pools this profile has
+        // unlocked, in `ModelDb.AllCharacters` order. Prismatic Gem widens every
+        // card reward to exactly these, while `characters` above lists every
+        // character in the game whether unlocked or not.
+        List<string>? unlockedCharacterPoolOrder = new();
+        try
+        {
+            foreach (var pool in unlockState.CharacterCardPools)
+            {
+                var poolTitle = pool?.Title;
+                if (!string.IsNullOrWhiteSpace(poolTitle) && !unlockedCharacterPoolOrder.Contains(poolTitle!))
+                    unlockedCharacterPoolOrder.Add(poolTitle!);
+            }
+        }
+        catch
+        {
+            // Absent rather than guessed: a client then refuses Prismatic Gem's
+            // widened reward instead of naming cards from the wrong pools.
+            unlockedCharacterPoolOrder = null;
+        }
+
         var result = new Dictionary<string, object?>
         {
             ["source"] = source,
             ["multiplayer_constraint"] = constraint.ToString(),
             ["characters"] = characters,
             ["character_pool_order"] = characterPoolOrder,
+            ["unlocked_character_pool_order"] = unlockedCharacterPoolOrder,
             ["pools"] = pools
         };
 

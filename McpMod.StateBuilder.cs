@@ -4126,6 +4126,10 @@ public static partial class McpMod
 
         state["can_proceed"] = FindCrystalSphereProceedButton(screen) != null;
 
+        var minigame = BuildCrystalSphereTrace(screen);
+        if (minigame != null)
+            state["minigame"] = minigame;
+
         return state;
     }
 
