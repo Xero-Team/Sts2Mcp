@@ -28,7 +28,7 @@ namespace STS2_MCP.Recorder;
 /// </summary>
 internal static class RecordObserve
 {
-    private static readonly FieldInfo? RngCounter =
+    private static readonly FieldInfo? s_rngCounter =
         typeof(MegaCrit.Sts2.Core.Random.Rng).GetField("_counter", BindingFlags.Instance | BindingFlags.NonPublic);
 
     /// <summary>round / turn / side / phase at this moment, or null outside combat.</summary>
@@ -119,19 +119,19 @@ internal static class RecordObserve
     private static JsonObject Rngs(RunState run)
     {
         var runRng = new JsonObject { ["seed"] = run.Rng.Seed.ToString() };
-        if (RngCounter != null)
+        if (s_rngCounter != null)
         {
             foreach (var type in Enum.GetValues<MegaCrit.Sts2.Core.Entities.Rngs.RunRngType>())
-                runRng[type.ToString()] = (int)RngCounter.GetValue(run.Rng.GetRng(type))!;
+                runRng[type.ToString()] = (int)s_rngCounter.GetValue(run.Rng.GetRng(type))!;
         }
         var players = new JsonArray();
         foreach (var playerRng in run.Players.Select(p => p.PlayerRng))
         {
             var pr = new JsonObject { ["seed"] = playerRng.Seed.ToString() };
-            if (RngCounter != null)
+            if (s_rngCounter != null)
             {
                 foreach (var type in Enum.GetValues<MegaCrit.Sts2.Core.Entities.Rngs.PlayerRngType>())
-                    pr[type.ToString()] = (int)RngCounter.GetValue(playerRng.GetRng(type))!;
+                    pr[type.ToString()] = (int)s_rngCounter.GetValue(playerRng.GetRng(type))!;
             }
             players.Add(pr);
         }

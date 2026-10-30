@@ -34,7 +34,7 @@ public static partial class McpMod
         public bool InstantMode;
     }
 
-    private static ModConfig _config = new();
+    private static ModConfig s_config = new();
 
     /// <summary>
     /// Loads STS2_MCP.conf from the mod directory, creating it with defaults if
@@ -256,8 +256,8 @@ public static partial class McpMod
     /// </summary>
     private static void SetInstantModeConfig(bool enabled)
     {
-        if (_config.InstantMode == enabled) return;
-        _config.InstantMode = enabled;
+        if (s_config.InstantMode == enabled) return;
+        s_config.InstantMode = enabled;
         SaveConfig();
     }
 
@@ -297,10 +297,10 @@ public static partial class McpMod
                 }
             });
 
-            data["port"] = _config.Port;
-            data["instant_mode"] = _config.InstantMode;
+            data["port"] = s_config.Port;
+            data["instant_mode"] = s_config.InstantMode;
             File.WriteAllText(configPath, JsonSerializer.Serialize(data, ContractJson.Options));
-            GD.Print($"[STS2 MCP] Config saved (instant_mode={_config.InstantMode})");
+            GD.Print($"[STS2 MCP] Config saved (instant_mode={s_config.InstantMode})");
         });
         if (failure != null)
             GD.PrintErr($"[STS2 MCP] Failed to save config: {failure}");

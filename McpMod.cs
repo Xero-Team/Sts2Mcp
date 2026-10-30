@@ -108,8 +108,8 @@ public static partial class McpMod
     private const int SettleMinTimeoutMs = 500;
     private const int SettleMaxTimeoutMs = 30_000;
 
-    private static string? _buildCommit;
-    private static bool _buildCommitResolved;
+    private static string? s_buildCommit;
+    private static bool s_buildCommitResolved;
 
     /// <summary>
     /// The git revision this assembly was built from (the part after '+' in
@@ -120,13 +120,13 @@ public static partial class McpMod
     {
         get
         {
-            if (_buildCommitResolved)
-                return _buildCommit;
+            if (s_buildCommitResolved)
+                return s_buildCommit;
 
-            _buildCommitResolved = true;
+            s_buildCommitResolved = true;
             // Reflection over assembly attributes can fail in a trimmed or odd host; an
             // unknown commit is not worth failing a state read over.
-            _buildCommit = TryReadQuiet(() =>
+            s_buildCommit = TryReadQuiet(() =>
             {
                 var informational = typeof(McpMod).Assembly
                     .GetCustomAttribute<AssemblyInformationalVersionAttribute>()
@@ -137,7 +137,7 @@ public static partial class McpMod
                     : null;
             });
 
-            return _buildCommit;
+            return s_buildCommit;
         }
     }
 
@@ -145,25 +145,25 @@ public static partial class McpMod
     internal static string VersionString =>
         BuildCommit is { Length: > 0 } commit ? $"{Version}+{commit}" : Version;
 
-    private static HttpListener? _listener;
-    private static Thread? _serverThread;
-    private static string[] _boundPrefixes = Array.Empty<string>();
-    private static readonly ConcurrentQueue<Action> _mainThreadQueue = new();
+    private static HttpListener? s_listener;
+    private static Thread? s_serverThread;
+    private static string[] s_boundPrefixes = Array.Empty<string>();
+    private static readonly ConcurrentQueue<Action> s_mainThreadQueue = new();
 
     // The game's own release version, from the release_info.json shipped next to the executable.
     // Fixed for the process, so it is read once — and only from the main thread (the manager is a
     // lazily-constructed singleton that touches Godot file IO). Null when the build ships without
     // a release_info.json, in which case the key is omitted from the state.
-    private static string? _gameVersion;
-    private static bool _gameVersionRead;
+    private static string? s_gameVersion;
+    private static bool s_gameVersionRead;
 
     internal static string? GameVersion()
     {
-        if (_gameVersionRead) return _gameVersion;
-        _gameVersionRead = true;
-        _gameVersion = TryRead("game.version",
+        if (s_gameVersionRead) return s_gameVersion;
+        s_gameVersionRead = true;
+        s_gameVersion = TryRead("game.version",
             () => MegaCrit.Sts2.Core.Debug.ReleaseInfoManager.Instance.ReleaseInfo?.Version);
-        return _gameVersion;
+        return s_gameVersion;
     }
 
     public static void Initialize()
@@ -183,8 +183,8 @@ public static partial class McpMod
             // settings-detour patches skipped above.
             InstallRewardTracking();
 
-            _config = LoadConfig();
-            int port = _config.Port;
+            s_config = LoadConfig();
+            int port = s_config.Port;
 
             // Needs the config above: instant_mode lives in the same file.
             LoadInstantModePreference();
@@ -198,20 +198,20 @@ public static partial class McpMod
             Recorder.CombatRecorder.StartIfConfigured();
 
             // Loopback only: the bridge is for the local controller, never the network.
-            _listener = new HttpListener();
-            _listener.Prefixes.Add($"http://localhost:{port}/");
-            _listener.Prefixes.Add($"http://127.0.0.1:{port}/");
-            _listener.Start();
-            _boundPrefixes = new List<string>(_listener.Prefixes).ToArray();
+            s_listener = new HttpListener();
+            s_listener.Prefixes.Add($"http://localhost:{port}/");
+            s_listener.Prefixes.Add($"http://127.0.0.1:{port}/");
+            s_listener.Start();
+            s_boundPrefixes = new List<string>(s_listener.Prefixes).ToArray();
 
-            _serverThread = new Thread(ServerLoop)
+            s_serverThread = new Thread(ServerLoop)
             {
                 IsBackground = true,
                 Name = "STS2_MCP_Server"
             };
-            _serverThread.Start();
+            s_serverThread.Start();
 
-            GD.Print($"[STS2 MCP] v{VersionString} server started on {string.Join(", ", _boundPrefixes)}");
+            GD.Print($"[STS2 MCP] v{VersionString} server started on {string.Join(", ", s_boundPrefixes)}");
         });
         if (failure != null)
             GD.PrintErr($"[STS2 MCP] Failed to start: {failure}");
@@ -237,7 +237,7 @@ public static partial class McpMod
         CheckLoadingHandleLeak();
 
         int processed = 0;
-        while (_mainThreadQueue.TryDequeue(out var action) && processed < 10)
+        while (s_mainThreadQueue.TryDequeue(out var action) && processed < 10)
         {
             var failure = TryAction("main_thread.action", action);
             if (failure != null)
@@ -291,7 +291,7 @@ public static partial class McpMod
         Justification = "This is the one place that blocks: HTTP worker threads wait for the Godot main thread to pump the queued work, with a timeout and a queue-limit guard. Awaiting instead would leave the worker with no continuation point the game thread controls.")]
     internal static T RunOnMainThreadBlocking<T>(Func<T> func, int timeoutMs = MainThreadTimeoutMs)
     {
-        int pending = _mainThreadQueue.Count;
+        int pending = s_mainThreadQueue.Count;
         if (pending >= MainThreadQueueLimit)
         {
             throw new MainThreadUnavailableException(
@@ -300,7 +300,7 @@ public static partial class McpMod
 
         var cancellation = new MainThreadCancellation();
         var tcs = new TaskCompletionSource<T>();
-        _mainThreadQueue.Enqueue(() =>
+        s_mainThreadQueue.Enqueue(() =>
         {
             // The client already gave up on this request; running the action now would apply a
             // command the caller has since retried or abandoned.
@@ -336,11 +336,11 @@ public static partial class McpMod
 
     private static void ServerLoop()
     {
-        while (_listener?.IsListening == true)
+        while (s_listener?.IsListening == true)
         {
             try
             {
-                var context = _listener.GetContext();
+                var context = s_listener.GetContext();
                 // Handle each request asynchronously so we don't block the listener
                 ThreadPool.QueueUserWorkItem(_ => HandleRequest(context));
             }
@@ -470,7 +470,7 @@ public static partial class McpMod
             ["version"] = Version,
             ["commit"] = BuildCommit,
             ["schema_version"] = StateSchemaVersion,
-            ["bound_prefixes"] = _boundPrefixes,
+            ["bound_prefixes"] = s_boundPrefixes,
             ["endpoint_count"] = endpoints.Count,
             ["endpoints"] = endpoints
         }, pretty);
@@ -774,7 +774,7 @@ public static partial class McpMod
             bool passive = ReadFlagParam(new Dictionary<string, JsonElement>(StringComparer.Ordinal), request, "passive", false);
             var state = RunOnMainThreadBlocking(() =>
             {
-                _passiveRead = passive;
+                s_passiveRead = passive;
                 try
                 {
                     return WithCardValues(unpowered, () =>
@@ -785,7 +785,7 @@ public static partial class McpMod
                         return s;
                     });
                 }
-                finally { _passiveRead = false; }
+                finally { s_passiveRead = false; }
             });
 
             if (string.Equals(format, "markdown", StringComparison.Ordinal))

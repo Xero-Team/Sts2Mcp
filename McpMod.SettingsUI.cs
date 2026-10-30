@@ -15,8 +15,8 @@ namespace STS2_MCP;
 
 public static partial class McpMod
 {
-    private static NFastModeTickbox? _instantModeTickbox;
-    private static NFastModeTickbox? _originalFastModeTickbox;
+    private static NFastModeTickbox? s_instantModeTickbox;
+    private static NFastModeTickbox? s_originalFastModeTickbox;
 
     /// <summary>
     /// The player's Instant Mode preference. Persisted in STS2_MCP.conf rather than in the
@@ -24,26 +24,26 @@ public static partial class McpMod
     /// <see cref="FastModeType.Instant" /> back to <see cref="FastModeType.Fast" /> on every
     /// startup (NGame's init block, non-editor builds) — so the game save cannot hold it.
     /// </summary>
-    private static bool _instantModeEnabled;
+    private static bool s_instantModeEnabled;
 
     /// <summary>Whether we currently have Instant forced into the game's prefs.</summary>
-    private static bool _instantModeApplied;
+    private static bool s_instantModeApplied;
 
     /// <summary>Latched once the game itself has loaded the prefs save. See <see cref="PrefsAreLoaded" />.</summary>
-    private static bool _prefsReady;
+    private static bool s_prefsReady;
 
-    private static bool _instantModeErrorLogged;
+    private static bool s_instantModeErrorLogged;
 
     internal static void LoadInstantModePreference()
     {
-        _instantModeEnabled = _config.InstantMode;
-        if (_instantModeEnabled)
+        s_instantModeEnabled = s_config.InstantMode;
+        if (s_instantModeEnabled)
             GD.Print("[STS2 MCP] Instant Mode is enabled (singleplayer only)");
     }
 
     private static void SetInstantModeEnabled(bool enabled)
     {
-        _instantModeEnabled = enabled;
+        s_instantModeEnabled = enabled;
         // Persists instant_mode in STS2_MCP.conf through the shared config layer, so the
         // in-game tickbox, a hand-edited conf and a restart all agree.
         SetInstantModeConfig(enabled);
@@ -59,14 +59,14 @@ public static partial class McpMod
     /// </summary>
     private static bool PrefsAreLoaded()
     {
-        if (_prefsReady) return true;
+        if (s_prefsReady) return true;
         TryDo(() =>
         {
             if (NGame.Instance?.MainMenu != null || RunManager.Instance.IsInProgress)
-                _prefsReady = true;
+                s_prefsReady = true;
         });
         /* scene tree not up yet */
-        return _prefsReady;
+        return s_prefsReady;
     }
 
     /// <summary>
@@ -79,7 +79,7 @@ public static partial class McpMod
     {
         // Feature off and nothing of ours applied: leave the game's setting completely alone
         // (including the dev console's own `instant` command).
-        if (!_instantModeEnabled && !_instantModeApplied) return;
+        if (!s_instantModeEnabled && !s_instantModeApplied) return;
         if (!PrefsAreLoaded()) return;
 
         var failure = TryAction("settings.instant_mode.reconcile", () =>
@@ -87,21 +87,21 @@ public static partial class McpMod
             var prefs = SaveManager.Instance.PrefsSave;
             if (prefs == null) return;
 
-            if (_instantModeEnabled && !IsMultiplayerRun())
+            if (s_instantModeEnabled && !IsMultiplayerRun())
             {
                 if (prefs.FastMode != FastModeType.Instant) prefs.FastMode = FastModeType.Instant;
-                _instantModeApplied = true;
+                s_instantModeApplied = true;
             }
             else
             {
                 if (prefs.FastMode == FastModeType.Instant) prefs.FastMode = FastModeType.Fast;
-                _instantModeApplied = false;
+                s_instantModeApplied = false;
             }
         });
         // Runs every frame — only ever report the first failure.
-        if (failure != null && !_instantModeErrorLogged)
+        if (failure != null && !s_instantModeErrorLogged)
         {
-            _instantModeErrorLogged = true;
+            s_instantModeErrorLogged = true;
             GD.PrintErr($"[STS2 MCP] Instant Mode reconcile failed: {failure}");
         }
     }
@@ -110,7 +110,7 @@ public static partial class McpMod
     /// Whether the game's prefs currently say Instant. This is the flag
     /// <c>Cmd.Wait</c> and <c>Cmd.CustomScaledWait</c> themselves read, so it is the
     /// right question to ask before standing in for an animation they will skip.
-    /// Deliberately reads the pref rather than <see cref="_instantModeEnabled" />: the
+    /// Deliberately reads the pref rather than <see cref="s_instantModeEnabled" />: the
     /// dev console's own `instant` command sets Instant without going through us.
     /// </summary>
     internal static bool InstantModeIsActive()
@@ -146,8 +146,8 @@ public static partial class McpMod
 
     private static void InjectInstantModeCheckbox(NSettingsScreen settingsScreen)
     {
-        _instantModeTickbox = null;
-        _originalFastModeTickbox = null;
+        s_instantModeTickbox = null;
+        s_originalFastModeTickbox = null;
 
         var content = settingsScreen.GetNode<NSettingsPanel>("%GeneralSettings").Content;
         var fastModeLine = content.GetNodeOrNull("FastMode");
@@ -157,7 +157,7 @@ public static partial class McpMod
             return;
         }
 
-        _originalFastModeTickbox = FindChildOfType<NFastModeTickbox>(fastModeLine);
+        s_originalFastModeTickbox = FindChildOfType<NFastModeTickbox>(fastModeLine);
 
         // Duplicate the entire FastMode line and rename
         var instantLine = fastModeLine.Duplicate();
@@ -174,9 +174,9 @@ public static partial class McpMod
 
         // Store reference and correct initial tick state
         // (NFastModeTickbox._Ready() already ran via AddChild, but used original SetFromSettings logic)
-        _instantModeTickbox = FindChildOfType<NFastModeTickbox>(instantLine);
-        if (_instantModeTickbox != null)
-            _instantModeTickbox.IsTicked = _instantModeEnabled;
+        s_instantModeTickbox = FindChildOfType<NFastModeTickbox>(instantLine);
+        if (s_instantModeTickbox != null)
+            s_instantModeTickbox.IsTicked = s_instantModeEnabled;
 
         GD.Print("[STS2 MCP] Instant Mode checkbox injected into settings");
     }
@@ -209,12 +209,12 @@ public static partial class McpMod
             // resettable node. Nothing else produces Normal while Instant Mode is on (the
             // reconciler holds Instant in singleplayer and Fast in multiplayer), so treat it
             // as the reset it is and drop the preference too.
-            if (_instantModeEnabled && SaveManager.Instance.PrefsSave?.FastMode == FastModeType.Normal)
+            if (s_instantModeEnabled && SaveManager.Instance.PrefsSave?.FastMode == FastModeType.Normal)
                 SetInstantModeEnabled(false);
 
             // Reflects the stored preference, not the live game setting: in a multiplayer run
             // the setting is suppressed while the preference itself stays on.
-            __instance.IsTicked = _instantModeEnabled;
+            __instance.IsTicked = s_instantModeEnabled;
             return false;
         }
     }
@@ -233,8 +233,8 @@ public static partial class McpMod
                 SaveManager.Instance.PrefsSave.FastMode = FastModeType.Fast;
             SetInstantModeEnabled(true);
             // Ensure the original Fast Mode checkbox also shows ticked
-            if (_originalFastModeTickbox != null && !_originalFastModeTickbox.IsTicked)
-                _originalFastModeTickbox.IsTicked = true;
+            if (s_originalFastModeTickbox != null && !s_originalFastModeTickbox.IsTicked)
+                s_originalFastModeTickbox.IsTicked = true;
             return false;
         }
     }
@@ -259,11 +259,11 @@ public static partial class McpMod
             // Turning Fast Mode off turns Instant Mode off with it, otherwise the reconciler
             // would immediately drag the setting back up to Instant.
             if (IsInInstantModeLine(__instance)) return;
-            if (_instantModeTickbox != null && _instantModeTickbox.IsTicked)
+            if (s_instantModeTickbox != null && s_instantModeTickbox.IsTicked)
             {
-                _instantModeTickbox.IsTicked = false;
+                s_instantModeTickbox.IsTicked = false;
                 // Normal speed is not Instant — keep the conf in sync.
-                if (_instantModeEnabled)
+                if (s_instantModeEnabled)
                     SetInstantModeEnabled(false);
             }
         }
@@ -290,7 +290,7 @@ public static partial class McpMod
                     "This option is added by the STS2MCP mod.\n" +
                     "When enabled, most in-game animations will become instant.\n" +
                     "Can reduce token usage as get-state calls will no longer receive an intermediate state.\n" +
-                    "Applies to singleplayer only — it is suspended during multiplayer runs.\n" +
+                    "Applies to singleplayer only \u2014 it is suspended during multiplayer runs.\n" +
                     "The setting is remembered between sessions."
                 ]);
 

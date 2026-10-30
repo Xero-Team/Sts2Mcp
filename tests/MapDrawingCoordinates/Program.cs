@@ -4,8 +4,8 @@ using STS2_MCP;
 
 static void AssertNear(Vector2 actual, Vector2 expected, string message)
 {
-    const float tolerance = 0.00001f;
-    if (MathF.Abs(actual.X - expected.X) > tolerance || MathF.Abs(actual.Y - expected.Y) > tolerance)
+    const float Tolerance = 0.00001f;
+    if (MathF.Abs(actual.X - expected.X) > Tolerance || MathF.Abs(actual.Y - expected.Y) > Tolerance)
         throw new InvalidOperationException($"{message}: expected {expected}, got {actual}");
 }
 

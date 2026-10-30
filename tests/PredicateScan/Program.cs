@@ -139,13 +139,13 @@ namespace STS2_MCP
 {
     public static partial class McpMod
     {
-        private static int _failures;
+        private static int s_failures;
 
         private static void Check(string label, object? actual, object? expected)
         {
             bool ok = string.Equals($"{actual}", $"{expected}", StringComparison.Ordinal);
             if (!ok)
-                _failures++;
+                s_failures++;
             Console.WriteLine($"{(ok ? "ok  " : "FAIL")} {label}: got [{actual}] want [{expected}]");
         }
 
@@ -227,8 +227,8 @@ namespace STS2_MCP
 
             CheckMoveEffects();
 
-            Console.WriteLine(_failures == 0 ? "\nALL OK" : $"\n{_failures} FAILURES");
-            return _failures == 0 ? 0 : 1;
+            Console.WriteLine(s_failures == 0 ? "\nALL OK" : $"\n{s_failures} FAILURES");
+            return s_failures == 0 ? 0 : 1;
         }
     }
 }

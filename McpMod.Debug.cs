@@ -522,13 +522,13 @@ public static partial class McpMod
     // game's own completion signal, so a harness that waits for it cannot lose the
     // race. Monotonic on purpose: callers read it before embarking and wait for it to
     // move, which needs no reset semantics.
-    private static int _roomsEntered;
+    private static int s_roomsEntered;
 
-    internal static int RoomsEntered => _roomsEntered;
+    internal static int RoomsEntered => s_roomsEntered;
 
     internal static void TrackRoomEntries()
     {
-        RunManager.Instance.RoomEntered += () => _roomsEntered++;
+        RunManager.Instance.RoomEntered += () => s_roomsEntered++;
     }
 
 }

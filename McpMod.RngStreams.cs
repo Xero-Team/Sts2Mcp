@@ -57,10 +57,10 @@ public static partial class McpMod
     // Everything is read via cached reflection so a game update that renames a
     // stream degrades to omitting that stream rather than crashing.
 
-    private static readonly Dictionary<Type, PropertyInfo[]> _rngSetProps = new();
-    private static readonly Dictionary<Type, FieldInfo?> _rngSetDictField = new();
-    private static readonly Dictionary<Type, PropertyInfo[]> _oddsSetProps = new();
-    private static readonly Dictionary<Type, PropertyInfo[]> _oddsValueProps = new();
+    private static readonly Dictionary<Type, PropertyInfo[]> s_rngSetProps = new();
+    private static readonly Dictionary<Type, FieldInfo?> s_rngSetDictField = new();
+    private static readonly Dictionary<Type, PropertyInfo[]> s_oddsSetProps = new();
+    private static readonly Dictionary<Type, PropertyInfo[]> s_oddsValueProps = new();
 
     /// <summary>
     /// Exports the run-wide RNG streams plus the run seed and the run odds.
@@ -168,7 +168,7 @@ public static partial class McpMod
     {
         var type = rngSet.GetType();
 
-        if (!_rngSetProps.TryGetValue(type, out var props))
+        if (!s_rngSetProps.TryGetValue(type, out var props))
         {
             var found = new List<PropertyInfo>();
             foreach (var prop in type.GetProperties(BindingFlags.Public | BindingFlags.Instance))
@@ -177,7 +177,7 @@ public static partial class McpMod
                     found.Add(prop);
             }
             props = found.ToArray();
-            _rngSetProps[type] = props;
+            s_rngSetProps[type] = props;
         }
 
         var seen = new HashSet<object>(ReferenceEqualityComparer.Instance);
@@ -194,11 +194,11 @@ public static partial class McpMod
             into[SnakeCase(prop.Name)] = coords;
         }
 
-        if (!_rngSetDictField.TryGetValue(type, out var dictField))
+        if (!s_rngSetDictField.TryGetValue(type, out var dictField))
         {
             dictField = type.GetFields(BindingFlags.NonPublic | BindingFlags.Instance)
                 .FirstOrDefault(field => typeof(IDictionary).IsAssignableFrom(field.FieldType));
-            _rngSetDictField[type] = dictField;
+            s_rngSetDictField[type] = dictField;
         }
 
         if (dictField == null)
@@ -278,7 +278,7 @@ public static partial class McpMod
             return null;
 
         var type = oddsSet.GetType();
-        if (!_oddsSetProps.TryGetValue(type, out var props))
+        if (!s_oddsSetProps.TryGetValue(type, out var props))
         {
             var found = new List<PropertyInfo>();
             foreach (var prop in type.GetProperties(BindingFlags.Public | BindingFlags.Instance))
@@ -287,7 +287,7 @@ public static partial class McpMod
                     found.Add(prop);
             }
             props = found.ToArray();
-            _oddsSetProps[type] = props;
+            s_oddsSetProps[type] = props;
         }
 
         var result = new Dictionary<string, object?>(StringComparer.Ordinal);
@@ -308,7 +308,7 @@ public static partial class McpMod
             return null;
 
         var type = odds.GetType();
-        if (!_oddsValueProps.TryGetValue(type, out var props))
+        if (!s_oddsValueProps.TryGetValue(type, out var props))
         {
             var found = new List<PropertyInfo>();
             foreach (var prop in type.GetProperties(BindingFlags.Public | BindingFlags.Instance))
@@ -317,7 +317,7 @@ public static partial class McpMod
                     found.Add(prop);
             }
             props = found.ToArray();
-            _oddsValueProps[type] = props;
+            s_oddsValueProps[type] = props;
         }
 
         if (props.Length == 0)

@@ -31,9 +31,9 @@ public static partial class McpMod
     // Order is load-bearing. `Rng.NextItem` indexes straight into the list
     // GetUnlockedPotions returns, so the declaration order of each pool's
     // GenerateAllPotions() IS the mapping from roll to potion. Never sort.
-    private static readonly object _potionPoolsCacheLock = new();
-    private static UnlockState? _potionPoolsCacheUnlocks;
-    private static Dictionary<string, object?>? _potionPoolsCache;
+    private static readonly object s_potionPoolsCacheLock = new();
+    private static UnlockState? s_potionPoolsCacheUnlocks;
+    private static Dictionary<string, object?>? s_potionPoolsCache;
 
     /// <summary>
     /// GET /api/v1/potionpools — every unlocked potion pool, in draw order.
@@ -53,12 +53,12 @@ public static partial class McpMod
         if (unlockState == null)
             return new Dictionary<string, object?>(StringComparer.Ordinal) { ["error"] = "No profile or run data available." };
 
-        lock (_potionPoolsCacheLock)
+        lock (s_potionPoolsCacheLock)
         {
             // The UnlockState instance is stable for a run, so reference
             // equality is a sound cache key and costs nothing to check.
-            if (_potionPoolsCache != null && ReferenceEquals(_potionPoolsCacheUnlocks, unlockState))
-                return _potionPoolsCache;
+            if (s_potionPoolsCache != null && ReferenceEquals(s_potionPoolsCacheUnlocks, unlockState))
+                return s_potionPoolsCache;
         }
 
         var pools = new Dictionary<string, object?>(StringComparer.Ordinal);
@@ -101,10 +101,10 @@ public static partial class McpMod
             ["pools"] = pools
         };
 
-        lock (_potionPoolsCacheLock)
+        lock (s_potionPoolsCacheLock)
         {
-            _potionPoolsCacheUnlocks = unlockState;
-            _potionPoolsCache = result;
+            s_potionPoolsCacheUnlocks = unlockState;
+            s_potionPoolsCache = result;
         }
         return result;
     }

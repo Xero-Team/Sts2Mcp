@@ -19,13 +19,13 @@ public static partial class McpMod
     /// so every state read - and everything it calls - happens on the game's main
     /// thread, one read at a time.
     /// </summary>
-    private static readonly List<string> _stateWarnings = new();
+    private static readonly List<string> s_stateWarnings = new();
 
     /// <summary>Entries already recorded for this read, so a helper called hundreds of
     /// times (SafeGetText) reports its failure once instead of flooding the payload.</summary>
-    private static readonly HashSet<string> _stateWarningKeys = new(StringComparer.Ordinal);
+    private static readonly HashSet<string> s_stateWarningKeys = new(StringComparer.Ordinal);
 
-    private static int _suppressedStateWarnings;
+    private static int s_suppressedStateWarnings;
 
     /// <summary>A broken screen can warn about every one of its fields; the list is a
     /// diagnostic, not a log, and past this many entries it stops being readable.</summary>
@@ -37,20 +37,20 @@ public static partial class McpMod
     /// <summary>True between <see cref="BeginStateWarnings"/> and <see cref="EndStateWarnings"/>.
     /// A warning raised outside a state read has no response to ride on, so it goes to the log
     /// instead of a list the next read would clear.</summary>
-    private static bool _stateWarningsActive;
+    private static bool s_stateWarningsActive;
 
     /// <summary>Contexts already printed, so a helper called per card does not flood the log.
     /// Never cleared: one line per distinct break is what a support report needs.</summary>
-    private static readonly HashSet<string> _loggedWarningKeys = new(StringComparer.Ordinal);
+    private static readonly HashSet<string> s_loggedWarningKeys = new(StringComparer.Ordinal);
 
     private const int MaxLoggedWarnings = 100;
 
     private static void BeginStateWarnings()
     {
-        _stateWarnings.Clear();
-        _stateWarningKeys.Clear();
-        _suppressedStateWarnings = 0;
-        _stateWarningsActive = true;
+        s_stateWarnings.Clear();
+        s_stateWarningKeys.Clear();
+        s_suppressedStateWarnings = 0;
+        s_stateWarningsActive = true;
     }
 
     /// <summary>
@@ -65,22 +65,22 @@ public static partial class McpMod
     private static void Warn(string context, string message)
     {
         var entry = $"{context}: {Flatten(message)}";
-        if (!_stateWarningKeys.Add(entry))
+        if (!s_stateWarningKeys.Add(entry))
             return;
 
-        if (!_stateWarningsActive)
+        if (!s_stateWarningsActive)
         {
             LogSwallowed(entry);
             return;
         }
 
-        if (_stateWarnings.Count >= MaxStateWarnings)
+        if (s_stateWarnings.Count >= MaxStateWarnings)
         {
-            _suppressedStateWarnings++;
+            s_suppressedStateWarnings++;
             return;
         }
 
-        _stateWarnings.Add(entry);
+        s_stateWarnings.Add(entry);
     }
 
     private static string Flatten(string message)
@@ -93,9 +93,9 @@ public static partial class McpMod
 
     private static void LogSwallowed(string entry)
     {
-        if (_loggedWarningKeys.Count >= MaxLoggedWarnings)
+        if (s_loggedWarningKeys.Count >= MaxLoggedWarnings)
             return;
-        if (!_loggedWarningKeys.Add(entry))
+        if (!s_loggedWarningKeys.Add(entry))
             return;
 
         GD.PrintErr($"[STS2 MCP] swallowed exception: {entry}");
@@ -107,13 +107,13 @@ public static partial class McpMod
     /// </summary>
     private static void EndStateWarnings(Dictionary<string, object?> result)
     {
-        _stateWarningsActive = false;
-        if (_stateWarnings.Count == 0)
+        s_stateWarningsActive = false;
+        if (s_stateWarnings.Count == 0)
             return;
 
-        var warnings = new List<string>(_stateWarnings);
-        if (_suppressedStateWarnings > 0)
-            warnings.Add($"... {_suppressedStateWarnings} more warnings suppressed");
+        var warnings = new List<string>(s_stateWarnings);
+        if (s_suppressedStateWarnings > 0)
+            warnings.Add($"... {s_suppressedStateWarnings} more warnings suppressed");
         result["warnings"] = warnings;
     }
 

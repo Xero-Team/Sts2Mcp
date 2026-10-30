@@ -59,14 +59,14 @@ public static partial class McpMod
     // pops its receiver and pushes its result, ignoring the non-int steps
     // entirely leaves the integer operand stack exactly as the source wrote it.
 
-    private static readonly FieldInfo? _moveOnPerformField =
+    private static readonly FieldInfo? s_moveOnPerformField =
         typeof(MoveState).GetField("_onPerform", BindingFlags.NonPublic | BindingFlags.Instance);
 
     // (concrete monster type, move id) -> effects dict (null = nothing found)
     private static readonly Dictionary<(Type, string), Dictionary<string, object?>?> _moveFxCache = new();
 
     /// <summary>The combat the cached scans resolved their amounts against.</summary>
-    private static object? _moveFxScope;
+    private static object? s_moveFxScope;
 
     internal static Dictionary<string, object?>? GetMoveEffects(MonsterModel monster, MoveState move)
         => TryRead("move.effects", () => GetMoveEffectsCore(monster, move));
@@ -84,10 +84,10 @@ public static partial class McpMod
         // the combat changes serves fresh numbers instead of the previous
         // fight's.
         var scope = TryReadQuiet<object>(() => monster.CombatState);
-        if (!ReferenceEquals(scope, _moveFxScope))
+        if (!ReferenceEquals(scope, s_moveFxScope))
         {
             _moveFxCache.Clear();
-            _moveFxScope = scope;
+            s_moveFxScope = scope;
         }
         var key = (monster.GetType(), move.Id);
         if (_moveFxCache.TryGetValue(key, out var cached))
@@ -382,7 +382,7 @@ public static partial class McpMod
 
     private static Dictionary<string, object?>? ScanMoveEffects(MonsterModel monster, MoveState move)
     {
-        if (_moveOnPerformField?.GetValue(move) is not Delegate onPerform)
+        if (s_moveOnPerformField?.GetValue(move) is not Delegate onPerform)
             return null;
         var stub = onPerform.Method;
 
@@ -433,7 +433,7 @@ public static partial class McpMod
     /// <summary>Follows only delegate captures to identify a wrapped move callback.</summary>
     private static bool MoveCalls(MoveState move, string ownerType, string methodName)
     {
-        if (_moveOnPerformField?.GetValue(move) is not Delegate body)
+        if (s_moveOnPerformField?.GetValue(move) is not Delegate body)
             return false;
         var pending = new Stack<Delegate>();
         var visited = new HashSet<Delegate>();

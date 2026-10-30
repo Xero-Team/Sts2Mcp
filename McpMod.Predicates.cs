@@ -60,7 +60,7 @@ public static partial class McpMod
     /// machine is rebuilt on every state poll, so without this the same
     /// predicates would be re-decoded several times a second.
     /// </summary>
-    private static readonly Dictionary<MethodBase, PredicateScan> _predicateScanCache = new();
+    private static readonly Dictionary<MethodBase, PredicateScan> s_predicateScanCache = new();
 
     /// <summary>Reads one method body into a <see cref="PredicateScan"/>.</summary>
     /// <remarks>
@@ -69,11 +69,11 @@ public static partial class McpMod
     /// </remarks>
     private static PredicateScan ScanPredicate(MethodBase? method)
     {
-        if (method != null && _predicateScanCache.TryGetValue(method, out var cached))
+        if (method != null && s_predicateScanCache.TryGetValue(method, out var cached))
             return cached;
         var scan = ScanPredicateUncached(method);
         if (method != null)
-            _predicateScanCache[method] = scan;
+            s_predicateScanCache[method] = scan;
         return scan;
     }
 

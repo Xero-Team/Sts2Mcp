@@ -54,7 +54,7 @@ public static partial class McpMod
         string modVersion = state.TryGetValue("mod_version", out var mv) ? mv?.ToString() ?? Version : Version;
         string modCommit = state.TryGetValue("mod_commit", out var mc) ? mc?.ToString() ?? "" : "";
         string schema = state.TryGetValue("schema_version", out var sv) ? sv?.ToString() ?? "" : "";
-        sb.AppendLine($"mod {modVersion}{(modCommit.Length > 0 ? "+" + modCommit : "")}{(schema.Length > 0 ? " · schema " + schema : "")}");
+        sb.AppendLine($"mod {modVersion}{(modCommit.Length > 0 ? "+" + modCommit : "")}{(schema.Length > 0 ? " \u00B7 schema " + schema : "")}");
         sb.AppendLine();
     }
 
@@ -78,7 +78,7 @@ public static partial class McpMod
 
         string why = state.TryGetValue("resolving_reasons", out var rr) && rr is List<string> rl && rl.Count > 0
             ? $" ({string.Join(", ", rl)})" : "";
-        sb.AppendLine($"> ⚠ **STILL RESOLVING{why}** — values below may be pre-resolution. Re-read until is_resolving is false.");
+        sb.AppendLine($"> \u26A0 **STILL RESOLVING{why}** \u2014 values below may be pre-resolution. Re-read until is_resolving is false.");
         sb.AppendLine();
     }
 
@@ -94,7 +94,7 @@ public static partial class McpMod
             return;
 
         var head = string.Join(" | ", warnings.GetRange(0, Math.Min(3, warnings.Count)));
-        sb.AppendLine(CultureInfo.InvariantCulture, $"> ⚠ **{warnings.Count} state warning(s)** — {head}");
+        sb.AppendLine(CultureInfo.InvariantCulture, $"> \u26A0 **{warnings.Count} state warning(s)** \u2014 {head}");
         sb.AppendLine();
     }
 
@@ -343,7 +343,7 @@ public static partial class McpMod
         bool noFriends = state.TryGetValue("no_friends", out var noObj) && noObj is true;
 
         sb.AppendLine($"### Friends ({friends.Count})"
-                      + (fastMp ? "  _[FastMP — auto-joins localhost:33771]_" : "")
+                      + (fastMp ? "  _[FastMP \u2014 auto-joins localhost:33771]_" : "")
                       + (loading ? "  _[loading...]_" : ""));
         if (friends.Count == 0)
         {
@@ -458,11 +458,11 @@ public static partial class McpMod
         var allReady = lobby.TryGetValue("all_ready", out var ar) && ar is true;
         var aboutToBegin = lobby.TryGetValue("is_about_to_begin", out var ab) && ab is true;
 
-        sb.Append($"### Lobby ({type}, {mode}) — Ascension: {asc}");
+        sb.Append($"### Lobby ({type}, {mode}) \u2014 Ascension: {asc}");
         if (!string.IsNullOrEmpty(maxAsc) && !string.Equals(maxAsc, "0", StringComparison.Ordinal))
             sb.Append($" / max {maxAsc}");
         sb.AppendLine();
-        sb.AppendLine($"- All ready: **{allReady}**" + (aboutToBegin ? "  — about to begin" : ""));
+        sb.AppendLine($"- All ready: **{allReady}**" + (aboutToBegin ? "  \u2014 about to begin" : ""));
 
         // MP load lobby uses act/floor/connected_player_count/expected_player_count
         if (lobby.TryGetValue("act", out var actObj))
@@ -487,7 +487,7 @@ public static partial class McpMod
             {
                 var local = p.TryGetValue("is_local", out var l) && l is true ? " (you)" : "";
                 var host = p.TryGetValue("is_host", out var h) && h is true ? " [host]" : "";
-                var ready = p.TryGetValue("is_ready", out var r) && r is true ? " ✓" : "";
+                var ready = p.TryGetValue("is_ready", out var r) && r is true ? " \u2713" : "";
                 var connected = p.TryGetValue("is_connected", out var c) && c is not true ? " (disconnected)" : "";
                 var name = p.GetValueOrDefault("platform_name")?.ToString();
                 var charName = p.GetValueOrDefault("character")?.ToString()
@@ -580,7 +580,7 @@ public static partial class McpMod
         sb.AppendLine("### Hand");
         foreach (var card in hand)
         {
-            string playable = card["can_play"] is true ? "✓" : "✗";
+            string playable = card["can_play"] is true ? "\u2713" : "\u2717";
             string keywords = card.TryGetValue("keywords", out var kw) && kw is List<Dictionary<string, object?>> kwList && kwList.Count > 0
                 ? $" [{string.Join(", ", kwList.Select(k => k["name"]?.ToString()))}]" : "";
             string starCost = card.TryGetValue("star_cost", out var sc) && sc != null ? $" + {sc} star" : "";
@@ -629,7 +629,7 @@ public static partial class McpMod
             // fight, so it has to be unmistakable in the heading: it cannot be
             // targeted, and it may be about to stand back up.
             bool alive = enemy.GetValueOrDefault("alive") is not bool a || a;
-            string deadTag = alive ? "" : " — DEAD";
+            string deadTag = alive ? "" : " \u2014 DEAD";
             sb.AppendLine($"### {enemy["name"]} (`{enemy["entity_id"]}`{combatIdTag}){deadTag}");
             sb.AppendLine($"HP: {enemy["hp"]}/{enemy["max_hp"]} | Block: {enemy["block"]}");
             if (!alive)
@@ -671,7 +671,7 @@ public static partial class McpMod
         string at = hp != null ? $" at {hp} HP" : "";
         string by = revive.GetValueOrDefault("power_name") is object p ? $" ({p})" : "";
         string when = turns != null ? $"in {turns} enemy turn(s)" : "on an unknown turn";
-        return $"**⚠ WAITING TO REVIVE** {when}{at}{by} - cannot be targeted until it is back.";
+        return $"**\u26A0 WAITING TO REVIVE** {when}{at}{by} - cannot be targeted until it is back.";
     }
 
     /// <summary>
@@ -698,8 +698,8 @@ public static partial class McpMod
             if (t.TryGetValue("damage_cap", out var capObj) && capObj is Dictionary<string, object?> c)
             {
                 cap = c.TryGetValue("effective_damage", out var eff) && eff != null
-                    ? $" ⚠ actually {eff} ({c.GetValueOrDefault("capped_by")})"
-                    : $" ⚠ capped by {c.GetValueOrDefault("capped_by")}";
+                    ? $" \u26A0 actually {eff} ({c.GetValueOrDefault("capped_by")})"
+                    : $" \u26A0 capped by {c.GetValueOrDefault("capped_by")}";
             }
             return $"{label}: {dmg}{hits}{cap}";
         });
@@ -741,7 +741,7 @@ public static partial class McpMod
         foreach (var (card, key) in order)
         {
             string starCost = card.TryGetValue("star_cost", out var sc) && sc != null ? $" + {sc} star" : "";
-            string copies = seen[key] > 1 ? $" ×{seen[key]}" : "";
+            string copies = seen[key] > 1 ? $" \u00D7{seen[key]}" : "";
             sb.AppendLine($"- [{card["index"]}] **{card["name"]}**{copies} ({card["cost"]} energy{starCost}) [{card["type"]}] - {card["description"]}");
         }
         sb.AppendLine();
@@ -935,7 +935,7 @@ public static partial class McpMod
 
         sb.AppendLine("### Potions this merchant will buy");
         foreach (var p in sellable)
-            sb.AppendLine($"- [slot {p["slot"]}] **{p["potion_name"]}** — `sell_potion slot {p["slot"]}`");
+            sb.AppendLine($"- [slot {p["slot"]}] **{p["potion_name"]}** \u2014 `sell_potion slot {p["slot"]}`");
         sb.AppendLine();
     }
 
@@ -1091,7 +1091,7 @@ public static partial class McpMod
 
         sb.AppendLine("## Path Taken");
         var parts = visited.Select((v, i) => $"{i + 1}. {v["type"]} ({v["col"]},{v["row"]})");
-        sb.AppendLine(string.Join(" → ", parts) + " ← current");
+        sb.AppendLine(string.Join(" \u2192 ", parts) + " \u2190 current");
         sb.AppendLine();
     }
 

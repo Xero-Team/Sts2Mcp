@@ -25,13 +25,13 @@ public static partial class McpMod
     // that Rust can re-evaluate against hypothetical combat state. Unknown
     // modded predicates retain their current result as an explicit snapshot.
 
-    private static readonly FieldInfo? _msmCurrentStateField =
+    private static readonly FieldInfo? s_msmCurrentStateField =
         typeof(MonsterMoveStateMachine).GetField("_currentState", BindingFlags.NonPublic | BindingFlags.Instance);
-    private static readonly FieldInfo? _msmInitialStateField =
+    private static readonly FieldInfo? s_msmInitialStateField =
         typeof(MonsterMoveStateMachine).GetField("_initialState", BindingFlags.NonPublic | BindingFlags.Instance);
-    private static readonly FieldInfo? _msmPerformedFirstMoveField =
+    private static readonly FieldInfo? s_msmPerformedFirstMoveField =
         typeof(MonsterMoveStateMachine).GetField("_performedFirstMove", BindingFlags.NonPublic | BindingFlags.Instance);
-    private static readonly PropertyInfo? _conditionalStatesProperty =
+    private static readonly PropertyInfo? s_conditionalStatesProperty =
         typeof(ConditionalBranchState).GetProperty("States", BindingFlags.NonPublic | BindingFlags.Instance);
 
     /// <summary>
@@ -44,11 +44,11 @@ public static partial class McpMod
     {
         var monster = creature.Monster;
         var machine = monster?.MoveStateMachine;
-        var current = _msmCurrentStateField?.GetValue(machine) as MonsterState;
-        var initial = _msmInitialStateField?.GetValue(machine) as MonsterState;
+        var current = s_msmCurrentStateField?.GetValue(machine) as MonsterState;
+        var initial = s_msmInitialStateField?.GetValue(machine) as MonsterState;
         if (monster == null || machine == null || current == null || initial == null)
             return null;
-        if (_msmPerformedFirstMoveField?.GetValue(machine) is not bool performedFirstMove)
+        if (s_msmPerformedFirstMoveField?.GetValue(machine) is not bool performedFirstMove)
             return null;
 
         var states = BuildMachineStates(monster, creature, machine, initial, current);
@@ -217,7 +217,7 @@ public static partial class McpMod
         ref bool hasSnapshots)
     {
         var branches = new List<Dictionary<string, object?>>();
-        if (_conditionalStatesProperty?.GetValue(conditional) is IEnumerable values)
+        if (s_conditionalStatesProperty?.GetValue(conditional) is IEnumerable values)
         {
             foreach (var value in values)
             {

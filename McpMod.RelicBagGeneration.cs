@@ -17,26 +17,26 @@ public static partial class McpMod
     // no bag traversal to the main state endpoint; mutations are rare and pay
     // one atomic increment. It intentionally never resets, so a response from
     // an earlier run cannot accidentally match a later run in this process.
-    private static long _relicBagGeneration = 1;
+    private static long s_relicBagGeneration = 1;
 
-    private static long RelicBagGeneration => Interlocked.Read(ref _relicBagGeneration);
+    private static long RelicBagGeneration => Interlocked.Read(ref s_relicBagGeneration);
 
     private static void MarkRelicBagsChanged()
     {
-        Interlocked.Increment(ref _relicBagGeneration);
+        Interlocked.Increment(ref s_relicBagGeneration);
     }
 
-    private static readonly FieldInfo? _relicDequesField =
+    private static readonly FieldInfo? s_relicDequesField =
         typeof(RelicGrabBag).GetField("_deques", BindingFlags.Instance | BindingFlags.NonPublic);
-    private static readonly FieldInfo? _relicFallbackField =
+    private static readonly FieldInfo? s_relicFallbackField =
         typeof(RelicGrabBag).GetField("_mpFallbackDequeue", BindingFlags.Instance | BindingFlags.NonPublic);
 
     private static int RelicBagCount(RelicGrabBag bag)
     {
         int count = 0;
-        if (_relicDequesField?.GetValue(bag) is Dictionary<RelicRarity, List<RelicModel>> deques)
+        if (s_relicDequesField?.GetValue(bag) is Dictionary<RelicRarity, List<RelicModel>> deques)
             count += deques.Values.Sum(deque => deque.Count);
-        if (_relicFallbackField?.GetValue(bag) is List<RelicModel> fallback)
+        if (s_relicFallbackField?.GetValue(bag) is List<RelicModel> fallback)
             count += fallback.Count;
         return count;
     }

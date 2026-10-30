@@ -1165,7 +1165,7 @@ public static partial class McpMod
                 return MissingIntParam("current reward index", "index", "reward_index");
             index = parsedIndex;
         }
-        var error = _rewardSession.Resolve(rewardId, index, revision, out var entry);
+        var error = s_rewardSession.Resolve(rewardId, index, revision, out var entry);
         if (error != null) return Error(error);
         var button = enabledButtons.First(b => ReferenceEquals(b.Reward, entry!.Key));
 
@@ -1197,7 +1197,7 @@ public static partial class McpMod
             ["message"] = $"Claiming reward: {rewardDesc}",
             ["reward_id"] = entry!.Id,
             ["action_stage"] = "submitted",
-            ["screen_revision"] = _rewardSession.Revision
+            ["screen_revision"] = s_rewardSession.Revision
         };
     }
 
@@ -2137,9 +2137,9 @@ public static partial class McpMod
             return byId is { IsPlayer: true } ? byId : null;
         }
 
-        const string prefix = "player_";
-        if (entityId.StartsWith(prefix, StringComparison.Ordinal)
-            && int.TryParse(entityId.Substring(prefix.Length), CultureInfo.InvariantCulture, out int idx)
+        const string Prefix = "player_";
+        if (entityId.StartsWith(Prefix, StringComparison.Ordinal)
+            && int.TryParse(entityId.Substring(Prefix.Length), CultureInfo.InvariantCulture, out int idx)
             && idx >= 0 && idx < me.RunState.Players.Count)
             return me.RunState.Players[idx].Creature;
 
@@ -2731,7 +2731,6 @@ public static partial class McpMod
         return ClickMenuButtonField(mpSubmenu, fieldName, $"Selected {option}", $"Option '{option}' is not available");
     }
 
-
     private static Dictionary<string, object?> ExecutePopupOption(
         List<(string Name, NClickableControl Button)> options,
         string option)
@@ -3072,7 +3071,7 @@ public static partial class McpMod
                 confirmBtn.ForceClick();
                 return new Dictionary<string, object?>(StringComparer.Ordinal) { ["status"] = "ok", ["message"] = "Readied up to load saved MP run" };
             }
-            return Error("Confirm button not available — already ready, or lobby not yet initialized");
+            return Error("Confirm button not available \u2014 already ready, or lobby not yet initialized");
         }
 
         if (string.Equals(normalized, "unready", StringComparison.Ordinal))
@@ -3083,7 +3082,7 @@ public static partial class McpMod
                 unreadyBtn.ForceClick();
                 return new Dictionary<string, object?>(StringComparer.Ordinal) { ["status"] = "ok", ["message"] = "Retracted ready vote" };
             }
-            return Error("Unready button not available — you have not confirmed yet");
+            return Error("Unready button not available \u2014 you have not confirmed yet");
         }
 
         if (string.Equals(normalized, "back", StringComparison.Ordinal))
@@ -3266,7 +3265,7 @@ public static partial class McpMod
             unreadyBtn.ForceClick();
             return new Dictionary<string, object?>(StringComparer.Ordinal) { ["status"] = "ok", ["message"] = "Retracted ready vote" };
         }
-        return Error("Unready button not available — you have not confirmed yet");
+        return Error("Unready button not available \u2014 you have not confirmed yet");
     }
 
     /// <summary>Sets the seed, if one was given, and presses confirm.</summary>
@@ -3307,7 +3306,7 @@ public static partial class McpMod
                 ["ascension"] = startingAscension
             };
         }
-        return Error("Confirm button not available — select a character first");
+        return Error("Confirm button not available \u2014 select a character first");
     }
 
     private static Dictionary<string, object?> SelectCharacterOption(Node screen, string option)
@@ -3468,7 +3467,7 @@ public static partial class McpMod
 
         if (matches.Count > 1)
         {
-            return Error($"Modifier '{token}' is ambiguous — {matches.Count} tickboxes share that id. "
+            return Error($"Modifier '{token}' is ambiguous \u2014 {matches.Count} tickboxes share that id. "
                          + $"Use one of: {string.Join(", ", matches.Select(m => m.Key))}");
         }
 

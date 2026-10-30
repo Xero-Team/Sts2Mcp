@@ -19,61 +19,61 @@ namespace STS2_MCP;
 
 public static partial class McpMod
 {
-    private static readonly RewardSession _rewardSession = new();
-    private static readonly Dictionary<NCardRewardSelectionScreen, RewardSession.Entry> _cardRewardParents = new();
-    private static bool _rewardTrackingAvailable;
+    private static readonly RewardSession s_rewardSession = new();
+    private static readonly Dictionary<NCardRewardSelectionScreen, RewardSession.Entry> s_cardRewardParents = new();
+    private static bool s_rewardTrackingAvailable;
 
     private static void RefreshRewardRun()
     {
-        _rewardSession.CheckRun(RunManager.Instance.DebugOnlyGetState());
-        var staleParents = _cardRewardParents
-            .Where(pair => !_rewardSession.Contains(pair.Value))
+        s_rewardSession.CheckRun(RunManager.Instance.DebugOnlyGetState());
+        var staleParents = s_cardRewardParents
+            .Where(pair => !s_rewardSession.Contains(pair.Value))
             .Select(pair => pair.Key)
             .ToList();
         foreach (var screen in staleParents)
-            _cardRewardParents.Remove(screen);
+            s_cardRewardParents.Remove(screen);
     }
 
     // Shared by state and claim_reward: exactly the same enabled-button order as the legacy API.
     private static List<NRewardButton> GetRewardButtons(NRewardsScreen screen, bool fresh = false)
     {
         RefreshRewardRun();
-        _rewardSession.Open(screen, RunManager.Instance.DebugOnlyGetState());
+        s_rewardSession.Open(screen, RunManager.Instance.DebugOnlyGetState());
         var buttons = FindAll<NRewardButton>(screen).Where(b => b.Reward != null).ToList();
-        foreach (var button in buttons) _rewardSession.Register(button.Reward!, fresh && _rewardTrackingAvailable);
+        foreach (var button in buttons) s_rewardSession.Register(button.Reward!, fresh && s_rewardTrackingAvailable);
         var enabled = buttons.Where(b => b.IsEnabled).ToList();
-        _rewardSession.Sync(enabled.Select(b => (object)b.Reward!));
-        return enabled.Where(b => !string.Equals(_rewardSession.Find(b.Reward!)?.SelectionState, "claimed", StringComparison.Ordinal)).ToList();
+        s_rewardSession.Sync(enabled.Select(b => (object)b.Reward!));
+        return enabled.Where(b => !string.Equals(s_rewardSession.Find(b.Reward!)?.SelectionState, "claimed", StringComparison.Ordinal)).ToList();
     }
 
     private static RewardSession.Entry? GetCardRewardParent(NCardRewardSelectionScreen screen)
     {
         RefreshRewardRun();
-        if (_cardRewardParents.TryGetValue(screen, out var entry) && _rewardSession.Contains(entry)) return entry;
+        if (s_cardRewardParents.TryGetValue(screen, out var entry) && s_rewardSession.Contains(entry)) return entry;
         // CardReward.OnSelect assigns this UI screen before awaiting OptionSelected. Only correlate
         // the already displayed screen; never inspect Cards, generation options, or future rewards.
-        entry = _rewardSession.Entries.FirstOrDefault(e => e.Key is CardReward reward
+        entry = s_rewardSession.Entries.FirstOrDefault(e => e.Key is CardReward reward
             && ReferenceEquals(GetInstanceFieldValue(reward, "_currentlyShownScreen"), screen));
-        if (entry != null) _cardRewardParents[screen] = entry;
+        if (entry != null) s_cardRewardParents[screen] = entry;
         return entry;
     }
 
     private static void CloseRewardSession(NRewardsScreen screen)
     {
-        if (!_rewardSession.IsScreen(screen)) return;
-        _rewardSession.Clear();
-        _cardRewardParents.Clear();
+        if (!s_rewardSession.IsScreen(screen)) return;
+        s_rewardSession.Clear();
+        s_cardRewardParents.Clear();
     }
 
     private static void ObserveRewardResult(NRewardsScreen screen, Control button, bool consumed)
     {
-        if (!_rewardSession.IsScreen(screen) || button is not NRewardButton { Reward: { } reward }) return;
-        var entry = _rewardSession.Find(reward);
+        if (!s_rewardSession.IsScreen(screen) || button is not NRewardButton { Reward: { } reward }) return;
+        var entry = s_rewardSession.Find(reward);
         if (entry != null)
         {
-            _rewardSession.Complete(entry, consumed);
-            foreach (var pair in _cardRewardParents.Where(p => ReferenceEquals(p.Value, entry)).ToArray())
-                _cardRewardParents.Remove(pair.Key);
+            s_rewardSession.Complete(entry, consumed);
+            foreach (var pair in s_cardRewardParents.Where(p => ReferenceEquals(p.Value, entry)).ToArray())
+                s_cardRewardParents.Remove(pair.Key);
         }
     }
 
@@ -106,21 +106,21 @@ public static partial class McpMod
             Patch(typeof(NMapScreen), "Open", postfix: nameof(RewardMapOpened));
             Patch(typeof(NRewardButton), "GetReward", prefix: nameof(RewardStarted), postfix: nameof(RewardExecutionTask));
             Patch(typeof(NCardRewardSelectionScreen), "OptionSelected", postfix: nameof(RewardChoiceTask));
-            _rewardTrackingAvailable = true;
+            s_rewardTrackingAvailable = true;
         });
         if (failure == null)
             return;
 
         // A half-applied set must not stay installed: unpatching the owner is the cleanup.
         TryDoQuiet(() => harmony.UnpatchAll("com.sts2mcp.rewards"));
-        _rewardTrackingAvailable = false;
+        s_rewardTrackingAvailable = false;
         GD.PrintErr($"[STS2 MCP] Reward tracking unavailable: {failure}");
     }
 
     private static void RewardMapOpened() => RewardObservation(() =>
     {
-        _rewardSession.Clear();
-        _cardRewardParents.Clear();
+        s_rewardSession.Clear();
+        s_cardRewardParents.Clear();
     });
     private static void RewardScreenReady(NRewardsScreen __instance) => RewardObservation(() => GetRewardButtons(__instance, fresh: true));
     private static void RewardScreenClosed(NRewardsScreen __instance) => RewardObservation(() => CloseRewardSession(__instance));
@@ -134,13 +134,13 @@ public static partial class McpMod
         // displayed parent session from its UI ancestry, with unknown prior history.
         for (Node? node = __instance.GetParent(); node != null; node = node.GetParent())
             if (node is NRewardsScreen screen) { GetRewardButtons(screen); break; }
-        var entry = _rewardSession.Find(__instance.Reward);
-        if (entry != null) _rewardSession.Begin(entry);
+        var entry = s_rewardSession.Find(__instance.Reward);
+        if (entry != null) s_rewardSession.Begin(entry);
     });
 
     private static void RewardExecutionTask(NRewardButton __instance, ref Task __result)
     {
-        var entry = __instance.Reward == null ? null : _rewardSession.Find(__instance.Reward);
+        var entry = __instance.Reward == null ? null : s_rewardSession.Find(__instance.Reward);
         if (entry != null) __result = ObserveRewardExecutionAsync(__result, entry);
     }
 
@@ -157,7 +157,7 @@ public static partial class McpMod
         try { await task; }
         catch
         {
-            RewardObservation(() => _rewardSession.Interrupt(entry));
+            RewardObservation(() => s_rewardSession.Interrupt(entry));
             throw;
         }
     }
@@ -169,7 +169,7 @@ public static partial class McpMod
         var id = (result.GetValueOrDefault("parent_reward_id") ?? result.GetValueOrDefault("reward_id")) as string;
         if (id == null) return;
         RefreshRewardRun();
-        var entry = _rewardSession.Entries.FirstOrDefault(e => string.Equals(e.Id, id, StringComparison.Ordinal));
+        var entry = s_rewardSession.Entries.FirstOrDefault(e => string.Equals(e.Id, id, StringComparison.Ordinal));
         bool observed = entry != null && !entry.Resolving && entry.SelectionState is "claimed" or "skipped";
         result["outcome_observed"] = observed;
         result["selection_state"] = entry?.SelectionState ?? "unknown";
@@ -177,7 +177,7 @@ public static partial class McpMod
         if (observed)
         {
             result["action_stage"] = "resolved";
-            result["claimable"] = _rewardSession.Claimable.Contains(entry!);
+            result["claimable"] = s_rewardSession.Claimable.Contains(entry!);
             result["selection_closed"] = NOverlayStack.Instance?.Peek() is not NCardRewardSelectionScreen current
                 || !ReferenceEquals(GetCardRewardParent(current), entry);
         }
@@ -199,7 +199,7 @@ public static partial class McpMod
             () => (GetInstanceFieldValue(__instance, "_options") as System.Collections.ICollection)?.Count);
         var alternatives = TryRead<CardRewardAlternative[]?>("reward.choice.observation",
             () => (GetInstanceFieldValue(__instance, "_extraOptions") as IEnumerable<CardRewardAlternative>)?.ToArray());
-        _rewardSession.AwaitChoice(entry);
+        s_rewardSession.AwaitChoice(entry);
         __result = ObserveRewardChoiceAsync(current, entry, optionCount, alternatives);
     }
 
@@ -218,22 +218,22 @@ public static partial class McpMod
         try { choice = await task; }
         catch
         {
-            RewardObservation(() => _rewardSession.Interrupt(entry));
+            RewardObservation(() => s_rewardSession.Interrupt(entry));
             throw;
         }
         RewardObservation(() =>
         {
-            if (choice == null) _rewardSession.Choice(entry, "interrupted");
+            if (choice == null) s_rewardSession.Choice(entry, "interrupted");
             else if (cardCount.HasValue && choice >= 0 && choice < cardCount)
-                _rewardSession.Choice(entry, "card");
+                s_rewardSession.Choice(entry, "card");
             else if (cardCount.HasValue && alternatives != null && choice - cardCount >= 0 && choice - cardCount < alternatives.Length)
             {
                 var alternative = alternatives[(choice - cardCount).Value];
                 bool skip = alternative.OptionId.Equals("Skip", StringComparison.OrdinalIgnoreCase)
                     && alternative.AfterSelected == PostAlternateCardRewardAction.EndSelectionAndDoNotCompleteReward;
-                _rewardSession.Choice(entry, skip ? "skip" : "alternative", alternative.OptionId);
+                s_rewardSession.Choice(entry, skip ? "skip" : "alternative", alternative.OptionId);
             }
-            else _rewardSession.Choice(entry, "unknown");
+            else s_rewardSession.Choice(entry, "unknown");
         });
         return choice;
     }

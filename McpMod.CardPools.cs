@@ -26,10 +26,10 @@ public static partial class McpMod
     // Order is load-bearing: the game's `Rng.NextItem` indexes straight into
     // the list GetUnlockedCards returns, so the declaration order of each
     // pool's GenerateAllCards() IS the mapping from roll to card. Never sort.
-    private static readonly object _cardPoolsCacheLock = new();
-    private static UnlockState? _cardPoolsCacheUnlocks;
-    private static CardMultiplayerConstraint _cardPoolsCacheConstraint;
-    private static Dictionary<string, object?>? _cardPoolsCache;
+    private static readonly object s_cardPoolsCacheLock = new();
+    private static UnlockState? s_cardPoolsCacheUnlocks;
+    private static CardMultiplayerConstraint s_cardPoolsCacheConstraint;
+    private static Dictionary<string, object?>? s_cardPoolsCache;
 
     private static void HandleGetCardPools(HttpListenerResponse response)
         => RunHandler(response, () => SendJson(response, RunOnMainThreadBlocking(BuildCardPools)),
@@ -46,15 +46,15 @@ public static partial class McpMod
         if (unlockState == null)
             return new Dictionary<string, object?>(StringComparer.Ordinal) { ["error"] = "No profile or run data available." };
 
-        lock (_cardPoolsCacheLock)
+        lock (s_cardPoolsCacheLock)
         {
             // The UnlockState instance is stable for a run, so reference
             // equality is a sound cache key and costs nothing to check.
-            if (_cardPoolsCache != null
-                && ReferenceEquals(_cardPoolsCacheUnlocks, unlockState)
-                && _cardPoolsCacheConstraint == constraint)
+            if (s_cardPoolsCache != null
+                && ReferenceEquals(s_cardPoolsCacheUnlocks, unlockState)
+                && s_cardPoolsCacheConstraint == constraint)
             {
-                return _cardPoolsCache;
+                return s_cardPoolsCache;
             }
         }
 
@@ -84,11 +84,11 @@ public static partial class McpMod
             ["pools"] = pools
         };
 
-        lock (_cardPoolsCacheLock)
+        lock (s_cardPoolsCacheLock)
         {
-            _cardPoolsCacheUnlocks = unlockState;
-            _cardPoolsCacheConstraint = constraint;
-            _cardPoolsCache = result;
+            s_cardPoolsCacheUnlocks = unlockState;
+            s_cardPoolsCacheConstraint = constraint;
+            s_cardPoolsCache = result;
         }
         return result;
     }

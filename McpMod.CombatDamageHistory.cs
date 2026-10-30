@@ -9,7 +9,7 @@ namespace STS2_MCP;
 
 public static partial class McpMod
 {
-    private static readonly FieldInfo HistoryPlayerTurnNumbersField = typeof(CombatHistoryEntry)
+    private static readonly FieldInfo s_historyPlayerTurnNumbersField = typeof(CombatHistoryEntry)
         .GetField("_playerTurnNumbers", BindingFlags.Instance | BindingFlags.NonPublic)
         ?? throw new MissingFieldException(typeof(CombatHistoryEntry).FullName, "_playerTurnNumbers");
 
@@ -24,7 +24,7 @@ public static partial class McpMod
         {
             if (entry.Receiver != player.Creature || entry.Result.WasFullyBlocked)
                 continue;
-            var turns = HistoryPlayerTurnNumbersField.GetValue(entry) as IReadOnlyDictionary<ulong, int>
+            var turns = s_historyPlayerTurnNumbersField.GetValue(entry) as IReadOnlyDictionary<ulong, int>
                 ?? throw new InvalidOperationException("Combat history player turn numbers are unavailable");
             if (turns.TryGetValue(player.NetId, out var captured) && captured == turn)
                 return true;

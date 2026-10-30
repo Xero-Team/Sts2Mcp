@@ -53,12 +53,12 @@ internal static class CombatRecorder
 {
     internal const string Schema = "sts2-mod-record/1";
 
-    private static readonly object Gate = new();
-    private static readonly RecordWriter Writer = new();
-    private static readonly Stopwatch Clock = Stopwatch.StartNew();
+    private static readonly object s_gate = new();
+    private static readonly RecordWriter s_writer = new();
+    private static readonly Stopwatch s_clock = Stopwatch.StartNew();
 
-    internal static readonly string SessionId = Guid.NewGuid().ToString("N");
-    private static readonly DateTimeOffset SessionStarted = DateTimeOffset.UtcNow;
+    internal static readonly string s_sessionId = Guid.NewGuid().ToString("N");
+    private static readonly DateTimeOffset s_sessionStarted = DateTimeOffset.UtcNow;
 
     // --- configuration / installation -------------------------------------------------------
 
@@ -70,21 +70,21 @@ internal static class CombatRecorder
     internal static string? InstallError { get; private set; }
 
     /// <summary>Runtime switch. Off means every hook returns at its first line.</summary>
-    private static volatile bool _active;
+    private static volatile bool s_active;
 
-    private static string? _dllSha256;
+    private static string? s_dllSha256;
 
     // --- API attribution ---------------------------------------------------------------------
 
-    private static long _apiSeq;
+    private static long s_apiSeq;
     /// <summary>The request whose handler is running on the main thread right now (0 = none).</summary>
     [ThreadStatic] private static long _handlerRequest;
     [ThreadStatic] private static Type? _expectType;
     /// <summary>The request between receipt and response (HTTP thread). A time window, not a cause.</summary>
-    private static long _windowRequest;
-    private static readonly ConditionalWeakTable<GameAction, StrongBox<long>> ApiActions = new();
+    private static long s_windowRequest;
+    private static readonly ConditionalWeakTable<GameAction, StrongBox<long>> s_apiActions = new();
     /// <summary>The first id each action got. Resuming after a choice gives it a new id.</summary>
-    private static readonly ConditionalWeakTable<GameAction, StrongBox<uint>> ActionKeys = new();
+    private static readonly ConditionalWeakTable<GameAction, StrongBox<uint>> s_actionKeys = new();
 
     // --- records -----------------------------------------------------------------------------
 
@@ -125,18 +125,18 @@ internal static class CombatRecorder
         internal string HiddenPath => Path.Combine(Dir, "hidden.jsonl");
     }
 
-    private static PendingInitial? _pending;
-    private static OpenRecord? _rec;
-    private static bool _inCleanup;
-    private static int _faultsTotal;
-    private static string? _lastFault;
-    private static int _recordsOpened;
-    private static int _sentryCaptures;
+    private static PendingInitial? s_pending;
+    private static OpenRecord? s_rec;
+    private static bool s_inCleanup;
+    private static int s_faultsTotal;
+    private static string? s_lastFault;
+    private static int s_recordsOpened;
+    private static int s_sentryCaptures;
     /// <summary>
     /// Directories handed out in this process. The writer thread creates a directory only when it
     /// writes the first line, so numbering from the disk alone could give a name out twice.
     /// </summary>
-    private static readonly HashSet<string> ReservedDirs = new(StringComparer.Ordinal);
+    private static readonly HashSet<string> s_reservedDirs = new(StringComparer.Ordinal);
 
     // --- the tracking layer ------------------------------------------------------------------
     //
@@ -164,7 +164,7 @@ internal static class CombatRecorder
         internal readonly Dictionary<int, uint> ChoiceFloor = new();
     }
 
-    private static RoomTracker _track = new();
+    private static RoomTracker s_track = new();
 
     /// <summary>
     /// "startup": installed by the mod's initializer (StartIfConfigured), before the game has run a
@@ -177,10 +177,10 @@ internal static class CombatRecorder
     /// untagged player-driven action is "unknown" and inputs_outside_replay is "unknown".
     /// Supported scope: complete records come only from a process that started with "record": true.
     /// </summary>
-    private static string _installedAt = "not_installed";
+    private static string s_installedAt = "not_installed";
 
     /// <summary>Every action seen at ActionQueueSynchronizer.RequestEnqueue since install.</summary>
-    private static readonly ConditionalWeakTable<GameAction, object> SeenRequests = new();
+    private static readonly ConditionalWeakTable<GameAction, object> s_seenRequests = new();
 
     /// <summary>
     /// Console commands run in this process since install that bypassed the action queue. Their
@@ -188,7 +188,7 @@ internal static class CombatRecorder
     /// CombatManager.CombatSetUp subscription that acts in every later combat), so every record
     /// opened after one in the same process carries the list and a fault. A new process starts clean.
     /// </summary>
-    private static readonly JsonArray ConsoleInProcess = new();
+    private static readonly JsonArray s_consoleInProcess = new();
 
     private static bool Installed => string.Equals(InstallState, "installed", StringComparison.Ordinal);
 
@@ -230,11 +230,11 @@ internal static class CombatRecorder
         Justification = "InstallError is a structured field on the status endpoint; it carries the type and the message by design.")]
     internal static bool Install(string by)
     {
-        lock (Gate)
+        lock (s_gate)
         {
             if (string.Equals(InstallState, "installed", StringComparison.Ordinal))
                 return true;
-            _installedAt = by;
+            s_installedAt = by;
             try
             {
                 RecorderPatches.Apply();
@@ -261,7 +261,7 @@ internal static class CombatRecorder
     internal static void StartIfConfigured()
     {
         if (ConfigEnabled && Install("startup"))
-            _active = true;
+            s_active = true;
     }
 
     private static void StartDllHash()
@@ -269,7 +269,7 @@ internal static class CombatRecorder
         _ = Task.Run(() => TryRecordDo("dll_hash", () =>
         {
             using var fs = File.OpenRead(typeof(RunManager).Assembly.Location);
-            _dllSha256 = Convert.ToHexString(SHA256.HashData(fs)).ToLowerInvariant();
+            s_dllSha256 = Convert.ToHexString(SHA256.HashData(fs)).ToLowerInvariant();
         }));
     }
 
@@ -297,11 +297,11 @@ internal static class CombatRecorder
         {
             if (!Install("runtime"))
                 return new(StringComparer.Ordinal) { ["status"] = "error", ["error"] = $"Recorder could not be installed: {InstallError}" };
-            lock (Gate)
+            lock (s_gate)
             {
-                if (!_active)
+                if (!s_active)
                 {
-                    _active = true;
+                    s_active = true;
                     // A combat already under way is recorded from here on, marked as started late.
                     // (Not after it: a finished combat's state lingers until the next room, and
                     // its replay has already been written and stopped.)
@@ -312,12 +312,12 @@ internal static class CombatRecorder
         }
         else
         {
-            lock (Gate)
+            lock (s_gate)
             {
-                if (_rec != null)
+                if (s_rec != null)
                     CloseRecord("recording_disabled", null);
-                _active = false;
-                _pending = null;
+                s_active = false;
+                s_pending = null;
             }
         }
         return new(StringComparer.Ordinal) { ["status"] = "ok", ["message"] = enabled ? "Recording on" : "Recording off", ["recording"] = Status() };
@@ -325,35 +325,35 @@ internal static class CombatRecorder
 
     internal static Dictionary<string, object?> Status()
     {
-        lock (Gate)
+        lock (s_gate)
         {
             return new(StringComparer.Ordinal)
             {
                 ["schema"] = Schema,
                 ["config_enabled"] = ConfigEnabled,
-                ["active"] = _active,
+                ["active"] = s_active,
                 ["install"] = InstallState,
                 ["install_error"] = InstallError,
-                ["installed_at"] = _installedAt,
+                ["installed_at"] = s_installedAt,
                 ["patches"] = RecorderPatches.Applied,
                 ["root"] = Root,
-                ["session"] = SessionId,
-                ["records_opened"] = _recordsOpened,
-                ["current"] = _rec == null ? null : new Dictionary<string, object?>(StringComparer.Ordinal)
+                ["session"] = s_sessionId,
+                ["records_opened"] = s_recordsOpened,
+                ["current"] = s_rec == null ? null : new Dictionary<string, object?>(StringComparer.Ordinal)
                 {
-                    ["id"] = _rec.Id,
-                    ["dir"] = _rec.Dir,
-                    ["seq"] = _rec.Seq,
-                    ["faults"] = _rec.Faults.Count,
+                    ["id"] = s_rec.Id,
+                    ["dir"] = s_rec.Dir,
+                    ["seq"] = s_rec.Seq,
+                    ["faults"] = s_rec.Faults.Count,
                 },
-                ["pending_initial_state"] = _pending != null,
-                ["faults_total"] = _faultsTotal,
-                ["last_fault"] = _lastFault,
-                ["sentry_captures"] = _sentryCaptures,
-                ["writer_failures"] = Writer.Failures,
-                ["writer_last_error"] = Writer.LastError,
-                ["writer_pending"] = Writer.Pending,
-                ["sts2_dll_sha256"] = _dllSha256,
+                ["pending_initial_state"] = s_pending != null,
+                ["faults_total"] = s_faultsTotal,
+                ["last_fault"] = s_lastFault,
+                ["sentry_captures"] = s_sentryCaptures,
+                ["writer_failures"] = s_writer.Failures,
+                ["writer_last_error"] = s_writer.LastError,
+                ["writer_pending"] = s_writer.Pending,
+                ["sts2_dll_sha256"] = s_dllSha256,
             };
         }
     }
@@ -367,8 +367,8 @@ internal static class CombatRecorder
     {
         if (!Installed)
             return 0;
-        long id = Interlocked.Increment(ref _apiSeq);
-        Interlocked.Exchange(ref _windowRequest, id);
+        long id = Interlocked.Increment(ref s_apiSeq);
+        Interlocked.Exchange(ref s_windowRequest, id);
         var args = new JsonObject();
         foreach (var (k, v) in parsed)
         {
@@ -382,12 +382,12 @@ internal static class CombatRecorder
                 : JsonValue.Create(raw);
         }
         var line = new JsonObject { ["request"] = id, ["action"] = action, ["args"] = args };
-        lock (Gate)
+        lock (s_gate)
         {
             // Outside a record, kept with the room's pending state: an event that turns into a
             // fight needs the choices that led to it (P2-3 of the design review).
-            if (_rec == null)
-                _pending?.Requests.Add(line.DeepClone());
+            if (s_rec == null)
+                s_pending?.Requests.Add(line.DeepClone());
             else
                 EmitNoGameRead("api_request", line);
         }
@@ -398,10 +398,10 @@ internal static class CombatRecorder
     {
         if (id == 0)
             return;
-        Interlocked.CompareExchange(ref _windowRequest, 0, id);
-        lock (Gate)
+        Interlocked.CompareExchange(ref s_windowRequest, 0, id);
+        lock (s_gate)
         {
-            if (_rec != null)
+            if (s_rec != null)
                 EmitNoGameRead("api_response", new JsonObject { ["request"] = id, ["status"] = status });
         }
     }
@@ -431,7 +431,7 @@ internal static class CombatRecorder
         if (Installed && _handlerRequest != 0)
         {
             long request = _handlerRequest;
-            Guard("tag_api_action", () => ApiActions.AddOrUpdate(action, new StrongBox<long>(request)));
+            Guard("tag_api_action", () => s_apiActions.AddOrUpdate(action, new StrongBox<long>(request)));
         }
         return action;
     }
@@ -458,11 +458,11 @@ internal static class CombatRecorder
     {
         Guard("request_enqueue", () =>
         {
-            SeenRequests.AddOrUpdate(action, true);
+            s_seenRequests.AddOrUpdate(action, true);
             if (_handlerRequest == 0 || _expectType == null || action.GetType() != _expectType)
                 return;
             _expectType = null;
-            ApiActions.AddOrUpdate(action, new StrongBox<long>(_handlerRequest));
+            s_apiActions.AddOrUpdate(action, new StrongBox<long>(_handlerRequest));
         });
     }
 
@@ -475,25 +475,25 @@ internal static class CombatRecorder
     /// </summary>
     private static JsonObject OriginOf(GameAction action)
     {
-        if (ApiActions.TryGetValue(action, out var box))
+        if (s_apiActions.TryGetValue(action, out var box))
         {
             var o = new JsonObject { ["kind"] = "mod_api", ["request"] = box.Value };
-            if (_rec != null && box.Value < _rec.FirstRequest)
+            if (s_rec != null && box.Value < s_rec.FirstRequest)
                 o["request_before_open"] = true;
             return o;
         }
         if (action is GenericHookGameAction || !ActionQueueSet.IsGameActionPlayerDriven(action))
             return new JsonObject { ["kind"] = "game" };
-        if (!string.Equals(_installedAt, "startup", StringComparison.Ordinal))
+        if (!string.Equals(s_installedAt, "startup", StringComparison.Ordinal))
             return new JsonObject { ["kind"] = "unknown", ["why"] = "recorder installed at runtime: requests before the install were not seen" };
-        if (SeenRequests.TryGetValue(action, out _))
+        if (s_seenRequests.TryGetValue(action, out _))
             return new JsonObject { ["kind"] = "not_mod_api" };
         return new JsonObject { ["kind"] = "unknown", ["why"] = "not seen at RequestEnqueue" };
     }
 
     private static JsonObject WindowOrigin()
     {
-        long w = Interlocked.Read(ref _windowRequest);
+        long w = Interlocked.Read(ref s_windowRequest);
         return w != 0
             ? new JsonObject { ["kind"] = "in_api_window", ["request"] = w }
             : new JsonObject { ["kind"] = "outside_api_window" };
@@ -506,25 +506,25 @@ internal static class CombatRecorder
     /// <summary>Postfix of CombatReplayWriter.RecordInitialState: the run as it was on entering the room.</summary>
     internal static void OnInitialState(CombatReplayWriter writer, SerializableRun serializableRun)
     {
-        if (!_active)
+        if (!s_active)
             return;
         Guard("initial_state", () =>
         {
-            lock (Gate)
+            lock (s_gate)
             {
-                _inCleanup = false;
+                s_inCleanup = false;
                 // A new room while a record is still open: the old one never saw its end.
-                if (_rec != null)
+                if (s_rec != null)
                     CloseRecord("superseded_by_room_entry", null);
 
                 var replay = RecorderPatches.ReplayOf(writer);
                 if (replay == null)
                 {
-                    _pending = null;
+                    s_pending = null;
                     return;
                 }
                 var run = RunManager.Instance.DebugOnlyGetState();
-                _pending = new PendingInitial
+                s_pending = new PendingInitial
                 {
                     Replay = replay,
                     HeaderPacket = Packet(HeaderOf(replay)),
@@ -540,12 +540,12 @@ internal static class CombatRecorder
 
     private static void OnCombatSetUp(CombatState state)
     {
-        if (!_active)
+        if (!s_active)
             return;
-        lock (Gate)
+        lock (s_gate)
         {
             TryOpen("combat_setup");
-            if (_rec == null)
+            if (s_rec == null)
                 return;
             var data = RoomInfo(state);
             data["combat_local_id"] = CombatManager.Instance.CurrentCombatId?.Value;
@@ -555,11 +555,11 @@ internal static class CombatRecorder
 
     private static void OnSimple(string kind)
     {
-        if (!_active)
+        if (!s_active)
             return;
-        lock (Gate)
+        lock (s_gate)
         {
-            if (_rec != null)
+            if (s_rec != null)
                 Emit(kind, null);
         }
     }
@@ -567,11 +567,11 @@ internal static class CombatRecorder
     /// <summary>A turn start is a decision boundary: public and hidden observation.</summary>
     private static void OnTurnStarted()
     {
-        if (!_active)
+        if (!s_active)
             return;
-        lock (Gate)
+        lock (s_gate)
         {
-            if (_rec != null)
+            if (s_rec != null)
                 EmitWithObservation("turn_started", null, hidden: true);
         }
     }
@@ -583,15 +583,15 @@ internal static class CombatRecorder
     /// </summary>
     private static void OnPlayerEndedTurn(bool canBackOut)
     {
-        if (!_active)
+        if (!s_active)
             return;
-        lock (Gate)
+        lock (s_gate)
         {
-            if (_rec == null)
+            if (s_rec == null)
                 return;
             var running = RunManager.Instance.ActionExecutor.CurrentlyRunningAction;
             if (running == null && CombatManager.Instance.IsInProgress)
-                _rec.Faults.Add("end_turn_outside_action_queue");
+                s_rec.Faults.Add("end_turn_outside_action_queue");
             Emit("player_ended_turn", new JsonObject
             {
                 ["can_back_out"] = canBackOut,
@@ -608,14 +608,14 @@ internal static class CombatRecorder
     /// </summary>
     private static void OnCombatEnded()
     {
-        if (!_active)
+        if (!s_active)
             return;
-        lock (Gate)
+        lock (s_gate)
         {
-            if (_rec == null)
+            if (s_rec == null)
                 return;
-            _rec.LossOutcome = Outcome();
-            EmitWithObservation("combat_lost", new JsonObject { ["outcome"] = _rec.LossOutcome?.DeepClone() }, hidden: true);
+            s_rec.LossOutcome = Outcome();
+            EmitWithObservation("combat_lost", new JsonObject { ["outcome"] = s_rec.LossOutcome?.DeepClone() }, hidden: true);
         }
     }
 
@@ -624,7 +624,7 @@ internal static class CombatRecorder
     {
         Guard("game_event", () =>
         {
-            lock (Gate)
+            lock (s_gate)
             {
                 var replay = RecorderPatches.ReplayOf(writer);
                 // The writer returns early outside combat / when disabled: nothing was appended.
@@ -641,11 +641,11 @@ internal static class CombatRecorder
         // Tracking layer: a choice result settles its choice, recording or not.
         JsonObject? parent = ev.eventType == CombatReplayEventType.PlayerChoice
             ? SettleChoice(SlotOf(ev.playerId), ev.choiceId) : null;
-        if (!_active)
+        if (!s_active)
             return;
-        if (_rec == null)
+        if (s_rec == null)
             TryOpen("game_event");
-        if (_rec == null || !ReferenceEquals(_rec.Replay, replay))
+        if (s_rec == null || !ReferenceEquals(s_rec.Replay, replay))
             return;
         JournalEvent(replay, replay.events.Count - 1, action, backfilled: false, parent);
     }
@@ -653,7 +653,7 @@ internal static class CombatRecorder
     private static void JournalEvent(CombatReplay replay, int index, GameAction? action, bool backfilled,
         JsonObject? choiceParent = null)
     {
-        var rec = _rec!;
+        var rec = s_rec!;
         var ev = replay.events[index];
         byte[] packet = Packet(ev);
         rec.EventHashes.Add(Sha(packet));
@@ -753,7 +753,7 @@ internal static class CombatRecorder
     {
         uint? key = action.Id;
         if (key != null)
-            ActionKeys.AddOrUpdate(action, new StrongBox<uint>(key.Value));
+            s_actionKeys.AddOrUpdate(action, new StrongBox<uint>(key.Value));
         rec.JournaledActions.Add(action);
         // BeforeCancelled, not a patch on the small GameAction.Cancel (see RecorderPatches).
         action.BeforeCancelled += OnCancelled;
@@ -769,7 +769,7 @@ internal static class CombatRecorder
     /// </summary>
     private static JsonObject SettleChoice(int? slot, uint? choiceId)
     {
-        var t = _track;
+        var t = s_track;
         int s = slot ?? -1;
         var data = new JsonObject();
         if (choiceId is { } c)
@@ -805,18 +805,18 @@ internal static class CombatRecorder
     /// <summary>Postfix of the writer's RecordChecksum.</summary>
     internal static void OnChecksum(CombatReplayWriter writer, int countBefore)
     {
-        if (!_active)
+        if (!s_active)
             return;
         Guard("checksum", () =>
         {
-            lock (Gate)
+            lock (s_gate)
             {
                 var replay = RecorderPatches.ReplayOf(writer);
                 if (replay == null || countBefore < 0 || replay.checksumData.Count != countBefore + 1)
                     return;
-                if (_rec == null)
+                if (s_rec == null)
                     TryOpen("checksum");
-                if (_rec == null || !ReferenceEquals(_rec.Replay, replay))
+                if (s_rec == null || !ReferenceEquals(s_rec.Replay, replay))
                     return;
                 JournalChecksum(replay, replay.checksumData.Count - 1, backfilled: false);
             }
@@ -831,7 +831,7 @@ internal static class CombatRecorder
     /// </summary>
     private static void JournalChecksum(CombatReplay replay, int index, bool backfilled)
     {
-        var rec = _rec!;
+        var rec = s_rec!;
         var cs = replay.checksumData[index];
         rec.ChecksumKeys.Add(ChecksumKey(cs));
         var data = new JsonObject
@@ -862,13 +862,13 @@ internal static class CombatRecorder
     /// </summary>
     internal static void OnEnqueued(GameAction action)
     {
-        if (!_active)
+        if (!s_active)
             return;
         Guard("enqueued", () =>
         {
-            lock (Gate)
+            lock (s_gate)
             {
-                if (_rec == null || _rec.JournaledActions.Contains(action))
+                if (s_rec == null || s_rec.JournaledActions.Contains(action))
                     return;
                 var data = RecordObserve.DescribeAction(action, action.Id);
                 data["origin"] = OriginOf(action);
@@ -881,9 +881,9 @@ internal static class CombatRecorder
                 else if (cm.IsEnding)
                     phase = "ending";
                 data["phase"] = phase;
-                if (cm.IsInProgress && _rec.GameWriter?.IsEnabled == true)
+                if (cm.IsInProgress && s_rec.GameWriter?.IsEnabled == true)
                 {
-                    _rec.Faults.Add($"enqueue_unrecorded:{action.Id}");
+                    s_rec.Faults.Add($"enqueue_unrecorded:{action.Id}");
                     Emit("enqueue_unrecorded", data);
                 }
                 else
@@ -898,13 +898,13 @@ internal static class CombatRecorder
     {
         Guard("choice_reserved", () =>
         {
-            lock (Gate)
+            lock (s_gate)
             {
                 int slot = PlayerSlot(player) ?? -1;
-                if (!_track.OpenChoices.TryGetValue(slot, out var open))
-                    _track.OpenChoices[slot] = open = new SortedSet<uint>();
+                if (!s_track.OpenChoices.TryGetValue(slot, out var open))
+                    s_track.OpenChoices[slot] = open = new SortedSet<uint>();
                 open.Add(choiceId);
-                if (!_active || _rec == null)
+                if (!s_active || s_rec == null)
                     return;
                 var running = RunManager.Instance.ActionExecutor.CurrentlyRunningAction;
                 Emit("choice_reserved", new JsonObject
@@ -927,10 +927,10 @@ internal static class CombatRecorder
     {
         if (!Installed)
             return null;
-        lock (Gate)
+        lock (s_gate)
         {
             int slot = PlayerSlot(chooser) ?? -1;
-            return _track.OpenChoices.TryGetValue(slot, out var open) && open.Count > 0 ? open.Max : null;
+            return s_track.OpenChoices.TryGetValue(slot, out var open) && open.Count > 0 ? open.Max : null;
         }
     }
 
@@ -943,7 +943,7 @@ internal static class CombatRecorder
     {
         Guard("choice_begun", () =>
         {
-            lock (Gate)
+            lock (s_gate)
             {
                 GameAction? owner = context switch
                 {
@@ -958,9 +958,9 @@ internal static class CombatRecorder
                     if (owner != null)
                         foreach (var (k, v) in RecordObserve.DescribeAction(owner, KeyOf(owner)))
                             ownerJson[k] = v?.DeepClone();
-                    _track.ChoiceOwners[(slot, c)] = ownerJson;
+                    s_track.ChoiceOwners[(slot, c)] = ownerJson;
                 }
-                if (!_active || _rec == null)
+                if (!s_active || s_rec == null)
                     return;
                 Emit("choice_begun", new JsonObject
                 {
@@ -982,16 +982,16 @@ internal static class CombatRecorder
     {
         Guard("choice_paused", () =>
         {
-            lock (Gate)
+            lock (s_gate)
             {
-                if (idBefore is { } first && !ActionKeys.TryGetValue(action, out _))
-                    ActionKeys.AddOrUpdate(action, new StrongBox<uint>(first));
+                if (idBefore is { } first && !s_actionKeys.TryGetValue(action, out _))
+                    s_actionKeys.AddOrUpdate(action, new StrongBox<uint>(first));
                 if (action.State == GameActionState.GatheringPlayerChoice)
                 {
-                    _track.Paused = action;
-                    _track.PausedUnseen = false;
+                    s_track.Paused = action;
+                    s_track.PausedUnseen = false;
                 }
-                if (!_active || _rec == null)
+                if (!s_active || s_rec == null)
                     return;
                 var data = RecordObserve.DescribeAction(action, KeyOf(action));
                 data["action_id_before"] = idBefore;
@@ -1007,9 +1007,9 @@ internal static class CombatRecorder
     {
         Guard("action_resumed", () =>
         {
-            lock (Gate)
+            lock (s_gate)
             {
-                var t = _track;
+                var t = s_track;
                 var data = new JsonObject
                 {
                     ["old_action_id"] = oldId,
@@ -1043,7 +1043,7 @@ internal static class CombatRecorder
                     t.Paused = null;
                     t.PausedUnseen = false;
                 }
-                if (_active && _rec != null)
+                if (s_active && s_rec != null)
                     Emit("action_resumed", data);
             }
         });
@@ -1051,13 +1051,13 @@ internal static class CombatRecorder
 
     private static void OnCancelled(GameAction action)
     {
-        if (!_active)
+        if (!s_active)
             return;
         Guard("action_cancelled", () =>
         {
-            lock (Gate)
+            lock (s_gate)
             {
-                if (_rec == null)
+                if (s_rec == null)
                     return;
                 Emit("action_cancelled", RecordObserve.DescribeAction(action, KeyOf(action)));
             }
@@ -1071,13 +1071,13 @@ internal static class CombatRecorder
     /// </summary>
     internal static void OnActionFinished(GameAction action)
     {
-        if (!_active)
+        if (!s_active)
             return;
         Guard("action_finished", () =>
         {
-            lock (Gate)
+            lock (s_gate)
             {
-                if (_rec == null || action.State != GameActionState.Finished)
+                if (s_rec == null || action.State != GameActionState.Finished)
                     return;
                 var data = RecordObserve.DescribeAction(action, KeyOf(action));
                 bool boundary = action is not GenericHookGameAction && ActionQueueSet.IsGameActionPlayerDriven(action);
@@ -1089,18 +1089,18 @@ internal static class CombatRecorder
         });
     }
 
-    internal static void OnSentryCapture() => Interlocked.Increment(ref _sentryCaptures);
+    internal static void OnSentryCapture() => Interlocked.Increment(ref s_sentryCaptures);
 
     /// <summary>
     /// Prefix of DevConsole.ProcessCommand(string). In single player the command runs directly
     /// (ProcessCommandInternal), not as a ConsoleCmdGameAction, so nothing it does is in the game's
-    /// replay, and what it leaves behind need not be in the save either (see ConsoleInProcess).
+    /// replay, and what it leaves behind need not be in the save either (see s_consoleInProcess).
     /// </summary>
     internal static void OnConsoleCommand(string inputValue, Func<bool> goesThroughQueue)
     {
         Guard("console_command", () =>
         {
-            lock (Gate)
+            lock (s_gate)
             {
                 // Only a networked command in a multiplayer run with a local player is enqueued as a
                 // ConsoleCmdGameAction (DevConsole.ProcessCommand); everything else - single player,
@@ -1116,11 +1116,11 @@ internal static class CombatRecorder
                     ["in_combat"] = CombatManager.Instance.IsInProgress,
                 };
                 if (!viaQueue)
-                    ConsoleInProcess.Add(line.DeepClone());
-                if (!_active || _rec == null)
+                    s_consoleInProcess.Add(line.DeepClone());
+                if (!s_active || s_rec == null)
                     return;
                 if (!viaQueue)
-                    _rec.Faults.Add("console_command_outside_action_queue");
+                    s_rec.Faults.Add("console_command_outside_action_queue");
                 Emit("console_command", line);
             }
         });
@@ -1131,9 +1131,9 @@ internal static class CombatRecorder
     {
         Guard("track_room_entry", () =>
         {
-            lock (Gate)
+            lock (s_gate)
             {
-                _track = new RoomTracker { Replay = RecorderPatches.ReplayOf(writer) };
+                s_track = new RoomTracker { Replay = RecorderPatches.ReplayOf(writer) };
             }
         });
     }
@@ -1160,14 +1160,14 @@ internal static class CombatRecorder
                 t.PausedUnseen = true;
                 // Its first id was given out before tracking; the id it has now stands in.
                 if (paused.Id is { } idNow)
-                    ActionKeys.AddOrUpdate(paused, new StrongBox<uint>(idNow));
+                    s_actionKeys.AddOrUpdate(paused, new StrongBox<uint>(idNow));
             }
         });
-        _track = t;
+        s_track = t;
     }
 
-    internal static void OnCleanUpStart() => _inCleanup = true;
-    internal static void OnCleanUpEnd() => _inCleanup = false;
+    internal static void OnCleanUpStart() => s_inCleanup = true;
+    internal static void OnCleanUpEnd() => s_inCleanup = false;
 
     /// <summary>
     /// Prefix of CombatReplayWriter.WriteReplay. When the game is about to write (and stop) its
@@ -1175,28 +1175,28 @@ internal static class CombatRecorder
     /// </summary>
     internal static void OnWriteReplay(CombatReplayWriter writer, bool stopRecording)
     {
-        if (!_active || !stopRecording)
+        if (!s_active || !stopRecording)
             return;
         Guard("write_replay", () =>
         {
-            lock (Gate)
+            lock (s_gate)
             {
                 var replay = RecorderPatches.ReplayOf(writer);
-                if (_rec == null || replay == null || !ReferenceEquals(_rec.Replay, replay))
+                if (s_rec == null || replay == null || !ReferenceEquals(s_rec.Replay, replay))
                     return;
                 // Only two callers stop the replay: CombatManager.EndCombatInternal (won; the
                 // CombatWon / CombatEnded events fire after this) and RunManager.CleanUp (after a
                 // loss, or leaving mid-combat: save and quit, closing the window).
                 string reason;
-                if (!_inCleanup)
+                if (!s_inCleanup)
                     reason = "combat_won";
-                else if (_rec.LossOutcome != null)
+                else if (s_rec.LossOutcome != null)
                     reason = "combat_lost";
                 else
                     reason = "cleanup";
                 CloseRecord(reason, replay);
-                if (_inCleanup)
-                    Writer.Drain(1000); // the window may be closing (CleanUp(graceful: false))
+                if (s_inCleanup)
+                    s_writer.Drain(1000); // the window may be closing (CleanUp(graceful: false))
             }
         });
     }
@@ -1209,12 +1209,12 @@ internal static class CombatRecorder
     {
         try
         {
-            lock (Gate)
+            lock (s_gate)
             {
-                if (_rec != null)
+                if (s_rec != null)
                     CloseRecord("process_exit", null);
             }
-            Writer.Drain(2000);
+            s_writer.Drain(2000);
         }
         catch { /* the process is going away */ }
     }
@@ -1225,7 +1225,7 @@ internal static class CombatRecorder
 
     private static void TryOpen(string trigger)
     {
-        if (_rec != null)
+        if (s_rec != null)
             return;
         var run = RunManager.Instance.DebugOnlyGetState();
         if (run == null)
@@ -1233,7 +1233,7 @@ internal static class CombatRecorder
         var writer = RunManager.Instance.CombatReplayWriter;
         var replay = writer == null ? null : RecorderPatches.ReplayOf(writer);
 
-        var pending = _pending != null && replay != null && ReferenceEquals(_pending.Replay, replay) ? _pending : null;
+        var pending = s_pending != null && replay != null && ReferenceEquals(s_pending.Replay, replay) ? s_pending : null;
         int eventsBefore = replay?.events.Count ?? 0;
         int checksBefore = replay?.checksumData.Count ?? 0;
         var room = run.CurrentRoom;
@@ -1251,7 +1251,7 @@ internal static class CombatRecorder
             EmitOpenInitialState(replay, pending);
             BackfillExistingEvents(replay, eventsBefore, checksBefore);
         }
-        _pending = null;
+        s_pending = null;
     }
 
     /// <summary>What the record-open line reports, gathered while opening.</summary>
@@ -1303,15 +1303,15 @@ internal static class CombatRecorder
             Dir = dir,
             GameWriter = writer,
             Replay = replay,
-            OpenedMs = Clock.ElapsedMilliseconds,
+            OpenedMs = s_clock.ElapsedMilliseconds,
             GameEventsBeforeOpen = eventsBefore,
             ChecksumsBeforeOpen = checksBefore,
-            SentryAtOpen = _sentryCaptures,
-            FirstRequest = Interlocked.Read(ref _apiSeq) + 1,
+            SentryAtOpen = s_sentryCaptures,
+            FirstRequest = Interlocked.Read(ref s_apiSeq) + 1,
         };
-        _rec = record;
-        _recordsOpened++;
-        ReservedDirs.Add(dir);
+        s_rec = record;
+        s_recordsOpened++;
+        s_reservedDirs.Add(dir);
         return new OpenFacts
         {
             Record = record,
@@ -1327,9 +1327,9 @@ internal static class CombatRecorder
             EventsBefore = eventsBefore,
             ChecksBefore = checksBefore,
             Inputs = DescribeReplayInputs(),
-            RoomTracked = replay != null && ReferenceEquals(_track.Replay, replay),
+            RoomTracked = replay != null && ReferenceEquals(s_track.Replay, replay),
             ChoiceIdsAtOpen = RunManager.Instance.PlayerChoiceSynchronizer?.ChoiceIds,
-            PausedAtOpen = _track.Paused,
+            PausedAtOpen = s_track.Paused,
         };
     }
 
@@ -1357,23 +1357,23 @@ internal static class CombatRecorder
     /// </summary>
     private static string DescribeReplayInputs()
     {
-        if (ConsoleInProcess.Count > 0)
+        if (s_consoleInProcess.Count > 0)
             return "tainted";
-        return string.Equals(_installedAt, "startup", StringComparison.Ordinal) ? "complete" : "unknown";
+        return string.Equals(s_installedAt, "startup", StringComparison.Ordinal) ? "complete" : "unknown";
     }
 
     private static JsonObject BuildRecordOpenEvent(OpenFacts facts)
         => new()
         {
             ["schema"] = Schema,
-            ["record_id"] = _rec!.Id,
+            ["record_id"] = s_rec!.Id,
             ["trigger"] = facts.Trigger,
             ["attempt"] = facts.Attempt,
             ["session"] = new JsonObject
             {
-                ["id"] = SessionId,
+                ["id"] = s_sessionId,
                 ["pid"] = System.Environment.ProcessId,
-                ["started_utc"] = SessionStarted.ToString("O"),
+                ["started_utc"] = s_sessionStarted.ToString("O"),
             },
             ["mod"] = new JsonObject
             {
@@ -1386,7 +1386,7 @@ internal static class CombatRecorder
                 ["version"] = ReleaseInfoManager.Instance.ReleaseInfo?.Version,
                 ["commit"] = ReleaseInfoManager.Instance.ReleaseInfo?.Commit,
                 ["model_id_hash"] = ModelIdSerializationCache.Hash,
-                ["sts2_dll_sha256"] = _dllSha256,
+                ["sts2_dll_sha256"] = s_dllSha256,
             },
             ["profile_id"] = SafeProfileId(),
             ["run"] = facts.Pending?.Run.DeepClone() ?? RunInfo(facts.ActiveRun, null),
@@ -1410,13 +1410,13 @@ internal static class CombatRecorder
             // pause and request since). "inside_room": it started inside the room (installed by
             // set_recording): what came before is marked unseen where it matters.
             ["tracking"] = facts.RoomTracked ? "room_entry" : "inside_room",
-            ["recorder_installed"] = _installedAt,
+            ["recorder_installed"] = s_installedAt,
             ["choice_ids_at_open"] = facts.ChoiceIdsAtOpen == null ? null
                 : new JsonArray(facts.ChoiceIdsAtOpen.Select(c => (JsonNode)JsonValue.Create(c)).ToArray()),
             ["paused_at_open"] = facts.PausedAtOpen == null
                 ? null : RecordObserve.DescribeAction(facts.PausedAtOpen, KeyOf(facts.PausedAtOpen)),
             ["inputs_outside_replay"] = facts.Inputs,
-            ["console_in_process"] = ConsoleInProcess.Count > 0 ? ConsoleInProcess.DeepClone() : null,
+            ["console_in_process"] = s_consoleInProcess.Count > 0 ? s_consoleInProcess.DeepClone() : null,
         };
 
     /// <summary>
@@ -1446,7 +1446,7 @@ internal static class CombatRecorder
             JournalEvent(replay, i, null, backfilled: true);
         for (int i = 0; i < checksBefore; i++)
             JournalChecksum(replay, i, backfilled: true);
-        _rec!.Backfilled = eventsBefore + checksBefore;
+        s_rec!.Backfilled = eventsBefore + checksBefore;
     }
 
     [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1031:Do not catch general exception types",
@@ -1455,7 +1455,7 @@ internal static class CombatRecorder
         Justification = "The self_check block carries the exception type and message by design - that is what a reader of the record needs.")]
     private static void CloseRecord(string reason, CombatReplay? replay)
     {
-        var rec = _rec;
+        var rec = s_rec;
         if (rec == null)
             return;
 
@@ -1471,7 +1471,7 @@ internal static class CombatRecorder
                 byte[] mcr = Packet(replay.Anonymized());
                 selfCheck["replay_mcr_sha256"] = Sha(mcr);
                 selfCheck["replay_mcr_bytes"] = mcr.Length;
-                Writer.WriteRaw(Path.Combine(rec.Dir, "replay.mcr"), mcr);
+                s_writer.WriteRaw(Path.Combine(rec.Dir, "replay.mcr"), mcr);
             }
             catch (Exception ex)
             {
@@ -1494,13 +1494,13 @@ internal static class CombatRecorder
                 ["last_seq"] = rec.Seq,
             },
             ["self_check"] = selfCheck,
-            ["sentry_captures"] = _sentryCaptures - rec.SentryAtOpen,
+            ["sentry_captures"] = s_sentryCaptures - rec.SentryAtOpen,
             ["main_thread_us"] = Timing(rec.HookMicros),
             ["faults"] = new JsonArray(rec.Faults.Select(f => (JsonNode)JsonValue.Create(f)).ToArray()),
         });
-        Writer.CloseFile(rec.PublicPath);
-        Writer.CloseFile(rec.HiddenPath);
-        _rec = null;
+        s_writer.CloseFile(rec.PublicPath);
+        s_writer.CloseFile(rec.HiddenPath);
+        s_rec = null;
     }
 
     /// <summary>The journal against the game's own list at close, position by position.</summary>
@@ -1552,7 +1552,7 @@ internal static class CombatRecorder
             if (Directory.Exists(runDir))
                 foreach (var d in Directory.GetDirectories(runDir))
                     names.Add(Path.GetFileName(d));
-            foreach (var d in ReservedDirs.Where(d => string.Equals(Path.GetDirectoryName(d), runDir, StringComparison.Ordinal)))
+            foreach (var d in s_reservedDirs.Where(d => string.Equals(Path.GetDirectoryName(d), runDir, StringComparison.Ordinal)))
                 names.Add(Path.GetFileName(d));
             foreach (var n in names)
             {
@@ -1567,38 +1567,38 @@ internal static class CombatRecorder
     }
 
     // ========================================================================================
-    // Emit helpers (all called with Gate held)
+    // Emit helpers (all called with s_gate held)
     // ========================================================================================
 
     /// <param name="noAt">For entries copied after the fact (backfill): "at" would be the
     /// moment of copying, not of the entry, so it is left out.</param>
     private static long Emit(string kind, JsonObject? data, bool hidden = false, bool noAt = false)
     {
-        var rec = _rec;
+        var rec = s_rec;
         if (rec == null)
             return -1;
         var line = new JsonObject
         {
             ["seq"] = rec.Seq++,
             ["kind"] = kind,
-            ["t_ms"] = Clock.ElapsedMilliseconds - rec.OpenedMs,
+            ["t_ms"] = s_clock.ElapsedMilliseconds - rec.OpenedMs,
             ["at"] = noAt ? null : SafeAt(),
         };
         if (hidden)
             line["hidden"] = true;
         MoveInto(line, data);
-        Writer.AppendLine(rec.PublicPath, line);
+        s_writer.AppendLine(rec.PublicPath, line);
         return line["seq"]!.GetValue<long>();
     }
 
     private static void EmitHidden(long seq, string kind, JsonObject data)
     {
-        var rec = _rec;
+        var rec = s_rec;
         if (rec == null || seq < 0)
             return;
         var line = new JsonObject { ["seq"] = seq, ["kind"] = kind };
         MoveInto(line, data);
-        Writer.AppendLine(rec.HiddenPath, line);
+        s_writer.AppendLine(rec.HiddenPath, line);
     }
 
     private static void EmitWithObservation(string kind, JsonObject? data, bool hidden)
@@ -1616,12 +1616,12 @@ internal static class CombatRecorder
     /// <summary>For lines produced off the main thread (HTTP): no "at", no game reads.</summary>
     private static void EmitNoGameRead(string kind, JsonObject data)
     {
-        var rec = _rec;
+        var rec = s_rec;
         if (rec == null)
             return;
-        var line = new JsonObject { ["seq"] = rec.Seq++, ["kind"] = kind, ["t_ms"] = Clock.ElapsedMilliseconds - rec.OpenedMs };
+        var line = new JsonObject { ["seq"] = rec.Seq++, ["kind"] = kind, ["t_ms"] = s_clock.ElapsedMilliseconds - rec.OpenedMs };
         MoveInto(line, data);
-        Writer.AppendLine(rec.PublicPath, line);
+        s_writer.AppendLine(rec.PublicPath, line);
     }
 
     private static void MoveInto(JsonObject line, JsonObject? data)
@@ -1657,7 +1657,7 @@ internal static class CombatRecorder
         // Timing is collected whether or not the hook body worked, and is never worth a fault.
         TryRecordQuietDo(() =>
         {
-            var rec = _rec;
+            var rec = s_rec;
             if (rec != null && rec.HookMicros.Count < 200_000)
                 rec.HookMicros.Add(Stopwatch.GetElapsedTime(start).TotalMicroseconds);
         });
@@ -1671,19 +1671,19 @@ internal static class CombatRecorder
     {
         try
         {
-            lock (Gate)
+            lock (s_gate)
             {
-                Interlocked.Increment(ref _faultsTotal);
-                _lastFault = $"{where}: {ex.GetType().Name}: {ex.Message}";
-                var rec = _rec;
+                Interlocked.Increment(ref s_faultsTotal);
+                s_lastFault = $"{where}: {ex.GetType().Name}: {ex.Message}";
+                var rec = s_rec;
                 if (rec == null)
                     return;
                 rec.Faults.Add(where);
-                Writer.AppendLine(rec.PublicPath, new JsonObject
+                s_writer.AppendLine(rec.PublicPath, new JsonObject
                 {
                     ["seq"] = rec.Seq++,
                     ["kind"] = "recorder_fault",
-                    ["t_ms"] = Clock.ElapsedMilliseconds - rec.OpenedMs,
+                    ["t_ms"] = s_clock.ElapsedMilliseconds - rec.OpenedMs,
                     ["where"] = where,
                     ["exception"] = ex.GetType().Name,
                     ["message"] = ex.Message,
@@ -1896,10 +1896,10 @@ internal static class CombatRecorder
     }
 
     private static uint? KeyOf(GameAction action) =>
-        ActionKeys.TryGetValue(action, out var box) ? box.Value : action.Id;
+        s_actionKeys.TryGetValue(action, out var box) ? box.Value : action.Id;
 
     private static JsonArray PendingChoices(int? slot) =>
-        new((_track.OpenChoices.TryGetValue(slot ?? -1, out var open) ? open : new SortedSet<uint>())
+        new((s_track.OpenChoices.TryGetValue(slot ?? -1, out var open) ? open : new SortedSet<uint>())
             .Select(c => (JsonNode)JsonValue.Create(c)).ToArray());
 
     private static int? PlayerSlot(Player player)

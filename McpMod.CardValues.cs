@@ -13,35 +13,35 @@ public static partial class McpMod
     // A best-effort DTO catch cannot hide a failed unpowered card preview.
     private static T WithCardValues<T>(bool unpowered, Func<T> build)
     {
-        bool previous = UnpoweredValues;
-        var previousFailure = UnpoweredCardFailure;
-        UnpoweredValues = unpowered;
-        UnpoweredCardFailure = null;
+        bool previous = s_unpoweredValues;
+        var previousFailure = s_unpoweredCardFailure;
+        s_unpoweredValues = unpowered;
+        s_unpoweredCardFailure = null;
         try
         {
             var state = build();
-            if (UnpoweredCardFailure != null)
-                throw UnpoweredCardFailure;
+            if (s_unpoweredCardFailure != null)
+                throw s_unpoweredCardFailure;
             return state;
         }
         finally
         {
-            UnpoweredValues = previous;
-            UnpoweredCardFailure = previousFailure;
+            s_unpoweredValues = previous;
+            s_unpoweredCardFailure = previousFailure;
         }
     }
 
-    private static Exception? UnpoweredCardFailure;
+    private static Exception? s_unpoweredCardFailure;
 
     private static Exception RefuseUnpoweredCardValues(CardModel card, Exception error)
     {
-        UnpoweredCardFailure ??= new InvalidOperationException(
+        s_unpoweredCardFailure ??= new InvalidOperationException(
             $"Failed to render unpowered values for card {card.Id.Entry}: {error.Message}", error);
-        return UnpoweredCardFailure;
+        return s_unpoweredCardFailure;
     }
 
     // Card descriptions arrive multi-line; the JSON export keeps them on one line.
-    private const char NEWLINE = '\n';
+    private const char NewLine = '\n';
 
     // Whether the current state build renders card and intent numbers WITHOUT the
     // player's standing powers and relics applied. Set for the duration of one
@@ -50,11 +50,11 @@ public static partial class McpMod
     //
     // A plain static is safe: every build runs inside RunOnMainThread, so
     // concurrent HTTP requests serialize onto the one Godot main thread.
-    private static bool UnpoweredValues;
+    private static bool s_unpoweredValues;
 
     private static string? SafeGetCardDescription(CardModel card, PileType pile = PileType.Hand)
     {
-        if (UnpoweredValues)
+        if (s_unpoweredValues)
         {
             try
             {
@@ -66,11 +66,11 @@ public static partial class McpMod
         // A rendered description that cannot be produced falls back to the model's own text.
         return TryRead("card.description",
                    () => CleanCardDescription(card.GetDescriptionForPile(pile)))
-               ?? SafeGetText(() => card.Description)?.Replace(NEWLINE, ' ');
+               ?? SafeGetText(() => card.Description)?.Replace(NewLine, ' ');
     }
 
     private static string CleanCardDescription(string description)
-        => StripRichTextTags(description).Replace(NEWLINE, ' ');
+        => StripRichTextTags(description).Replace(NewLine, ' ');
 
     /// <summary>
     /// Renders a card's DynamicVars at base + enchantment for the lifetime of the

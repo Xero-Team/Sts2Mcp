@@ -21,7 +21,7 @@ public static partial class McpMod
         public int InFlight;
     }
 
-    private static readonly ConditionalWeakTable<object, CrystalSphereTrace> CrystalSphereTraces = new();
+    private static readonly ConditionalWeakTable<object, CrystalSphereTrace> s_crystalSphereTraces = new();
 
     private const string CrystalSphereMinigameType =
         "MegaCrit.Sts2.Core.Events.Custom.CrystalSphereEvent.CrystalSphereMinigame";
@@ -53,7 +53,7 @@ public static partial class McpMod
         {
             TryDo(() =>
             {
-                var trace = CrystalSphereTraces.GetOrCreateValue(__instance);
+                var trace = s_crystalSphereTraces.GetOrCreateValue(__instance);
                 trace.RngAtStart = RngCoords(rng);
             });
             // Diagnostics must never be able to break the event.
@@ -93,7 +93,7 @@ public static partial class McpMod
             // no state, which is the same as an untraced click.
             __state = TryReadQuiet<CrystalSphereTrace?>(() =>
             {
-                if (!CrystalSphereTraces.TryGetValue(__instance, out var trace))
+                if (!s_crystalSphereTraces.TryGetValue(__instance, out var trace))
                     return null;
                 var tool = GetInstanceMemberValue(__instance, "CrystalSphereTool")?.ToString();
                 trace.Clicks.Add(new Dictionary<string, object?>(StringComparer.Ordinal)
@@ -144,15 +144,15 @@ public static partial class McpMod
 
     private static Dictionary<string, object?>? BuildCrystalSphereTraceCore(NCrystalSphereScreen screen)
     {
-        _crystalSphereEntityField ??= typeof(NCrystalSphereScreen)
+        s_crystalSphereEntityField ??= typeof(NCrystalSphereScreen)
             .GetField("_entity", BindingFlags.NonPublic | BindingFlags.Instance);
-        var minigame = _crystalSphereEntityField?.GetValue(screen);
+        var minigame = s_crystalSphereEntityField?.GetValue(screen);
         if (minigame == null)
             return null;
         var divinations = GetInstanceMemberValue(minigame, "DivinationCount");
         if (divinations == null)
             return null;
-        var traced = CrystalSphereTraces.TryGetValue(minigame, out var trace) && trace.RngAtStart != null;
+        var traced = s_crystalSphereTraces.TryGetValue(minigame, out var trace) && trace.RngAtStart != null;
         return new Dictionary<string, object?>(StringComparer.Ordinal)
         {
             ["rng_at_start"] = traced ? trace!.RngAtStart : null,

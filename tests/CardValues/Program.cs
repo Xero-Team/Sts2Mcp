@@ -179,7 +179,7 @@ namespace STS2_MCP
     {
         public static T TestBuild<T>(bool unpowered, Func<T> build) => WithCardValues(unpowered, build);
         public static string? TestDescription(CardModel card) => SafeGetCardDescription(card);
-        public static bool TestValueMode => UnpoweredValues;
+        public static bool TestValueMode => s_unpoweredValues;
         private static string? SafeGetText(Func<object?> get) => get()?.ToString();
         private static void Warn(string context, Exception ex) { }
         internal static string StripRichTextTags(string text) => text;

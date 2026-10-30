@@ -29,12 +29,12 @@ public static partial class McpMod
         bool OriginUpgraded,
         string Effect);
 
-    private static ActiveCardSelection? _activeCardSelection;
-    private static long _nextCardSelectionId;
+    private static ActiveCardSelection? s_activeCardSelection;
+    private static long s_nextCardSelectionId;
 
     private static void AddCardSelectionContext(Dictionary<string, object?> state)
     {
-        var selection = Volatile.Read(ref _activeCardSelection);
+        var selection = Volatile.Read(ref s_activeCardSelection);
         if (selection == null)
             return;
 
@@ -170,7 +170,7 @@ public static partial class McpMod
             string methodName = __originalMethod.Name;
             string? originType = callerType?.Name;
             var context = new ActiveCardSelection(
-                Interlocked.Increment(ref _nextCardSelectionId),
+                Interlocked.Increment(ref s_nextCardSelectionId),
                 methodName,
                 SelectionSurface(methodName),
                 pile?.Type.ToString().ToLowerInvariant(),
@@ -185,7 +185,7 @@ public static partial class McpMod
                 // cold-seeded search cannot tell which from the prompt alone.
                 source is CardModel sourceCard && sourceCard.IsUpgraded,
                 SelectionEffect(methodName, originType));
-            Volatile.Write(ref _activeCardSelection, context);
+            Volatile.Write(ref s_activeCardSelection, context);
         }
     }
 }

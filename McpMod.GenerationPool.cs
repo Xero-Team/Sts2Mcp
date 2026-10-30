@@ -37,7 +37,7 @@ public static partial class McpMod
             result["multiplayer_constraint"] = run.CardMultiplayerConstraint.ToString();
             result["game_assembly_sha256"] = GenerationAssemblySha256.Value;
             if (run.Players.Count < 1 || !run.Players.Contains(player))
-                throw new InvalidOperationException("対象playerがrun.Playersに存在しない");
+                throw new InvalidOperationException("\u5BFE\u8C61player\u304Crun.Players\u306B\u5B58\u5728\u3057\u306A\u3044");
 
             var unlocked = player.Character.CardPool.GetUnlockedCards(player.UnlockState, run.CardMultiplayerConstraint);
             // privateなFilterForPlayerCountと同じ条件（sts2-9cb4f1ad）。

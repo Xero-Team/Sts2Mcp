@@ -15,9 +15,9 @@ namespace STS2_MCP;
 
 public static partial class McpMod
 {
-    private static readonly object _runHistoryMembersLock = new();
-    private static Type? _runHistoryMembersType;
-    private static MemberInfo[]? _runHistoryMembers;
+    private static readonly object s_runHistoryMembersLock = new();
+    private static Type? s_runHistoryMembersType;
+    private static MemberInfo[]? s_runHistoryMembers;
 
     private static void HandleGetCompendium(HttpListenerRequest request, HttpListenerResponse response)
     {
@@ -189,18 +189,18 @@ public static partial class McpMod
 
     private static MemberInfo[] GetRunHistoryMembers(Type progressType)
     {
-        lock (_runHistoryMembersLock)
+        lock (s_runHistoryMembersLock)
         {
-            if (_runHistoryMembersType == progressType && _runHistoryMembers != null)
-                return _runHistoryMembers;
+            if (s_runHistoryMembersType == progressType && s_runHistoryMembers != null)
+                return s_runHistoryMembers;
 
-            _runHistoryMembersType = progressType;
-            _runHistoryMembers = progressType
+            s_runHistoryMembersType = progressType;
+            s_runHistoryMembers = progressType
                 .GetMembers(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)
                 .Where(member => member.Name.Contains("RunHistory", StringComparison.OrdinalIgnoreCase)
                     || member.Name.Contains("RunHistories", StringComparison.OrdinalIgnoreCase))
                 .ToArray();
-            return _runHistoryMembers;
+            return s_runHistoryMembers;
         }
     }
 
@@ -589,7 +589,7 @@ public static partial class McpMod
         });
     }
 
-    private static MethodInfo? _progressPathForProfile;
+    private static MethodInfo? s_progressPathForProfile;
 
     /// <summary>
     /// `ProgressSaveManager.GetProgressPathForProfile`, called across game
@@ -603,7 +603,7 @@ public static partial class McpMod
     {
         return TryRead(() =>
         {
-            var method = _progressPathForProfile ??= typeof(ProgressSaveManager).GetMethod(
+            var method = s_progressPathForProfile ??= typeof(ProgressSaveManager).GetMethod(
                 "GetProgressPathForProfile",
                 BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
             if (method == null)

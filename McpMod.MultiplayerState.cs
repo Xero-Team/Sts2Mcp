@@ -523,13 +523,13 @@ public static partial class McpMod
     }
 
     // CombatHistoryEntry.RoundNumber is private; read it via cached reflection.
-    private static readonly PropertyInfo? _historyRoundProp =
+    private static readonly PropertyInfo? s_historyRoundProp =
         typeof(CombatHistoryEntry).GetProperty("RoundNumber",
             BindingFlags.NonPublic | BindingFlags.Instance);
 
     private static int GetEntryRound(CombatHistoryEntry entry)
     {
-        return TryRead<int?>(() => _historyRoundProp?.GetValue(entry) is int r ? r : 0) ?? 0;
+        return TryRead<int?>(() => s_historyRoundProp?.GetValue(entry) is int r ? r : 0) ?? 0;
     }
 
     // CombatHistoryEntry._playerTurnNumbers is private; read it via cached
@@ -538,7 +538,7 @@ public static partial class McpMod
     // the turn before it, so a consumer grouping rows into turns would merge the
     // two. PlayerCombatState.TurnNumber counts extra turns, and this dictionary
     // is the snapshot of it taken when the entry was logged.
-    private static readonly FieldInfo? _historyTurnNumbersField =
+    private static readonly FieldInfo? s_historyTurnNumbersField =
         typeof(CombatHistoryEntry).GetField("_playerTurnNumbers",
             BindingFlags.NonPublic | BindingFlags.Instance);
 
@@ -550,7 +550,7 @@ public static partial class McpMod
         // A changed field layout only costs the turn number: the row still carries the
         // round and the card id.
         return TryReadQuiet<int?>(() =>
-            _historyTurnNumbersField?.GetValue(entry) is Dictionary<ulong, int> turns
+            s_historyTurnNumbersField?.GetValue(entry) is Dictionary<ulong, int> turns
             && turns.TryGetValue(owner.NetId, out var turn)
                 ? turn
                 : null);

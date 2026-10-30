@@ -613,7 +613,7 @@ public static partial class McpMod
                 // NMerchantRoom.Inventory (UI node) can be null before the scene is fully ready;
                 // OpenInventory() itself accesses Inventory.IsOpen, so guard against null.
                 var merchUI = NMerchantRoom.Instance;
-                if (!_passiveRead && merchUI?.Inventory != null && !merchUI.Inventory.IsOpen)
+                if (!s_passiveRead && merchUI?.Inventory != null && !merchUI.Inventory.IsOpen)
                 {
                     merchUI.OpenInventory();
                 }
@@ -1094,7 +1094,7 @@ public static partial class McpMod
 
         // A submitted reward choice is resolving until the public completion signal or the
         // next OptionSelected wait. Merely displaying a choice is still an input boundary.
-        if (stateType is "rewards" or "card_reward" && _rewardSession.Entries.Any(e => e.Resolving))
+        if (stateType is "rewards" or "card_reward" && s_rewardSession.Entries.Any(e => e.Resolving))
             reasons.Add("reward_selection_resolving");
 
         result["is_resolving"] = reasons.Count > 0;
@@ -1126,8 +1126,8 @@ public static partial class McpMod
                 var eraName = epoch.Id;
                 var state = epoch.State.ToString();
                 // Clean up ID to readable name.
-                var name = System.Text.RegularExpressions.Regex.Replace(eraName, @"\d+$", "", System.Text.RegularExpressions.RegexOptions.None, RegexTimeout);
-                name = System.Text.RegularExpressions.Regex.Replace(name, @"(?<=[a-z])(?=[A-Z])", " ", System.Text.RegularExpressions.RegexOptions.None, RegexTimeout);
+                var name = System.Text.RegularExpressions.Regex.Replace(eraName, @"\d+$", "", System.Text.RegularExpressions.RegexOptions.None, s_regexTimeout);
+                name = System.Text.RegularExpressions.Regex.Replace(name, @"(?<=[a-z])(?=[A-Z])", " ", System.Text.RegularExpressions.RegexOptions.None, s_regexTimeout);
 
                 switch (epoch.State)
                 {
@@ -1391,7 +1391,7 @@ public static partial class McpMod
         }
 
         name = System.Text.RegularExpressions.Regex
-            .Replace(name, "(?<=[a-z0-9])(?=[A-Z])", "_", System.Text.RegularExpressions.RegexOptions.None, RegexTimeout)
+            .Replace(name, "(?<=[a-z0-9])(?=[A-Z])", "_", System.Text.RegularExpressions.RegexOptions.None, s_regexTimeout)
             .ToLowerInvariant();
         return name.Length > 0 ? name : "submenu";
     }
@@ -2302,22 +2302,22 @@ public static partial class McpMod
         }) ?? false;
     }
 
-    private static readonly FieldInfo NextCreatureIdField = typeof(CombatState)
+    private static readonly FieldInfo s_nextCreatureIdField = typeof(CombatState)
         .GetField("_nextCreatureId", BindingFlags.Instance | BindingFlags.NonPublic)
         ?? throw new MissingFieldException(typeof(CombatState).FullName, "_nextCreatureId");
 
     private static uint NextCreatureId(object combatState) =>
-        NextCreatureIdField.GetValue(combatState) is uint value
+        s_nextCreatureIdField.GetValue(combatState) is uint value
             ? value
             : throw new InvalidOperationException("CombatState next creature identity is unavailable");
 
-    private static readonly FieldInfo OwnerEffectDepthField = typeof(CombatManager)
+    private static readonly FieldInfo s_ownerEffectDepthField = typeof(CombatManager)
         .GetField("_cardOrPotionEffectDepth", BindingFlags.Instance | BindingFlags.NonPublic)
         ?? throw new MissingFieldException(typeof(CombatManager).FullName, "_cardOrPotionEffectDepth");
 
     private static int OwnerEffectDepth(Player player)
     {
-        var depths = OwnerEffectDepthField.GetValue(CombatManager.Instance) as Dictionary<Player, int>
+        var depths = s_ownerEffectDepthField.GetValue(CombatManager.Instance) as Dictionary<Player, int>
             ?? throw new InvalidOperationException("CombatManager owner effect depths are unavailable");
         var depth = depths.TryGetValue(player, out var value) ? value : 0;
         if (depth < 0) throw new InvalidOperationException("CombatManager owner effect depth is negative");
@@ -2610,8 +2610,8 @@ public static partial class McpMod
     // Cached reflection handles for ActModel._rooms and the RoomSet fields.
     // RoomSet's lists are protected, but they are the only place the act's room
     // ORDER lives, and re-deriving it would mean replaying GenerateRooms.
-    private static FieldInfo? _actRoomsField;
-    private static readonly Dictionary<string, FieldInfo?> _roomSetFields = new(StringComparer.Ordinal);
+    private static FieldInfo? s_actRoomsField;
+    private static readonly Dictionary<string, FieldInfo?> s_roomSetFields = new(StringComparer.Ordinal);
 
     /// <summary>The act's pre-rolled encounter and event queues plus their
     /// consumed counters, or null when the run has not finished act setup.</summary>
@@ -2630,9 +2630,9 @@ public static partial class McpMod
     private static Dictionary<string, object?>? BuildActStateCore(RunState runState)
     {
         var act = runState.Act;
-        _actRoomsField ??= typeof(ActModel).GetField(
+        s_actRoomsField ??= typeof(ActModel).GetField(
             "_rooms", BindingFlags.Instance | BindingFlags.NonPublic);
-        var rooms = _actRoomsField?.GetValue(act);
+        var rooms = s_actRoomsField?.GetValue(act);
         if (rooms == null)
             return null;
 
@@ -2661,11 +2661,11 @@ public static partial class McpMod
     /// </summary>
     private static FieldInfo? RoomSetField(object rooms, string field)
     {
-        if (!_roomSetFields.TryGetValue(field, out var info))
+        if (!s_roomSetFields.TryGetValue(field, out var info))
         {
             info = rooms.GetType().GetField(
                 field, BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public);
-            _roomSetFields[field] = info;
+            s_roomSetFields[field] = info;
         }
         return info;
     }
@@ -2796,23 +2796,23 @@ public static partial class McpMod
 
     private sealed class CardObjectIdentity
     {
-        public readonly long Value = System.Threading.Interlocked.Increment(ref _nextCardObjectIdentity);
+        public readonly long Value = System.Threading.Interlocked.Increment(ref s_nextCardObjectIdentity);
     }
 
-    private static long _nextCardObjectIdentity;
-    private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<CardModel, CardObjectIdentity> CardObjectIdentities = new();
+    private static long s_nextCardObjectIdentity;
+    private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<CardModel, CardObjectIdentity> s_cardObjectIdentities = new();
 
-    private static long GetCardObjectIdentity(CardModel card) => CardObjectIdentities.GetValue(card, _ => new CardObjectIdentity()).Value;
+    private static long GetCardObjectIdentity(CardModel card) => s_cardObjectIdentities.GetValue(card, _ => new CardObjectIdentity()).Value;
 
     private sealed class CardPlayIdentity
     {
-        public readonly long Value = System.Threading.Interlocked.Increment(ref _nextCardPlayIdentity);
+        public readonly long Value = System.Threading.Interlocked.Increment(ref s_nextCardPlayIdentity);
     }
 
-    private static long _nextCardPlayIdentity;
-    private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<CardPlay, CardPlayIdentity> CardPlayIdentities = new();
+    private static long s_nextCardPlayIdentity;
+    private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<CardPlay, CardPlayIdentity> s_cardPlayIdentities = new();
 
-    private static long GetCardPlayIdentity(CardPlay play) => CardPlayIdentities.GetValue(play, _ => new CardPlayIdentity()).Value;
+    private static long GetCardPlayIdentity(CardPlay play) => s_cardPlayIdentities.GetValue(play, _ => new CardPlayIdentity()).Value;
 
     private static List<long?> BuildOwnerBlockGains(Player player)
     {
@@ -3050,14 +3050,14 @@ public static partial class McpMod
 
     // Cost display alone loses ordering, intrinsic upgrades, and independent
     // expiration flags. Reflection is required because this source list is private.
-    private static readonly FieldInfo EnergyLocalModifiersField =
+    private static readonly FieldInfo s_energyLocalModifiersField =
         typeof(CardEnergyCost).GetField("_localModifiers", BindingFlags.Instance | BindingFlags.NonPublic)
         ?? throw new MissingFieldException(typeof(CardEnergyCost).FullName, "_localModifiers");
 
     private static Dictionary<string, object?> BuildEnergyCostState(CardModel card)
     {
         var energy = card.EnergyCost;
-        if (EnergyLocalModifiersField.GetValue(energy) is not List<LocalCostModifier> modifiers)
+        if (s_energyLocalModifiersField.GetValue(energy) is not List<LocalCostModifier> modifiers)
             throw new InvalidOperationException("CardEnergyCost._localModifiers has an unsupported shape.");
         return new Dictionary<string, object?>(StringComparer.Ordinal)
         {
@@ -3075,13 +3075,13 @@ public static partial class McpMod
         };
     }
 
-    private static readonly FieldInfo StarCostModifiersField =
+    private static readonly FieldInfo s_starCostModifiersField =
         typeof(CardModel).GetField("_temporaryStarCosts", BindingFlags.Instance | BindingFlags.NonPublic)
         ?? throw new MissingFieldException(typeof(CardModel).FullName, "_temporaryStarCosts");
 
     private static Dictionary<string, object?> BuildStarCostState(CardModel card)
     {
-        if (StarCostModifiersField.GetValue(card) is not List<TemporaryCardCost> modifiers)
+        if (s_starCostModifiersField.GetValue(card) is not List<TemporaryCardCost> modifiers)
             throw new InvalidOperationException("CardModel._temporaryStarCosts has an unsupported shape.");
         return new Dictionary<string, object?>(StringComparer.Ordinal)
         {
@@ -3105,7 +3105,7 @@ public static partial class McpMod
         return null;
     }
 
-    private static readonly FieldInfo GlassOrbPassiveValueField = typeof(GlassOrb)
+    private static readonly FieldInfo s_glassOrbPassiveValueField = typeof(GlassOrb)
         .GetField("_passiveVal", BindingFlags.Instance | BindingFlags.NonPublic)
         ?? throw new MissingFieldException(typeof(GlassOrb).FullName, "_passiveVal");
 
@@ -3146,7 +3146,7 @@ public static partial class McpMod
             {
                 // Focus clamps PassiveVal at zero, so its preview cannot
                 // recover the orb's stored value when Focus later changes.
-                info["base_passive_val"] = GlassOrbPassiveValueField.GetValue(orb) is decimal value
+                info["base_passive_val"] = s_glassOrbPassiveValueField.GetValue(orb) is decimal value
                     ? value
                     : throw new InvalidOperationException("GlassOrb stored passive value is unavailable");
             }
@@ -3232,7 +3232,7 @@ public static partial class McpMod
         // Only present, and only false, when this build stripped the game's power
         // and relic baking out of the numbers above. A powered payload omits the key
         // entirely, which is the shape every existing consumer already assumes.
-        if (UnpoweredValues)
+        if (s_unpoweredValues)
             info["text_baked"] = false;
         var damageVar = BuildDamageVarState(card);
         if (damageVar != null)
@@ -3269,7 +3269,7 @@ public static partial class McpMod
     {
         if (card.Enchantment == null) return null;
         // Match description rendering, including the enchantment's own DynamicVars.
-        using UnpoweredCardVars? scope = UnpoweredValues ? UnpoweredCardVars.Apply(card) : null;
+        using UnpoweredCardVars? scope = s_unpoweredValues ? UnpoweredCardVars.Apply(card) : null;
         var text = card.Enchantment.DynamicExtraCardText?.GetFormattedText();
         return new Dictionary<string, object?>(StringComparer.Ordinal)
         {
@@ -3326,17 +3326,17 @@ public static partial class McpMod
         return state;
     }
 
-    private static readonly FieldInfo SingleTurnRetainField =
+    private static readonly FieldInfo s_singleTurnRetainField =
         typeof(CardModel).GetField("_hasSingleTurnRetain", BindingFlags.Instance | BindingFlags.NonPublic)
         ?? throw new MissingFieldException(typeof(CardModel).FullName, "_hasSingleTurnRetain");
 
-    private static readonly FieldInfo SingleTurnSlyField =
+    private static readonly FieldInfo s_singleTurnSlyField =
         typeof(CardModel).GetField("_hasSingleTurnSly", BindingFlags.Instance | BindingFlags.NonPublic)
         ?? throw new MissingFieldException(typeof(CardModel).FullName, "_hasSingleTurnSly");
 
     private static bool GetSingleTurnSly(CardModel card)
     {
-        if (SingleTurnSlyField.GetValue(card) is not bool temporarySly)
+        if (s_singleTurnSlyField.GetValue(card) is not bool temporarySly)
             throw new InvalidOperationException("CardModel._hasSingleTurnSly has an unsupported shape.");
         return temporarySly;
     }
@@ -3345,7 +3345,7 @@ public static partial class McpMod
     {
         // A positive predicate cannot reveal which part survives cleanup.
         // Missing or unsupported private state must refuse publication.
-        if (SingleTurnRetainField.GetValue(card) is not bool temporaryRetain)
+        if (s_singleTurnRetainField.GetValue(card) is not bool temporaryRetain)
             throw new InvalidOperationException("CardModel._hasSingleTurnRetain has an unsupported shape.");
         return temporaryRetain;
     }
@@ -3638,9 +3638,9 @@ public static partial class McpMod
     //
     // Ids are now assigned once per creature, on first sight, and keyed by the stable
     // CombatId. A creature keeps its id for the whole fight, even after its neighbours die.
-    private static readonly Dictionary<uint, string> _entityIdByCombatId = new();
-    private static readonly Dictionary<string, int> _entityIdNextIndex = new(StringComparer.Ordinal);
-    private static ICombatState? _entityIdCombatToken;
+    private static readonly Dictionary<uint, string> s_entityIdByCombatId = new();
+    private static readonly Dictionary<string, int> s_entityIdNextIndex = new(StringComparer.Ordinal);
+    private static ICombatState? s_entityIdCombatToken;
 
     // card uid registry
     //
@@ -3651,9 +3651,9 @@ public static partial class McpMod
     //
     // Each card instance gets a uid on first sight that stays with it for the whole
     // combat, wherever it moves between hand, draw, discard and exhaust.
-    private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<CardModel, string> _cardUids = new();
-    private static readonly Dictionary<string, int> _cardUidNextIndex = new(StringComparer.Ordinal);
-    private static object? _cardUidCombatToken;
+    private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<CardModel, string> s_cardUids = new();
+    private static readonly Dictionary<string, int> s_cardUidNextIndex = new(StringComparer.Ordinal);
+    private static object? s_cardUidCombatToken;
 
     /// <summary>
     /// Returns this card instance's uid, assigning one on first sight.
@@ -3661,28 +3661,28 @@ public static partial class McpMod
     /// </summary>
     internal static string GetStableCardUid(CardModel card)
     {
-        if (_cardUids.TryGetValue(card, out var existing))
+        if (s_cardUids.TryGetValue(card, out var existing))
             return existing;
 
         string baseId = SafeGetText(() => card.Id.Entry) ?? "unknown";
-        if (!_cardUidNextIndex.TryGetValue(baseId, out int next))
+        if (!s_cardUidNextIndex.TryGetValue(baseId, out int next))
             next = 0;
-        _cardUidNextIndex[baseId] = next + 1;
+        s_cardUidNextIndex[baseId] = next + 1;
 
         string uid = $"{baseId}#{next}";
-        _cardUids.Add(card, uid);
+        s_cardUids.Add(card, uid);
         return uid;
     }
 
     /// <summary>Clears card uids when a new combat starts.</summary>
     internal static void RefreshCardUidRegistry(ICombatState combatState)
     {
-        if (ReferenceEquals(_cardUidCombatToken, combatState))
+        if (ReferenceEquals(s_cardUidCombatToken, combatState))
             return;
 
-        _cardUidCombatToken = combatState;
-        _cardUids.Clear();
-        _cardUidNextIndex.Clear();
+        s_cardUidCombatToken = combatState;
+        s_cardUids.Clear();
+        s_cardUidNextIndex.Clear();
     }
 
     /// <summary>
@@ -3691,11 +3691,11 @@ public static partial class McpMod
     /// </summary>
     internal static void RefreshEntityIdRegistry(ICombatState combatState)
     {
-        if (!ReferenceEquals(_entityIdCombatToken, combatState))
+        if (!ReferenceEquals(s_entityIdCombatToken, combatState))
         {
-            _entityIdCombatToken = combatState;
-            _entityIdByCombatId.Clear();
-            _entityIdNextIndex.Clear();
+            s_entityIdCombatToken = combatState;
+            s_entityIdByCombatId.Clear();
+            s_entityIdNextIndex.Clear();
         }
 
         foreach (var creature in combatState.Enemies)
@@ -3715,15 +3715,15 @@ public static partial class McpMod
         if (combatId == null)
             return $"{baseId}_0";
 
-        if (_entityIdByCombatId.TryGetValue(combatId.Value, out var existing))
+        if (s_entityIdByCombatId.TryGetValue(combatId.Value, out var existing))
             return existing;
 
-        if (!_entityIdNextIndex.TryGetValue(baseId, out int next))
+        if (!s_entityIdNextIndex.TryGetValue(baseId, out int next))
             next = 0;
-        _entityIdNextIndex[baseId] = next + 1;
+        s_entityIdNextIndex[baseId] = next + 1;
 
         string entityId = $"{baseId}_{next}";
-        _entityIdByCombatId[combatId.Value] = entityId;
+        s_entityIdByCombatId[combatId.Value] = entityId;
         return entityId;
     }
 
@@ -4076,11 +4076,11 @@ public static partial class McpMod
     /// </summary>
     private static int? TurnsUntilRevive(Creature creature)
     {
-        const int maxLookahead = 4;
+        const int MaxLookahead = 4;
         return TryRead<int?>("enemy.revive.in_turns", () =>
         {
             MonsterState? state = creature.Monster?.NextMove;
-            for (int turns = 1; turns <= maxLookahead; turns++)
+            for (int turns = 1; turns <= MaxLookahead; turns++)
             {
                 if (state is not MoveState move)
                     return null;
@@ -4109,7 +4109,7 @@ public static partial class McpMod
         return null;
     }
 
-    private static readonly Dictionary<Type, PropertyInfo[]> _monsterStatProps = new();
+    private static readonly Dictionary<Type, PropertyInfo[]> s_monsterStatProps = new();
 
     private static Dictionary<string, object?>? BuildMonsterStats(MonsterModel monster)
     {
@@ -4118,7 +4118,7 @@ public static partial class McpMod
         return TryReadQuiet<Dictionary<string, object?>?>(() =>
         {
             var t = monster.GetType();
-            if (!_monsterStatProps.TryGetValue(t, out var props))
+            if (!s_monsterStatProps.TryGetValue(t, out var props))
             {
                 // NonPublic too: move-stat getters (SeaKickDamage, BubbleBlock,
                 // ...) are typically protected — only the move definitions
@@ -4128,7 +4128,7 @@ public static partial class McpMod
                     .Where(p => p.PropertyType == typeof(int) && p.CanRead
                                 && p.GetIndexParameters().Length == 0)
                     .ToArray();
-                _monsterStatProps[t] = props;
+                s_monsterStatProps[t] = props;
             }
             if (props.Length == 0)
                 return null;
@@ -4146,7 +4146,7 @@ public static partial class McpMod
 
     // AbstractIntent.IntentLabelFormat is protected, so reach it once by reflection
     // and cache it. There is no public unpowered label renderer to call instead.
-    private static readonly PropertyInfo? _intentLabelFormat =
+    private static readonly PropertyInfo? s_intentLabelFormat =
         typeof(AbstractIntent).GetProperty(
             "IntentLabelFormat",
             BindingFlags.Instance
@@ -4165,9 +4165,9 @@ public static partial class McpMod
         return TryRead(() =>
         {
             var calc = attack.DamageCalc;
-            if (calc == null || _intentLabelFormat == null)
+            if (calc == null || s_intentLabelFormat == null)
                 return null;
-            if (_intentLabelFormat.GetValue(attack) is not LocString format)
+            if (s_intentLabelFormat.GetValue(attack) is not LocString format)
                 return null;
 
             format.Add("Damage", Math.Max(0, (int)calc()));
@@ -4238,7 +4238,7 @@ public static partial class McpMod
             // Vulnerable and the Back Attack x1.5. In unpowered mode rebuild the
             // label from the raw DamageCalc instead. Nothing else bakes: the
             // Defend/Debuff/Buff labels carry no numbers at all.
-            string? label = UnpoweredValues && intent is AttackIntent attack
+            string? label = s_unpoweredValues && intent is AttackIntent attack
                 ? UnpoweredAttackLabel(attack)
                 : null;
             if (label != null)
@@ -4526,7 +4526,7 @@ public static partial class McpMod
         if (inventoryUI == null || inventoryUI.IsOpen)
             return;
         var merchantButton = fakeMerchantNode.MerchantButton;
-        if (!_passiveRead && merchantButton != null && merchantButton.Visible && merchantButton.IsEnabled)
+        if (!s_passiveRead && merchantButton != null && merchantButton.Visible && merchantButton.IsEnabled)
             merchantButton.ForceClick();
     }
 
@@ -4652,7 +4652,7 @@ public static partial class McpMod
     /// normally nudge the UI while being read (merchant inventory, fake merchant, treasure chest)
     /// leave it alone. Only touched on the main thread (inside RunOnMainThreadBlocking).
     /// </summary>
-    private static bool _passiveRead;
+    private static bool s_passiveRead;
 
     private static Dictionary<string, object?> BuildShopState(MerchantRoom merchantRoom, RunState runState)
     {
@@ -5110,7 +5110,6 @@ public static partial class McpMod
         return visited / poolSize;
     }
 
-
     // The caller's name stands in for a field name here: this helper has no idea which
     // part of the state it is feeding, and "bool: NullReferenceException" alone names nothing.
     private static bool? SafeGetBool(Func<bool> getter,
@@ -5242,11 +5241,11 @@ public static partial class McpMod
         }
     }
 
-    private static FieldInfo? _rewardsSetField;
-    private static FieldInfo? _crystalSphereEntityField;
-    private static FieldInfo? _crystalSphereCompletionField;
-    private static FieldInfo? _cardRewardCompletionField;
-    private static FieldInfo? _rewardsIsTerminalField;
+    private static FieldInfo? s_rewardsSetField;
+    private static FieldInfo? s_crystalSphereEntityField;
+    private static FieldInfo? s_crystalSphereCompletionField;
+    private static FieldInfo? s_cardRewardCompletionField;
+    private static FieldInfo? s_rewardsIsTerminalField;
 
     /// <summary>
     /// True while the run is still blocked on this rewards screen's set.
@@ -5281,14 +5280,14 @@ public static partial class McpMod
     {
         return TryRead<bool?>(() =>
         {
-            _rewardsIsTerminalField ??= typeof(NRewardsScreen)
+            s_rewardsIsTerminalField ??= typeof(NRewardsScreen)
                 .GetField("_isTerminal", BindingFlags.NonPublic | BindingFlags.Instance);
-            if (_rewardsIsTerminalField?.GetValue(screen) is not bool isTerminal || isTerminal)
+            if (s_rewardsIsTerminalField?.GetValue(screen) is not bool isTerminal || isTerminal)
                 return false;
 
-            _rewardsSetField ??= typeof(NRewardsScreen)
+            s_rewardsSetField ??= typeof(NRewardsScreen)
                 .GetField("_rewardsSet", BindingFlags.NonPublic | BindingFlags.Instance);
-            if (_rewardsSetField?.GetValue(screen) is not RewardsSet set)
+            if (s_rewardsSetField?.GetValue(screen) is not RewardsSet set)
                 return false;
             return !RunManager.Instance.RewardsSetSynchronizer.IsRewardsSetCompleted(set);
         }) ?? false;
@@ -5353,14 +5352,14 @@ public static partial class McpMod
     {
         return TryRead<bool?>(() =>
         {
-            _crystalSphereEntityField ??= typeof(NCrystalSphereScreen)
+            s_crystalSphereEntityField ??= typeof(NCrystalSphereScreen)
                 .GetField("_entity", BindingFlags.NonPublic | BindingFlags.Instance);
-            var minigame = _crystalSphereEntityField?.GetValue(screen);
+            var minigame = s_crystalSphereEntityField?.GetValue(screen);
             if (minigame == null)
                 return false;
-            _crystalSphereCompletionField ??= minigame.GetType()
+            s_crystalSphereCompletionField ??= minigame.GetType()
                 .GetField("_completionSource", BindingFlags.NonPublic | BindingFlags.Instance);
-            if (_crystalSphereCompletionField?.GetValue(minigame) is not TaskCompletionSource completion)
+            if (s_crystalSphereCompletionField?.GetValue(minigame) is not TaskCompletionSource completion)
                 return false;
             return !completion.Task.IsCompleted;
         }) ?? false;
@@ -5383,19 +5382,19 @@ public static partial class McpMod
     {
         return TryRead<bool?>(() =>
         {
-            _cardRewardCompletionField ??= typeof(NCardRewardSelectionScreen)
+            s_cardRewardCompletionField ??= typeof(NCardRewardSelectionScreen)
                 .GetField("_completionSource", BindingFlags.NonPublic | BindingFlags.Instance);
-            if (_cardRewardCompletionField?.GetValue(screen) is not TaskCompletionSource<int?> completion)
+            if (s_cardRewardCompletionField?.GetValue(screen) is not TaskCompletionSource<int?> completion)
                 return false;
             return !completion.Task.IsCompleted;
         }) ?? false;
     }
 
-    private static readonly FieldInfo? SpecialRewardCardField = typeof(SpecialCardReward).GetField("_card", BindingFlags.NonPublic | BindingFlags.Instance);
+    private static readonly FieldInfo? s_specialRewardCardField = typeof(SpecialCardReward).GetField("_card", BindingFlags.NonPublic | BindingFlags.Instance);
 
     private static Dictionary<string, object?> BuildSpecialCardReward(SpecialCardReward reward)
     {
-        var card = SpecialRewardCardField?.GetValue(reward) as CardModel
+        var card = s_specialRewardCardField?.GetValue(reward) as CardModel
             ?? throw new InvalidOperationException("A populated SpecialCardReward must expose its exact card");
         var saved = reward.ToSerializable();
         return new Dictionary<string, object?>(StringComparer.Ordinal)
@@ -5413,8 +5412,8 @@ public static partial class McpMod
 
         // Reward items
         var rewardButtons = GetRewardButtons(rewardsScreen);
-        state["screen_revision"] = _rewardSession.Revision;
-        if (!_rewardTrackingAvailable) Warn("rewards.selection_state", "UI tracking unavailable; missing observations are unknown");
+        state["screen_revision"] = s_rewardSession.Revision;
+        if (!s_rewardTrackingAvailable) Warn("rewards.selection_state", "UI tracking unavailable; missing observations are unknown");
         var items = new List<Dictionary<string, object?>>();
         int index = 0;
         foreach (var button in rewardButtons)
@@ -5422,8 +5421,8 @@ public static partial class McpMod
         state["items"] = items;
         // Completed rewards stay out of legacy items. This session-local history retains only
         // identities and observed UI outcomes, not hidden reward contents.
-        state["selection_history"] = _rewardSession.Entries.Select(e =>
-            e.Describe(_rewardSession.Claimable.Contains(e))).ToList();
+        state["selection_history"] = s_rewardSession.Entries.Select(e =>
+            e.Describe(s_rewardSession.Claimable.Contains(e))).ToList();
 
         // Proceed button
         var proceedButton = FindFirst<NProceedButton>(rewardsScreen);
@@ -5434,7 +5433,7 @@ public static partial class McpMod
 
     private static Dictionary<string, object?> BuildRewardItem(Reward reward, int index)
     {
-        var item = _rewardSession.Find(reward)!.Describe(claimable: true);
+        var item = s_rewardSession.Find(reward)!.Describe(claimable: true);
         item["index"] = index;
         item["type"] = GetRewardTypeName(reward);
         item["description"] = SafeGetText(() => reward.Description);
@@ -6415,7 +6414,7 @@ public static partial class McpMod
 
         // Auto-open chest if not yet opened
         var chestButton = treasureUI.GetNodeOrNull<NClickableControl>("Chest");
-        if (!_passiveRead && chestButton is { IsEnabled: true })
+        if (!s_passiveRead && chestButton is { IsEnabled: true })
         {
             chestButton.ForceClick();
             state["message"] = "Opening chest...";

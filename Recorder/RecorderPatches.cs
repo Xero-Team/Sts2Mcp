@@ -25,19 +25,19 @@ namespace STS2_MCP.Recorder;
 internal static class RecorderPatches
 {
     private const string HarmonyId = "com.sts2mcp.recorder";
-    private static readonly Harmony Harmony = new(HarmonyId);
-    private static readonly List<string> AppliedList = new();
+    private static readonly Harmony s_harmony = new(HarmonyId);
+    private static readonly List<string> s_appliedList = new();
 
-    private static readonly AccessTools.FieldRef<CombatReplayWriter, CombatReplay?> ReplayField =
+    private static readonly AccessTools.FieldRef<CombatReplayWriter, CombatReplay?> s_replayField =
         AccessTools.FieldRefAccess<CombatReplayWriter, CombatReplay?>("_replay");
-    private static readonly AccessTools.FieldRef<RunManager, long> StartTimeField =
+    private static readonly AccessTools.FieldRef<RunManager, long> s_startTimeField =
         AccessTools.FieldRefAccess<RunManager, long>("_startTime");
 
-    internal static IReadOnlyList<string> Applied => AppliedList;
+    internal static IReadOnlyList<string> Applied => s_appliedList;
 
-    internal static CombatReplay? ReplayOf(CombatReplayWriter writer) => ReplayField(writer);
+    internal static CombatReplay? ReplayOf(CombatReplayWriter writer) => s_replayField(writer);
 
-    internal static long RunStartTime() => StartTimeField(RunManager.Instance);
+    internal static long RunStartTime() => s_startTimeField(RunManager.Instance);
 
     internal static void Apply()
     {
@@ -72,26 +72,26 @@ internal static class RecorderPatches
         foreach (var m in AccessTools.GetDeclaredMethods(typeof(SentryService))
                      .Where(m => string.Equals(m.Name, nameof(SentryService.CaptureException), StringComparison.Ordinal)))
         {
-            Harmony.Patch(m, prefix: new HarmonyMethod(typeof(RecorderPatches), nameof(SentryPrefix)));
-            AppliedList.Add($"SentryService.CaptureException({m.GetParameters().Length})");
+            s_harmony.Patch(m, prefix: new HarmonyMethod(typeof(RecorderPatches), nameof(SentryPrefix)));
+            s_appliedList.Add($"SentryService.CaptureException({m.GetParameters().Length})");
         }
     }
 
     internal static void RemoveAll()
     {
         // Nothing else to do: the patches are being removed, so a failure has no caller.
-        CombatRecorder.TryRecordQuietDo(() => Harmony.UnpatchAll(HarmonyId));
-        AppliedList.Clear();
+        CombatRecorder.TryRecordQuietDo(() => s_harmony.UnpatchAll(HarmonyId));
+        s_appliedList.Clear();
     }
 
     private static void Patch(Type type, string method, string? prefix = null, string? postfix = null, Type[]? parameters = null)
     {
         var original = (parameters == null ? AccessTools.DeclaredMethod(type, method) : AccessTools.DeclaredMethod(type, method, parameters))
             ?? throw new MissingMethodException(type.FullName, method);
-        Harmony.Patch(original,
+        s_harmony.Patch(original,
             prefix: prefix == null ? null : new HarmonyMethod(typeof(RecorderPatches), prefix),
             postfix: postfix == null ? null : new HarmonyMethod(typeof(RecorderPatches), postfix));
-        AppliedList.Add($"{type.Name}.{method}");
+        s_appliedList.Add($"{type.Name}.{method}");
     }
 
     // --- CombatReplayWriter --------------------------------------------------------------------
@@ -156,7 +156,7 @@ internal static class RecorderPatches
     private static void ConsolePrefix(MegaCrit.Sts2.Core.DevConsole.DevConsole __instance, string inputValue)
         => CombatRecorder.OnConsoleCommand(inputValue, () => GoesThroughQueue(__instance, inputValue));
 
-    private static readonly FieldInfo? CommandsField =
+    private static readonly FieldInfo? s_commandsField =
         AccessTools.Field(typeof(MegaCrit.Sts2.Core.DevConsole.DevConsole), "_commands");
 
     /// <summary>
@@ -174,18 +174,18 @@ internal static class RecorderPatches
         if (run == null || MegaCrit.Sts2.Core.Context.LocalContext.GetMe(run) == null)
             return false;
         string name = inputValue.Trim().Split(' ')[0].ToLowerInvariant();
-        if (CommandsField?.GetValue(console) is not System.Collections.IDictionary commands || !commands.Contains(name))
+        if (s_commandsField?.GetValue(console) is not System.Collections.IDictionary commands || !commands.Contains(name))
             return false;
         return commands[name] is MegaCrit.Sts2.Core.DevConsole.ConsoleCommands.AbstractConsoleCmd cmd && cmd.IsNetworked;
     }
 
-    private static readonly System.Reflection.FieldInfo? QueuesField =
+    private static readonly System.Reflection.FieldInfo? s_queuesField =
         AccessTools.Field(typeof(ActionQueueSet), "_actionQueues");
 
     /// <summary>Every action in the player queues (read through the private list; nothing is changed).</summary>
     internal static IEnumerable<GameAction> QueuedActions(ActionQueueSet? set)
     {
-        if (set == null || QueuesField?.GetValue(set) is not System.Collections.IEnumerable queues)
+        if (set == null || s_queuesField?.GetValue(set) is not System.Collections.IEnumerable queues)
             yield break;
         foreach (var q in queues)
         {

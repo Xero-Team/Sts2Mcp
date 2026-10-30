@@ -20,7 +20,7 @@ public static partial class McpMod
                 else if (item.TryGetValue("potion_name", out var pName) && pName != null)
                     extra = $" ({pName})";
                 sb.AppendLine($"- [{item["index"]}] **{item["type"]}**: {item["description"]}{extra}"
-                    + (item.TryGetValue("reward_id", out var rewardId) ? $" · `{rewardId}` · {item.GetValueOrDefault("selection_state") ?? "unknown"}" : ""));
+                    + (item.TryGetValue("reward_id", out var rewardId) ? $" \u00B7 `{rewardId}` \u00B7 {item.GetValueOrDefault("selection_state") ?? "unknown"}" : ""));
             }
             sb.AppendLine();
         }
@@ -53,14 +53,14 @@ public static partial class McpMod
             || previewObj is not Dictionary<string, object?> preview) return;
 
         string starCost = preview.TryGetValue("star_cost", out var sc) && sc != null ? $" + {sc} star" : "";
-        sb.AppendLine($"  → **Upgraded**: ({preview.GetValueOrDefault("cost")} energy{starCost}) - {preview.GetValueOrDefault("description")}");
+        sb.AppendLine($"  \u2192 **Upgraded**: ({preview.GetValueOrDefault("cost")} energy{starCost}) - {preview.GetValueOrDefault("description")}");
     }
 
     private static void FormatCardRewardMarkdown(StringBuilder sb, Dictionary<string, object?> cardReward)
     {
         sb.AppendLine("## Card Reward Selection");
         if (cardReward.TryGetValue("parent_reward_id", out var parentId))
-            sb.AppendLine($"**Parent reward:** `{parentId ?? "unknown"}` · selection_state: {cardReward.GetValueOrDefault("selection_state") ?? "unknown"}");
+            sb.AppendLine($"**Parent reward:** `{parentId ?? "unknown"}` \u00B7 selection_state: {cardReward.GetValueOrDefault("selection_state") ?? "unknown"}");
         sb.AppendLine("Choose a card to add to your deck:");
         sb.AppendLine();
 
@@ -87,7 +87,7 @@ public static partial class McpMod
             {
                 string title = alt.GetValueOrDefault("title")?.ToString() ?? "";
                 string disabled = alt.TryGetValue("enabled", out var en) && en is false ? " *(disabled)*" : "";
-                sb.AppendLine($"- [{alt["index"]}] `{alt["option_id"]}`{(title.Length > 0 ? $" — {title}" : "")}{disabled}");
+                sb.AppendLine($"- [{alt["index"]}] `{alt["option_id"]}`{(title.Length > 0 ? $" \u2014 {title}" : "")}{disabled}");
             }
             sb.AppendLine();
         }

@@ -684,7 +684,7 @@ public static partial class McpMod
     /// input; 250 ms is generous for a name and short enough that a pathological
     /// string cannot freeze a frame.
     /// </summary>
-    internal static readonly TimeSpan RegexTimeout = TimeSpan.FromMilliseconds(250);
+    internal static readonly TimeSpan s_regexTimeout = TimeSpan.FromMilliseconds(250);
 
     private static readonly string[] CardSelectPreviewContainerNames =
     {

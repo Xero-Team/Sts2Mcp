@@ -50,10 +50,10 @@ public static partial class McpMod
 
     // Reference-keyed: NetLoadingHandle does not override Equals/GetHashCode, so
     // each handle instance is its own key and Dispose matches its own ctor entry.
-    private static readonly Dictionary<NetLoadingHandle, LoadingHandleInfo> _openLoadingHandles = new();
-    private static int _loadingHandleSeq;
-    private static ulong _loadingHeldSinceMs;
-    private static bool _loadingStuckReported;
+    private static readonly Dictionary<NetLoadingHandle, LoadingHandleInfo> s_openLoadingHandles = new();
+    private static int s_loadingHandleSeq;
+    private static ulong s_loadingHeldSinceMs;
+    private static bool s_loadingStuckReported;
 
     private static string CaptureLoadingOrigin()
     {
@@ -83,33 +83,33 @@ public static partial class McpMod
     {
         var info = new LoadingHandleInfo
         {
-            Id = ++_loadingHandleSeq,
+            Id = ++s_loadingHandleSeq,
             OpenedMs = Time.GetTicksMsec(),
             Origin = CaptureLoadingOrigin()
         };
-        _openLoadingHandles[handle] = info;
+        s_openLoadingHandles[handle] = info;
 
-        if (_openLoadingHandles.Count == 1)
+        if (s_openLoadingHandles.Count == 1)
         {
-            _loadingHeldSinceMs = info.OpenedMs;
-            _loadingStuckReported = false;
+            s_loadingHeldSinceMs = info.OpenedMs;
+            s_loadingStuckReported = false;
         }
 
-        GD.Print($"[STS2 MCP] loading+ #{info.Id} open={_openLoadingHandles.Count} {info.Origin}");
+        GD.Print($"[STS2 MCP] loading+ #{info.Id} open={s_openLoadingHandles.Count} {info.Origin}");
     }
 
     private static void NoteLoadingHandleClosed(NetLoadingHandle handle)
     {
-        if (!_openLoadingHandles.TryGetValue(handle, out var info)) return;
-        _openLoadingHandles.Remove(handle);
+        if (!s_openLoadingHandles.TryGetValue(handle, out var info)) return;
+        s_openLoadingHandles.Remove(handle);
 
         ulong held = Time.GetTicksMsec() - info.OpenedMs;
-        GD.Print($"[STS2 MCP] loading- #{info.Id} open={_openLoadingHandles.Count} held={held}ms");
+        GD.Print($"[STS2 MCP] loading- #{info.Id} open={s_openLoadingHandles.Count} held={held}ms");
 
-        if (_openLoadingHandles.Count == 0)
+        if (s_openLoadingHandles.Count == 0)
         {
-            _loadingHeldSinceMs = 0;
-            _loadingStuckReported = false;
+            s_loadingHeldSinceMs = 0;
+            s_loadingStuckReported = false;
         }
     }
 
@@ -119,17 +119,17 @@ public static partial class McpMod
     /// </summary>
     internal static void CheckLoadingHandleLeak()
     {
-        if (_loadingStuckReported || _loadingHeldSinceMs == 0 || _openLoadingHandles.Count == 0) return;
+        if (s_loadingStuckReported || s_loadingHeldSinceMs == 0 || s_openLoadingHandles.Count == 0) return;
 
         ulong now = Time.GetTicksMsec();
-        if (now - _loadingHeldSinceMs < LoadingStuckReportMs) return;
-        _loadingStuckReported = true;
+        if (now - s_loadingHeldSinceMs < LoadingStuckReportMs) return;
+        s_loadingStuckReported = true;
 
         var sb = new StringBuilder();
-        sb.Append(CultureInfo.InvariantCulture, $"[STS2 MCP] IsGameLoading has been held for {(now - _loadingHeldSinceMs) / 1000.0:F1}s by ");
-        sb.Append(CultureInfo.InvariantCulture, $"{_openLoadingHandles.Count} open NetLoadingHandle(s). Every event choice is refused while it is ");
+        sb.Append(CultureInfo.InvariantCulture, $"[STS2 MCP] IsGameLoading has been held for {(now - s_loadingHeldSinceMs) / 1000.0:F1}s by ");
+        sb.Append(CultureInfo.InvariantCulture, $"{s_openLoadingHandles.Count} open NetLoadingHandle(s). Every event choice is refused while it is ");
         sb.Append("set, and the refcount can no longer reach zero, so this is the leak:");
-        foreach (var info in _openLoadingHandles.Values)
+        foreach (var info in s_openLoadingHandles.Values)
             sb.Append(CultureInfo.InvariantCulture, $"\n  #{info.Id} opened {(now - info.OpenedMs) / 1000.0:F1}s ago at {info.Origin}");
         GD.PrintErr(sb.ToString());
     }
