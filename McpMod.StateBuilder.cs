@@ -4437,21 +4437,37 @@ public static partial class McpMod
         }
 
         var items = new List<Dictionary<string, object?>>();
-        int index = 0;
+        AppendShopCards(items, inventory);
+        AppendShopRelics(items, inventory);
+        AppendShopPotions(items, inventory);
+        AppendShopCardRemoval(items, inventory);
+        state["items"] = items;
 
-        // Cards
+        AppendSellablePotions(state, runState);
+        AppendShopControls(state);
+        return state;
+    }
+
+    /// <summary>One shop row: price and stock, which every category carries.</summary>
+    private static Dictionary<string, object?> BuildShopRow(
+        int index, string category, int price, bool isStocked, bool canAfford)
+        => new(StringComparer.Ordinal)
+        {
+            ["index"] = index,
+            ["category"] = category,
+            ["price"] = price,
+            ["is_stocked"] = isStocked,
+            ["can_afford"] = canAfford,
+            ["can_purchase"] = isStocked && canAfford
+        };
+
+    private static void AppendShopCards(
+        List<Dictionary<string, object?>> items, MerchantInventory inventory)
+    {
         foreach (var entry in inventory.CardEntries)
         {
-            var item = new Dictionary<string, object?>(StringComparer.Ordinal)
-            {
-                ["index"] = index,
-                ["category"] = "card",
-                ["price"] = entry.Cost,
-                ["is_stocked"] = entry.IsStocked,
-                ["can_afford"] = entry.EnoughGold,
-                ["can_purchase"] = entry.IsStocked && entry.EnoughGold,
-                ["on_sale"] = entry.IsOnSale
-            };
+            var item = BuildShopRow(items.Count, "card", entry.Cost, entry.IsStocked, entry.EnoughGold);
+            item["on_sale"] = entry.IsOnSale;
             if (entry.CreationResult?.Card is { } card)
             {
                 var cardInfo = BuildCardInfo(card);
@@ -4476,21 +4492,15 @@ public static partial class McpMod
                 item["enchantment_state"] = cardInfo["enchantment_state"];
             }
             items.Add(item);
-            index++;
         }
+    }
 
-        // Relics
+    private static void AppendShopRelics(
+        List<Dictionary<string, object?>> items, MerchantInventory inventory)
+    {
         foreach (var entry in inventory.RelicEntries)
         {
-            var item = new Dictionary<string, object?>(StringComparer.Ordinal)
-            {
-                ["index"] = index,
-                ["category"] = "relic",
-                ["price"] = entry.Cost,
-                ["is_stocked"] = entry.IsStocked,
-                ["can_afford"] = entry.EnoughGold,
-                ["can_purchase"] = entry.IsStocked && entry.EnoughGold
-            };
+            var item = BuildShopRow(items.Count, "relic", entry.Cost, entry.IsStocked, entry.EnoughGold);
             if (entry.Model is { } relic)
             {
                 item["relic_id"] = relic.Id.Entry;
@@ -4500,21 +4510,15 @@ public static partial class McpMod
                 item["keywords"] = BuildHoverTips(relic.HoverTipsExcludingRelic);
             }
             items.Add(item);
-            index++;
         }
+    }
 
-        // Potions
+    private static void AppendShopPotions(
+        List<Dictionary<string, object?>> items, MerchantInventory inventory)
+    {
         foreach (var entry in inventory.PotionEntries)
         {
-            var item = new Dictionary<string, object?>(StringComparer.Ordinal)
-            {
-                ["index"] = index,
-                ["category"] = "potion",
-                ["price"] = entry.Cost,
-                ["is_stocked"] = entry.IsStocked,
-                ["can_afford"] = entry.EnoughGold,
-                ["can_purchase"] = entry.IsStocked && entry.EnoughGold
-            };
+            var item = BuildShopRow(items.Count, "potion", entry.Cost, entry.IsStocked, entry.EnoughGold);
             if (entry.Model is { } potion)
             {
                 item["potion_id"] = potion.Id.Entry;
@@ -4526,48 +4530,48 @@ public static partial class McpMod
                 item["keywords"] = BuildHoverTips(potion.ExtraHoverTips);
             }
             items.Add(item);
-            index++;
         }
+    }
 
-        // Card removal
-        if (inventory.CardRemovalEntry is { } removal)
+    private static void AppendShopCardRemoval(
+        List<Dictionary<string, object?>> items, MerchantInventory inventory)
+    {
+        if (inventory.CardRemovalEntry is not { } removal)
+            return;
+        items.Add(BuildShopRow(
+            items.Count, "card_removal", removal.Cost, removal.IsStocked, removal.EnoughGold));
+    }
+
+    /// <summary>
+    /// Potions the merchant will buy (Foul Potion sells for gold instead of exploding).
+    /// There was no sign anywhere in state that this was even possible.
+    /// </summary>
+    private static void AppendSellablePotions(Dictionary<string, object?> state, RunState runState)
+    {
+        var localPlayer = LocalContext.GetMe(runState);
+        if (localPlayer == null)
+            return;
+
+        var sellable = new List<Dictionary<string, object?>>();
+        for (int slot = 0; slot < localPlayer.PotionSlots.Count; slot++)
         {
-            items.Add(new Dictionary<string, object?>(StringComparer.Ordinal)
+            var held = localPlayer.GetPotionAtSlotIndex(slot);
+            if (held == null || !CanSellPotionToMerchant(localPlayer, held))
+                continue;
+            sellable.Add(new Dictionary<string, object?>(StringComparer.Ordinal)
             {
-                ["index"] = index,
-                ["category"] = "card_removal",
-                ["price"] = removal.Cost,
-                ["is_stocked"] = removal.IsStocked,
-                ["can_afford"] = removal.EnoughGold,
-                ["can_purchase"] = removal.IsStocked && removal.EnoughGold
+                ["slot"] = slot,
+                ["potion_id"] = held.Id.Entry,
+                ["potion_name"] = SafeGetText(() => held.Title),
+                ["action"] = "sell_potion"
             });
         }
+        if (sellable.Count > 0)
+            state["sellable_potions"] = sellable;
+    }
 
-        state["items"] = items;
-
-        // Potions the merchant will buy (Foul Potion sells for gold instead of
-        // exploding). There was no sign anywhere in state that this was even possible.
-        var localPlayer = LocalContext.GetMe(runState);
-        if (localPlayer != null)
-        {
-            var sellable = new List<Dictionary<string, object?>>();
-            for (int slot = 0; slot < localPlayer.PotionSlots.Count; slot++)
-            {
-                var held = localPlayer.GetPotionAtSlotIndex(slot);
-                if (held == null || !CanSellPotionToMerchant(localPlayer, held))
-                    continue;
-                sellable.Add(new Dictionary<string, object?>(StringComparer.Ordinal)
-                {
-                    ["slot"] = slot,
-                    ["potion_id"] = held.Id.Entry,
-                    ["potion_name"] = SafeGetText(() => held.Title),
-                    ["action"] = "sell_potion"
-                });
-            }
-            if (sellable.Count > 0)
-                state["sellable_potions"] = sellable;
-        }
-
+    private static void AppendShopControls(Dictionary<string, object?> state)
+    {
         var merchantRoomNode = NMerchantRoom.Instance;
         var inventoryOpen = merchantRoomNode?.Inventory?.IsOpen == true;
         var backButton = merchantRoomNode != null ? FindFirst<NBackButton>(merchantRoomNode) : null;
@@ -4577,8 +4581,6 @@ public static partial class McpMod
 
         var proceedButton = merchantRoomNode?.ProceedButton;
         state["can_proceed"] = IsControlVisibleOrActionable(proceedButton) || canCloseInventory;
-
-        return state;
     }
 
     private static List<Dictionary<string, object?>> BuildShopAvailableActions(bool isOpen)
