@@ -3074,87 +3074,19 @@ public static partial class McpMod
         // character-select screen has an ascension panel; the custom-run screen has none.
         if (ascension != null)
         {
-            if (screen is not NCharacterSelectScreen ascensionScreen)
-                return Error("Ascension can only be set on the character select screen");
-
-            var ascensionResult = ApplyAscension(ascensionScreen, ascension.Value);
-            if (string.Equals((string?)ascensionResult["status"], "error", StringComparison.Ordinal))
-                return ascensionResult;
-            if (string.IsNullOrEmpty(option))
+            var ascensionResult = ApplyAscensionOption(screen, option, ascension.Value);
+            if (ascensionResult != null)
                 return ascensionResult;
         }
 
         if (string.Equals(option, "back", StringComparison.OrdinalIgnoreCase))
-        {
-            // _backButton leaves the lobby (and disconnects in MP). _unreadyButton is a
-            // separate control that only becomes enabled after the player has hit
-            // confirm/embark in MP — it retracts the ready vote without leaving. Surface
-            // them as distinct options so callers can pick deliberately. Fall back to
-            // unready when only it is actionable so older callers don't get stuck.
-            var backBtn = GetInstanceFieldValue(screen, "_backButton") as NClickableControl;
-            if (backBtn != null && backBtn.IsEnabled && IsControlVisibleOrActionable(backBtn))
-            {
-                backBtn.ForceClick();
-                return new Dictionary<string, object?>(StringComparer.Ordinal) { ["status"] = "ok", ["message"] = "Going back" };
-            }
-            var unreadyFallback = GetInstanceFieldValue(screen, "_unreadyButton") as NClickableControl;
-            if (unreadyFallback != null && unreadyFallback.IsEnabled && IsControlVisibleOrActionable(unreadyFallback))
-            {
-                unreadyFallback.ForceClick();
-                return new Dictionary<string, object?>(StringComparer.Ordinal) { ["status"] = "ok", ["message"] = "Retracted ready vote (back fell through to unready)" };
-            }
-            return Error("Back button not available");
-        }
-
+            return GoBackFromLobby(screen);
         if (string.Equals(option, "unready", StringComparison.OrdinalIgnoreCase))
-        {
-            var unreadyBtn = GetInstanceFieldValue(screen, "_unreadyButton") as NClickableControl;
-            if (unreadyBtn != null && unreadyBtn.IsEnabled && IsControlVisibleOrActionable(unreadyBtn))
-            {
-                unreadyBtn.ForceClick();
-                return new Dictionary<string, object?>(StringComparer.Ordinal) { ["status"] = "ok", ["message"] = "Retracted ready vote" };
-            }
-            return Error("Unready button not available — you have not confirmed yet");
-        }
-
+            return RetractReadyVote(screen);
         if (string.Equals(option, "confirm", StringComparison.OrdinalIgnoreCase) ||
             string.Equals(option, "embark", StringComparison.OrdinalIgnoreCase))
         {
-            if (!string.IsNullOrWhiteSpace(seed))
-            {
-                seed = seed.Trim();
-                var lobby = GetInstanceFieldValue(screen, "_lobby") as StartRunLobby;
-                if (lobby == null)
-                    return Error(noLobbySeedError);
-
-                var seedFailure = TryAction("start_run.set_seed", () => lobby.SetSeed(seed));
-                if (seedFailure != null)
-                    return Error($"Seeded embark failed before starting the run: {seedFailure}");
-            }
-
-            var confirmBtn = GetInstanceFieldValue(screen, confirmField);
-            if (confirmBtn is NClickableControl confirmClickable && confirmClickable.IsEnabled)
-            {
-                var msg = string.IsNullOrEmpty(seed)
-                    ? $"Embarking on {runNoun}"
-                    : $"Embarking on {runNoun} (seed: {seed})";
-
-                // Report the level the run will actually start at, read back from the panel.
-                int? startingAscension = screen is NCharacterSelectScreen embarkScreen
-                    ? (GetInstanceFieldValue(embarkScreen, "_ascensionPanel") as NAscensionPanel)?.Ascension
-                    : null;
-                if (startingAscension != null)
-                    msg += $" at ascension {startingAscension}";
-
-                confirmClickable.ForceClick();
-                return new Dictionary<string, object?>(StringComparer.Ordinal)
-                {
-                    ["status"] = "ok",
-                    ["message"] = msg,
-                    ["ascension"] = startingAscension
-                };
-            }
-            return Error("Confirm button not available — select a character first");
+            return EmbarkStartRun(screen, confirmField, seed, runNoun, noLobbySeedError);
         }
 
         // While a pending-unlock animation owns the screen, NCharacterSelectScreen.
@@ -3175,6 +3107,103 @@ public static partial class McpMod
         if (modifierResult != null)
             return modifierResult;
 
+        return SelectCharacterOption(screen, option);
+    }
+
+    /// <summary>
+    /// Applies the ascension level. Returns the answer to send, or null when the caller
+    /// should carry on with the requested option.
+    /// </summary>
+    private static Dictionary<string, object?>? ApplyAscensionOption(
+        Node screen, string option, int ascension)
+    {
+        if (screen is not NCharacterSelectScreen ascensionScreen)
+            return Error("Ascension can only be set on the character select screen");
+
+        var ascensionResult = ApplyAscension(ascensionScreen, ascension);
+        if (string.Equals((string?)ascensionResult["status"], "error", StringComparison.Ordinal))
+            return ascensionResult;
+        return string.IsNullOrEmpty(option) ? ascensionResult : null;
+    }
+
+    /// <summary>
+    /// Leaves the lobby. _backButton leaves the lobby (and disconnects in MP).
+    /// _unreadyButton is a separate control that only becomes enabled after the player has
+    /// hit confirm/embark in MP — it retracts the ready vote without leaving. Surface them
+    /// as distinct options so callers can pick deliberately. Fall back to unready when only
+    /// it is actionable so older callers don't get stuck.
+    /// </summary>
+    private static Dictionary<string, object?> GoBackFromLobby(Node screen)
+    {
+        var backBtn = GetInstanceFieldValue(screen, "_backButton") as NClickableControl;
+        if (backBtn != null && backBtn.IsEnabled && IsControlVisibleOrActionable(backBtn))
+        {
+            backBtn.ForceClick();
+            return new Dictionary<string, object?>(StringComparer.Ordinal) { ["status"] = "ok", ["message"] = "Going back" };
+        }
+        var unreadyFallback = GetInstanceFieldValue(screen, "_unreadyButton") as NClickableControl;
+        if (unreadyFallback != null && unreadyFallback.IsEnabled && IsControlVisibleOrActionable(unreadyFallback))
+        {
+            unreadyFallback.ForceClick();
+            return new Dictionary<string, object?>(StringComparer.Ordinal) { ["status"] = "ok", ["message"] = "Retracted ready vote (back fell through to unready)" };
+        }
+        return Error("Back button not available");
+    }
+
+    private static Dictionary<string, object?> RetractReadyVote(Node screen)
+    {
+        var unreadyBtn = GetInstanceFieldValue(screen, "_unreadyButton") as NClickableControl;
+        if (unreadyBtn != null && unreadyBtn.IsEnabled && IsControlVisibleOrActionable(unreadyBtn))
+        {
+            unreadyBtn.ForceClick();
+            return new Dictionary<string, object?>(StringComparer.Ordinal) { ["status"] = "ok", ["message"] = "Retracted ready vote" };
+        }
+        return Error("Unready button not available — you have not confirmed yet");
+    }
+
+    /// <summary>Sets the seed, if one was given, and presses confirm.</summary>
+    private static Dictionary<string, object?> EmbarkStartRun(
+        Node screen, string confirmField, string? seed, string runNoun, string noLobbySeedError)
+    {
+        if (!string.IsNullOrWhiteSpace(seed))
+        {
+            seed = seed.Trim();
+            var lobby = GetInstanceFieldValue(screen, "_lobby") as StartRunLobby;
+            if (lobby == null)
+                return Error(noLobbySeedError);
+
+            var seedFailure = TryAction("start_run.set_seed", () => lobby.SetSeed(seed));
+            if (seedFailure != null)
+                return Error($"Seeded embark failed before starting the run: {seedFailure}");
+        }
+
+        var confirmBtn = GetInstanceFieldValue(screen, confirmField);
+        if (confirmBtn is NClickableControl confirmClickable && confirmClickable.IsEnabled)
+        {
+            var msg = string.IsNullOrEmpty(seed)
+                ? $"Embarking on {runNoun}"
+                : $"Embarking on {runNoun} (seed: {seed})";
+
+            // Report the level the run will actually start at, read back from the panel.
+            int? startingAscension = screen is NCharacterSelectScreen embarkScreen
+                ? (GetInstanceFieldValue(embarkScreen, "_ascensionPanel") as NAscensionPanel)?.Ascension
+                : null;
+            if (startingAscension != null)
+                msg += $" at ascension {startingAscension}";
+
+            confirmClickable.ForceClick();
+            return new Dictionary<string, object?>(StringComparer.Ordinal)
+            {
+                ["status"] = "ok",
+                ["message"] = msg,
+                ["ascension"] = startingAscension
+            };
+        }
+        return Error("Confirm button not available — select a character first");
+    }
+
+    private static Dictionary<string, object?> SelectCharacterOption(Node screen, string option)
+    {
         var buttons = FindAll<NCharacterSelectButton>(screen);
         foreach (var btn in buttons)
         {
