@@ -868,33 +868,11 @@ public static partial class McpMod
         sb.Append('|');
 
         if (state.GetValueOrDefault("battle") is Dictionary<string, object?> battle)
-        {
-            sb.Append(battle.GetValueOrDefault("round"))
-              .Append(',').Append(battle.GetValueOrDefault("turn"))
-              .Append(',').Append(battle.GetValueOrDefault("is_play_phase"));
-            if (battle.GetValueOrDefault("enemies") is List<Dictionary<string, object?>> enemies)
-            {
-                foreach (var enemy in enemies)
-                {
-                    sb.Append(';').Append(enemy.GetValueOrDefault("entity_id"))
-                      .Append(':').Append(enemy.GetValueOrDefault("hp"))
-                      .Append('/').Append(enemy.GetValueOrDefault("block"));
-                }
-            }
-        }
+            AppendBattleFingerprint(sb, battle);
         sb.Append('|');
 
         if (state.GetValueOrDefault("player") is Dictionary<string, object?> player)
-        {
-            sb.Append(player.GetValueOrDefault("hp"))
-              .Append('/').Append(player.GetValueOrDefault("block"))
-              .Append('/').Append(player.GetValueOrDefault("energy"));
-            if (player.GetValueOrDefault("hand") is List<Dictionary<string, object?>> hand)
-            {
-                foreach (var card in hand)
-                    sb.Append(';').Append(card.GetValueOrDefault("uid"));
-            }
-        }
+            AppendPlayerFingerprint(sb, player);
         sb.Append('|');
 
         if (state.GetValueOrDefault("options") is System.Collections.ICollection options)
@@ -903,16 +881,59 @@ public static partial class McpMod
         return sb.ToString();
     }
 
+    private static void AppendBattleFingerprint(StringBuilder sb, Dictionary<string, object?> battle)
+    {
+        sb.Append(battle.GetValueOrDefault("round"))
+          .Append(',').Append(battle.GetValueOrDefault("turn"))
+          .Append(',').Append(battle.GetValueOrDefault("is_play_phase"));
+        if (battle.GetValueOrDefault("enemies") is not List<Dictionary<string, object?>> enemies)
+            return;
+        foreach (var enemy in enemies)
+        {
+            sb.Append(';').Append(enemy.GetValueOrDefault("entity_id"))
+              .Append(':').Append(enemy.GetValueOrDefault("hp"))
+              .Append('/').Append(enemy.GetValueOrDefault("block"));
+        }
+    }
+
+    private static void AppendPlayerFingerprint(StringBuilder sb, Dictionary<string, object?> player)
+    {
+        sb.Append(player.GetValueOrDefault("hp"))
+          .Append('/').Append(player.GetValueOrDefault("block"))
+          .Append('/').Append(player.GetValueOrDefault("energy"));
+        if (player.GetValueOrDefault("hand") is not List<Dictionary<string, object?>> hand)
+            return;
+        foreach (var card in hand)
+            sb.Append(';').Append(card.GetValueOrDefault("uid"));
+    }
+
     /// <summary>
     /// Polls the state from the HTTP thread until the game has settled, then appends
     /// `waited_ms` / `polls` / `settled` / `changed` (and `state`) to the action's own result.
     /// </summary>
+    private static void AppendSettleResult(
+        Dictionary<string, object?> result, string? before, int timeoutMs, bool includeState)
+    {
+        var outcome = PollUntilSettled(before, timeoutMs);
+        result["waited_ms"] = outcome.WaitedMs;
+        result["polls"] = outcome.Polls;
+        result["settled"] = outcome.Settled;
+        result["changed"] = outcome.Changed;
+        if (outcome.WaitError != null)
+            result["wait_error"] = outcome.WaitError;
+        if (includeState && outcome.LastState != null)
+            result["state"] = outcome.LastState;
+    }
+
+    private sealed record SettleOutcome(
+        int WaitedMs, int Polls, bool Settled, bool Changed,
+        string? WaitError, Dictionary<string, object?>? LastState);
+
     [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1031:Do not catch general exception types",
         Justification = "The two failures mean opposite things here: a stalled main thread must stop the poll (503 semantics), while a scene-swap throw is transient and means keep polling.")]
     [System.Diagnostics.CodeAnalysis.SuppressMessage("Major Code Smell", "EPC12:Suspicious exception handling",
         Justification = "The message is what the response's wait_error field reports; the consumer cannot act on the exception type.")]
-    private static void AppendSettleResult(
-        Dictionary<string, object?> result, string? before, int timeoutMs, bool includeState)
+    private static SettleOutcome PollUntilSettled(string? before, int timeoutMs)
     {
         var elapsed = Stopwatch.StartNew();
         int polls = 0;
@@ -949,20 +970,10 @@ public static partial class McpMod
             {
                 last = state;
                 waitError = null;
-                if (before != null && !string.Equals(StateFingerprint(state), before, StringComparison.Ordinal))
-                    changed = true;
-
-                if (IsSettledState(state))
+                if (UpdateSettleProgress(ref consecutiveSettled, ref changed, state, before))
                 {
-                    if (++consecutiveSettled >= SettleConsecutivePolls)
-                    {
-                        settled = true;
-                        break;
-                    }
-                }
-                else
-                {
-                    consecutiveSettled = 0;
+                    settled = true;
+                    break;
                 }
             }
 
@@ -981,14 +992,29 @@ public static partial class McpMod
         }
 
         elapsed.Stop();
-        result["waited_ms"] = (int)elapsed.ElapsedMilliseconds;
-        result["polls"] = polls;
-        result["settled"] = settled;
-        result["changed"] = changed;
-        if (waitError != null)
-            result["wait_error"] = waitError;
-        if (includeState && last != null)
-            result["state"] = last;
+        return new SettleOutcome(
+            (int)elapsed.ElapsedMilliseconds, polls, settled, changed, waitError, last);
+    }
+
+    /// <summary>
+    /// Advances the settle counters for one good poll; true when the state has stayed
+    /// settled long enough to stop waiting.
+    /// </summary>
+    private static bool UpdateSettleProgress(
+        ref int consecutiveSettled,
+        ref bool changed,
+        Dictionary<string, object?> state,
+        string? before)
+    {
+        if (before != null && !string.Equals(StateFingerprint(state), before, StringComparison.Ordinal))
+            changed = true;
+
+        if (!IsSettledState(state))
+        {
+            consecutiveSettled = 0;
+            return false;
+        }
+        return ++consecutiveSettled >= SettleConsecutivePolls;
     }
 
     /// <summary>

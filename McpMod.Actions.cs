@@ -128,9 +128,10 @@ public static partial class McpMod
             return Error("No run in progress", "run_not_in_progress");
 
         runState = RunManager.Instance.DebugOnlyGetState()!;
-        player = LocalContext.GetMe(runState);
-        if (player == null)
+        var found = LocalContext.GetMe(runState);
+        if (found == null)
             return Error("Could not find local player", "local_player_unavailable");
+        player = found;
 
         var tree = (Godot.Engine.GetMainLoop()) as SceneTree;
         if (tree?.Root != null && IsAnyFtueVisible(tree.Root))

@@ -73,20 +73,13 @@ public static partial class McpMod
             return Error("scope must be one of: discovered, all.");
         var everything = string.Equals(normalizedScope, "all", StringComparison.Ordinal);
 
-        var discoveredCards = progress.DiscoveredCards
-            .Select(id => id.Entry)
-            .Where(id => !string.IsNullOrWhiteSpace(id))
-            .ToHashSet(StringComparer.OrdinalIgnoreCase);
-        var discoveredRelics = progress.DiscoveredRelics
-            .Select(id => id.Entry)
-            .Where(id => !string.IsNullOrWhiteSpace(id))
-            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var discoveredCards = ToDiscoveredWikiIds(progress.DiscoveredCards);
+        var discoveredRelics = ToDiscoveredWikiIds(progress.DiscoveredRelics);
 
-        var candidates = new List<WikiCandidate>();
-        if (normalizedItemType is "all" or "card")
-            candidates.AddRange(BuildCardWikiCandidates(everything ? null : discoveredCards));
-        if (normalizedItemType is "all" or "relic")
-            candidates.AddRange(BuildRelicWikiCandidates(everything ? null : discoveredRelics));
+        var candidates = BuildWikiCandidatePool(
+            normalizedItemType,
+            everything ? null : discoveredCards,
+            everything ? null : discoveredRelics);
 
         // No query is a LISTING: every candidate in name order, unscored.  A
         // fuzzy score would only impose an arbitrary order on an enumeration
@@ -97,16 +90,7 @@ public static partial class McpMod
         // Counted before `Take`, so `truncated` says whether the limit actually
         // cut anything.  It has to be the ELIGIBLE count, not `candidates`: a
         // search's non-matching candidates are not results withheld.
-        var eligible = listing
-            ? candidates.OrderBy(candidate => candidate.Name, StringComparer.OrdinalIgnoreCase)
-                .Select(candidate => (Candidate: candidate, Score: 0.0))
-                .ToList()
-            : candidates
-                .Select(candidate => (Candidate: candidate, Score: ScoreWikiCandidate(query, candidate)))
-                .Where(match => match.Score > 0)
-                .OrderByDescending(match => match.Score)
-                .ThenBy(match => match.Candidate.Name, StringComparer.OrdinalIgnoreCase)
-                .ToList();
+        var eligible = RankWikiCandidates(candidates, query, listing);
 
         var matches = eligible
             .Take(limit)
@@ -123,20 +107,8 @@ public static partial class McpMod
             ["limit"] = limit,
             ["truncated"] = eligible.Count > matches.Count,
             ["scope"] = everything ? "all_cards_and_relics" : "active_profile_discovered_cards_and_relics",
-            ["selection_policy"] = (everything, listing) switch
-            {
-                (true, true) => "Lists every card and relic the game defines, in name order, ignoring the active profile's discovery progress.",
-                (true, false) => "Searches every card and relic the game defines, ignoring the active profile's discovery progress, then returns the best fuzzy matches.",
-                (false, true) => "Lists every card and relic discovered by the active profile, in name order.",
-                (false, false) => "Searches only cards and relics discovered by the active profile, then returns the best fuzzy matches instead of exposing the full catalog."
-            },
-            ["counts"] = new Dictionary<string, object?>(StringComparer.Ordinal)
-            {
-                ["discovered_cards"] = discoveredCards.Count,
-                ["discovered_relics"] = discoveredRelics.Count,
-                ["searched"] = candidates.Count,
-                ["returned"] = matches.Count
-            },
+            ["selection_policy"] = DescribeWikiSelection(everything, listing),
+            ["counts"] = BuildWikiCounts(discoveredCards, discoveredRelics, candidates, matches),
             ["results"] = matches
         };
     }
@@ -172,6 +144,67 @@ public static partial class McpMod
             "relic" or "relics" => "relic",
             _ => null
         };
+    }
+
+    private static Dictionary<string, object?> BuildWikiCounts(
+        HashSet<string> discoveredCards,
+        HashSet<string> discoveredRelics,
+        List<WikiCandidate> candidates,
+        List<Dictionary<string, object?>> matches)
+        => new(StringComparer.Ordinal)
+        {
+            ["discovered_cards"] = discoveredCards.Count,
+            ["discovered_relics"] = discoveredRelics.Count,
+            ["searched"] = candidates.Count,
+            ["returned"] = matches.Count
+        };
+
+    private static HashSet<string> ToDiscoveredWikiIds(IReadOnlySet<ModelId> ids)
+        => ids.Select(id => id.Entry)
+            .Where(id => !string.IsNullOrWhiteSpace(id))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+    private static string DescribeWikiSelection(bool everything, bool listing)
+        => (everything, listing) switch
+        {
+            (true, true) => "Lists every card and relic the game defines, in name order, ignoring the active profile's discovery progress.",
+            (true, false) => "Searches every card and relic the game defines, ignoring the active profile's discovery progress, then returns the best fuzzy matches.",
+            (false, true) => "Lists every card and relic discovered by the active profile, in name order.",
+            (false, false) => "Searches only cards and relics discovered by the active profile, then returns the best fuzzy matches instead of exposing the full catalog."
+        };
+
+    private static List<WikiCandidate> BuildWikiCandidatePool(
+        string itemType,
+        HashSet<string>? discoveredCards,
+        HashSet<string>? discoveredRelics)
+    {
+        var candidates = new List<WikiCandidate>();
+        if (itemType is "all" or "card")
+            candidates.AddRange(BuildCardWikiCandidates(discoveredCards));
+        if (itemType is "all" or "relic")
+            candidates.AddRange(BuildRelicWikiCandidates(discoveredRelics));
+        return candidates;
+    }
+
+    private static List<(WikiCandidate Candidate, double Score)> RankWikiCandidates(
+        List<WikiCandidate> candidates,
+        string query,
+        bool listing)
+    {
+        if (listing)
+        {
+            return candidates
+                .OrderBy(candidate => candidate.Name, StringComparer.OrdinalIgnoreCase)
+                .Select(candidate => (Candidate: candidate, Score: 0.0))
+                .ToList();
+        }
+
+        return candidates
+            .Select(candidate => (Candidate: candidate, Score: ScoreWikiCandidate(query, candidate)))
+            .Where(match => match.Score > 0)
+            .OrderByDescending(match => match.Score)
+            .ThenBy(match => match.Candidate.Name, StringComparer.OrdinalIgnoreCase)
+            .ToList();
     }
 
     // Enumerate the game's canonical model registry rather than reflectively
