@@ -1826,128 +1826,138 @@ public static partial class McpMod
         result["state_type"] = "menu";
         result["menu_screen"] = "multiplayer_load_lobby";
 
-        var lobby = GetInstanceFieldValue(loadLobby, "_runLobby") as LoadRunLobby;
-        if (lobby != null)
+        if (GetInstanceFieldValue(loadLobby, "_runLobby") is LoadRunLobby lobby)
+            result["lobby"] = BuildLoadLobbyInfo(lobby);
+
+        result["options"] = BuildLoadLobbyOptions(loadLobby);
+        result["message"] = "Multiplayer load lobby. Confirm to ready up; once everyone is connected and ready, the run resumes.";
+    }
+
+    private static Dictionary<string, object?> BuildLoadLobbyInfo(LoadRunLobby lobby)
+    {
+        var info = new Dictionary<string, object?>(StringComparer.Ordinal)
         {
-            var info = new Dictionary<string, object?>(StringComparer.Ordinal)
+            ["type"] = lobby.NetService.Type switch
             {
-                ["type"] = lobby.NetService.Type switch
-                {
-                    NetGameType.Host => "host",
-                    NetGameType.Client => "client",
-                    _ => lobby.NetService.Type.ToString().ToLowerInvariant()
-                },
-                ["game_mode"] = lobby.GameMode.ToString().ToLowerInvariant(),
-                ["ascension"] = lobby.Run?.Ascension ?? 0,
-                ["act"] = (lobby.Run?.CurrentActIndex ?? 0) + 1,
-                ["floor"] = lobby.Run?.VisitedMapCoords?.Count ?? 0
-            };
+                NetGameType.Host => "host",
+                NetGameType.Client => "client",
+                _ => lobby.NetService.Type.ToString().ToLowerInvariant()
+            },
+            ["game_mode"] = lobby.GameMode.ToString().ToLowerInvariant(),
+            ["ascension"] = lobby.Run?.Ascension ?? 0,
+            ["act"] = (lobby.Run?.CurrentActIndex ?? 0) + 1,
+            ["floor"] = lobby.Run?.VisitedMapCoords?.Count ?? 0
+        };
 
-            TryDo("menu.multiplayer_load_lobby.local_player", () =>
+        TryDo("menu.multiplayer_load_lobby.local_player", () =>
+        {
+            var localPlayer = lobby.Run?.Players?.FirstOrDefault(p => p.NetId == lobby.NetService.NetId);
+            if (localPlayer != null)
             {
-                var localPlayer = lobby.Run?.Players?.FirstOrDefault(p => p.NetId == lobby.NetService.NetId);
-                if (localPlayer != null)
-                {
-                    info["character_id"] = localPlayer.CharacterId?.Entry;
-                    info["current_hp"] = localPlayer.CurrentHp;
-                    info["max_hp"] = localPlayer.MaxHp;
-                    info["gold"] = localPlayer.Gold;
-                }
+                info["character_id"] = localPlayer.CharacterId?.Entry;
+                info["current_hp"] = localPlayer.CurrentHp;
+                info["max_hp"] = localPlayer.MaxHp;
+                info["gold"] = localPlayer.Gold;
+            }
+        });
+
+        var connectedPlayerIds = TryReadQuiet(() => lobby.PlayerIds.ToHashSet())
+            ?? new HashSet<ulong>();
+
+        info["expected_player_count"] = lobby.Run?.Players?.Count ?? 0;
+        info["connected_player_count"] = connectedPlayerIds.Count;
+
+        bool aboutToBegin = ResolveAboutToBegin(lobby, connectedPlayerIds);
+        info["all_ready"] = aboutToBegin;
+        info["is_about_to_begin"] = aboutToBegin;
+
+        // Per-player ready/connected breakdown
+        info["players"] = BuildLoadLobbyPlayers(lobby, connectedPlayerIds);
+        return info;
+    }
+
+    /// <summary>
+    /// v0.111 restores LoadRunLobby.IsAboutToBeginGame(); prefer the game's own answer and
+    /// keep the "every run player is connected and ready" test as a fallback for a build
+    /// where the method is missing or throws.
+    /// </summary>
+    private static bool ResolveAboutToBegin(LoadRunLobby lobby, HashSet<ulong> connectedPlayerIds)
+    {
+        bool aboutToBegin = false;
+        TryDo("menu.multiplayer_load_lobby.is_about_to_begin", () =>
+        {
+            aboutToBegin = lobby.IsAboutToBeginGame();
+        });
+
+        if (!aboutToBegin)
+        {
+            TryDo(() =>
+            {
+                var runPlayers = lobby.Run?.Players;
+                aboutToBegin = runPlayers != null
+                    && runPlayers.Count > 0
+                    && runPlayers.All(player => connectedPlayerIds.Contains(player.NetId) && lobby.IsPlayerReady(player.NetId));
             });
+        }
+        return aboutToBegin;
+    }
 
-            var connectedPlayerIds = TryReadQuiet(() => lobby.PlayerIds.ToHashSet())
-                ?? new HashSet<ulong>();
-
-            info["expected_player_count"] = lobby.Run?.Players?.Count ?? 0;
-            info["connected_player_count"] = connectedPlayerIds.Count;
-
-            // v0.111 restores LoadRunLobby.IsAboutToBeginGame(); prefer the game's own
-            // answer and keep the "every run player is connected and ready" test as a
-            // fallback for a build where the method is missing or throws.
-            bool aboutToBegin = false;
-            TryDo("menu.multiplayer_load_lobby.is_about_to_begin", () => { aboutToBegin = lobby.IsAboutToBeginGame(); });
-
-            if (!aboutToBegin)
+    private static List<Dictionary<string, object?>> BuildLoadLobbyPlayers(
+        LoadRunLobby lobby, HashSet<ulong> connectedPlayerIds)
+    {
+        var players = new List<Dictionary<string, object?>>();
+        TryDo("menu.multiplayer_load_lobby.players", () =>
+        {
+            if (lobby.Run?.Players == null)
+                return;
+            foreach (var sp in lobby.Run.Players)
             {
-                TryDo(() =>
+                bool isConnected = connectedPlayerIds.Contains(sp.NetId);
+                bool isReady = TryRead<bool?>("menu.multiplayer_load_lobby.players.is_ready",
+                    () => lobby.IsPlayerReady(sp.NetId)) ?? false;
+                players.Add(new Dictionary<string, object?>(StringComparer.Ordinal)
                 {
-                    var runPlayers = lobby.Run?.Players;
-                    aboutToBegin = runPlayers != null
-                        && runPlayers.Count > 0
-                        && runPlayers.All(player => connectedPlayerIds.Contains(player.NetId) && lobby.IsPlayerReady(player.NetId));
+                    ["id"] = sp.NetId.ToString(),
+                    ["is_local"] = sp.NetId == lobby.NetService.NetId,
+                    ["character_id"] = sp.CharacterId?.Entry,
+                    ["is_connected"] = isConnected,
+                    ["is_ready"] = isReady,
+                    ["platform_name"] = SafeGetPlayerName(lobby.NetService.Platform, sp.NetId)
                 });
             }
+        });
+        return players;
+    }
 
-            info["all_ready"] = aboutToBegin;
-            info["is_about_to_begin"] = aboutToBegin;
-
-            // Per-player ready/connected breakdown
-            var players = new List<Dictionary<string, object?>>();
-            TryDo("menu.multiplayer_load_lobby.players", () =>
-            {
-                if (lobby.Run?.Players != null)
-                {
-                    foreach (var sp in lobby.Run.Players)
-                    {
-                        bool isConnected = connectedPlayerIds.Contains(sp.NetId);
-                        bool isReady = TryRead<bool?>("menu.multiplayer_load_lobby.players.is_ready",
-                            () => lobby.IsPlayerReady(sp.NetId)) ?? false;
-                        players.Add(new Dictionary<string, object?>(StringComparer.Ordinal)
-                        {
-                            ["id"] = sp.NetId.ToString(),
-                            ["is_local"] = sp.NetId == lobby.NetService.NetId,
-                            ["character_id"] = sp.CharacterId?.Entry,
-                            ["is_connected"] = isConnected,
-                            ["is_ready"] = isReady,
-                            ["platform_name"] = SafeGetPlayerName(lobby.NetService.Platform, sp.NetId)
-                        });
-                    }
-                }
-            });
-            info["players"] = players;
-
-            result["lobby"] = info;
-        }
-
+    private static List<Dictionary<string, object?>> BuildLoadLobbyOptions(NMultiplayerLoadGameScreen loadLobby)
+    {
         var options = new List<Dictionary<string, object?>>();
+        AddOptionIfEnabled(options, loadLobby, "_confirmButton", "confirm", "embark");
+        AddOptionIfEnabled(options, loadLobby, "_backButton", "back");
+        AddOptionIfEnabled(options, loadLobby, "_unreadyButton", "unready");
+        return options;
+    }
 
-        var confirmBtn = GetInstanceFieldValue(loadLobby, "_confirmButton") as NClickableControl;
-        if (confirmBtn != null && IsNodeVisible(confirmBtn))
+    /// <summary>
+    /// Adds one option per given name, all sharing the field's enabled state and its
+    /// visibility.
+    /// </summary>
+    private static void AddOptionIfEnabled(
+        List<Dictionary<string, object?>> options,
+        object screen,
+        string field,
+        params string[] optionNames)
+    {
+        if (GetInstanceFieldValue(screen, field) is not NClickableControl control || !IsNodeVisible(control))
+            return;
+        foreach (var name in optionNames)
         {
             options.Add(new Dictionary<string, object?>(StringComparer.Ordinal)
             {
-                ["name"] = "confirm",
-                ["enabled"] = confirmBtn.IsEnabled
-            });
-            options.Add(new Dictionary<string, object?>(StringComparer.Ordinal)
-            {
-                ["name"] = "embark",
-                ["enabled"] = confirmBtn.IsEnabled
+                ["name"] = name,
+                ["enabled"] = control.IsEnabled
             });
         }
-
-        var backBtn2 = GetInstanceFieldValue(loadLobby, "_backButton") as NClickableControl;
-        if (backBtn2 != null && IsNodeVisible(backBtn2))
-        {
-            options.Add(new Dictionary<string, object?>(StringComparer.Ordinal)
-            {
-                ["name"] = "back",
-                ["enabled"] = backBtn2.IsEnabled
-            });
-        }
-
-        var unreadyBtn2 = GetInstanceFieldValue(loadLobby, "_unreadyButton") as NClickableControl;
-        if (unreadyBtn2 != null && IsNodeVisible(unreadyBtn2))
-        {
-            options.Add(new Dictionary<string, object?>(StringComparer.Ordinal)
-            {
-                ["name"] = "unready",
-                ["enabled"] = unreadyBtn2.IsEnabled
-            });
-        }
-
-        result["options"] = options;
-        result["message"] = "Multiplayer load lobby. Confirm to ready up; once everyone is connected and ready, the run resumes.";
     }
 
     private static Dictionary<string, object?> BuildBattleState(RunState runState, CombatRoom combatRoom)
