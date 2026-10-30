@@ -84,24 +84,27 @@ The gate is on, so this list is a list of build breakers. Numbers are from the b
 will move as the code does; re-measure with `-p:STS2StrictWarnings=false` and count warnings rather
 than trusting them.
 
-Cleared so far (measured at `d1eaa91`): `MA0002` (442), `MA0006` (352),
+Cleared so far (measured at `9122b64`): `MA0002` (442), `MA0006` (352),
 `MA0011` (41), `S1144` (27, via the Harmony justification), `S1172` (12),
-`S1481` (7), `S6444` (3), `S8969` (18), `VSTHRD002` (12), the one-line findings
-`MA0004`/`MA0009`/`MA0074`/`S1125`/`S1862`/`S1905`/`S4136`/`S6610`/`CA1805`/
-`CA1820`/`CA1847`/`CA1865`/`CA2244`, and all formatting drift (419 whitespace,
-6 import orders, 2 final newlines). 1538 warnings at the baseline commit are
-520 now; the catch family is the bulk of what is left.
+`S1481` (7), `S6444` (3), `S8969` (18), `VSTHRD002` (12), `S3358` (28), `S3267`
+(20), the one-line findings `MA0004`/`MA0009`/`MA0074`/`S1125`/`S1862`/`S1905`/
+`S4136`/`S6610`/`CA1805`/`CA1820`/`CA1847`/`CA1865`/`CA2244`, and all formatting
+drift (419 whitespace, 6 import orders, 2 final newlines). 1538 warnings at the
+baseline commit are 361 now.
+
+The transport handlers no longer carry their own catch pair: `RunHandler` and
+`RunActionHandler` own the 503/500 mapping, one call per handler. Reads whose
+failure means "not there" rather than "broken" (a freed Godot node, a member this
+game version does not have) go through `TryReadQuiet`, which states that once
+instead of at thirteen sites.
 
 | Bucket | Count | Note |
 | --- | --- | --- |
-| `CA1031` catch a more specific exception | 168 | Deliberate in the state builders (a renamed game member must not kill a state read). Route through `TryDo`/`TryRead` in `docs/adr/0005-full-refactor-phases.md`; 83 sites are already converted |
-| `ERP022` swallow exception without observing it | 79 | Same family as `CA1031`; the helper records through `McpMod.Warnings`; 83 sites converted |
-| `MA0051` method too long | 73 | Concentrated in `McpMod.StateBuilder.cs`; extract only where it buys clarity |
-| `EPC12` | 44 | Partly the catch family, partly the transport handlers that only report `ex.Message` |
-| `S3358` nested ternary | 28 | Extract a local or a small method at each site |
-| `S108` empty `catch` block | 25 | Same family as `CA1031` |
-| `S2486` exception ignored | 21 | Same family as `CA1031` |
-| `S3267` loop could be LINQ | 20 | Only where the query form is clearer than the loop |
+| `CA1031` catch a more specific exception | 124 | The state builders (a renamed game member must not kill a state read) and the recorder's own fault channel. Route through `TryDo`/`TryRead`/`TryReadQuiet` in `docs/adr/0005-full-refactor-phases.md` |
+| `MA0051` method too long | 65 | Concentrated in `McpMod.StateBuilder.cs` and `McpMod.Actions.cs`; extract only where it buys clarity |
+| `ERP022` swallow exception without observing it | 64 | Same family as `CA1031` |
+| `EPC12` | 20 | Catch blocks that report `ex.Message` only |
+| `S108` / `S2486` | 12 / 12 | Same family as `CA1031` |
 | `CA1859`/`VSTHRD200`/`CA2007`/`VSTHRD003` | 8/5/4/3 | `CA2007` stays open on purpose (see the ADR) |
 | rest | 1-4 each | `CA1001`/`CA1032`/`CA1064`/`CA1508`/`CA1707`/`CA1812`/`S1066`/`S1199`/`S1450`/`S1905`/`S2094`/`S2223`/`S3871`/`S4487`/`MA0023`/`MA0048`/`MA0134`/`MA0169`/`EPC13`/`AsyncFixer01`, judged one at a time |
 
