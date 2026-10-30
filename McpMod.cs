@@ -700,7 +700,7 @@ public static partial class McpMod
         }
         bool unpowered = string.Equals(values, "unpowered", StringComparison.Ordinal);
 
-        try
+        RunHandler(response, () =>
         {
             var state = RunOnMainThreadBlocking(() => WithCardValues(unpowered, () =>
             {
@@ -722,27 +722,7 @@ public static partial class McpMod
             {
                 SendJson(response, state, pretty);
             }
-        }
-        catch (MainThreadUnavailableException ex)
-        {
-            try { SendUnavailable(response, ex.Message, pretty); }
-            catch { /* response may be unusable */ }
-        }
-        catch (Exception ex)
-        {
-            GD.PrintErr($"[STS2 MCP] HandleGetMultiplayerState: {ex}");
-            TryDo(() =>
-            {
-                response.StatusCode = 500;
-                SendJson(response, new Dictionary<string, object?>(StringComparer.Ordinal)
-                {
-                    ["status"] = "error",
-                    ["error"] = $"Failed to read multiplayer game state: {ex.Message}",
-                    ["error_code"] = "multiplayer_state_read_failed"
-                }, pretty);
-            });
-            /* response may be unusable */
-        }
+        }, "Failed to read multiplayer game state", "multiplayer_state_read_failed", pretty);
     }
 
     private static void HandlePostMultiplayerAction(HttpListenerRequest request, HttpListenerResponse response)
@@ -782,38 +762,22 @@ public static partial class McpMod
         // run-mode-specific dispatcher.
         if (string.Equals(action, "menu_select", StringComparison.Ordinal))
         {
-            try
+            RunHandler(response, () =>
             {
                 var option = parsed.TryGetValue("option", out var optElem) ? optElem.GetString() ?? "" : "";
                 var seed = parsed.TryGetValue("seed", out var seedElem) ? seedElem.GetString() : null;
                 int? ascension = ReadOptionalInt(parsed, "ascension");
                 var result = RunOnMainThreadBlocking(() => ExecuteMenuSelect(option, seed, ascension));
                 SendJson(response, EnsureStatus(result), pretty);
-            }
-            catch (MainThreadUnavailableException ex)
-            {
-                SendUnavailable(response, ex.Message, pretty);
-            }
-            catch (Exception ex)
-            {
-                SendError(response, 500, $"Menu action failed: {ex.Message}", pretty);
-            }
+            }, "Menu action failed", null, pretty);
             return;
         }
 
-        try
+        RunHandler(response, () =>
         {
             var result = RunOnMainThreadBlocking(() => ExecuteMultiplayerAction(action, parsed));
             SendJson(response, EnsureStatus(result), pretty);
-        }
-        catch (MainThreadUnavailableException ex)
-        {
-            SendUnavailable(response, ex.Message, pretty);
-        }
-        catch (Exception ex)
-        {
-            SendError(response, 500, $"Multiplayer action failed: {ex.Message}", pretty);
-        }
+        }, "Multiplayer action failed", null, pretty);
     }
 
     private static int? ReadOptionalInt(Dictionary<string, JsonElement> data, string key)
@@ -846,7 +810,7 @@ public static partial class McpMod
         }
         bool unpowered = string.Equals(values, "unpowered", StringComparison.Ordinal);
 
-        try
+        RunHandler(response, () =>
         {
             // ?passive=1: read without the UI side effects some screens have (auto-opening the
             // merchant inventory, force-clicking the fake merchant / treasure chest). A watcher that
@@ -870,41 +834,16 @@ public static partial class McpMod
 
             if (string.Equals(format, "markdown", StringComparison.Ordinal))
             {
-                try
-                {
-                    SendText(response, FormatAsMarkdown(state), "text/markdown");
-                }
-                catch (Exception ex)
-                {
-                    GD.PrintErr($"[STS2 MCP] FormatAsMarkdown failed, returning JSON: {ex}");
+                // Markdown is a rendering of the same state; if it fails, the JSON is more
+                // useful than an error, so fall back rather than fail the request.
+                if (!TryDo(() => SendText(response, FormatAsMarkdown(state), "text/markdown")))
                     SendJson(response, state, pretty);
-                }
             }
             else
             {
                 SendJson(response, state, pretty);
             }
-        }
-        catch (MainThreadUnavailableException ex)
-        {
-            try { SendUnavailable(response, ex.Message, pretty); }
-            catch { /* response may be unusable */ }
-        }
-        catch (Exception ex)
-        {
-            GD.PrintErr($"[STS2 MCP] HandleGetState: {ex}");
-            TryDo(() =>
-            {
-                response.StatusCode = 500;
-                SendJson(response, new Dictionary<string, object?>(StringComparer.Ordinal)
-                {
-                    ["status"] = "error",
-                    ["error"] = $"Failed to read game state: {ex.Message}",
-                    ["error_code"] = "singleplayer_state_read_failed"
-                }, pretty);
-            });
-            /* response may be unusable */
-        }
+        }, "Failed to read game state", "singleplayer_state_read_failed", pretty);
     }
 
     /// <summary>
@@ -1193,7 +1132,7 @@ public static partial class McpMod
         // The recorder's switch works with or without a run, and is not itself recorded.
         if (string.Equals(action, "set_recording", StringComparison.Ordinal))
         {
-            try
+            RunHandler(response, () =>
             {
                 if (!parsed.TryGetValue("enabled", out var en) || en.ValueKind is not (JsonValueKind.True or JsonValueKind.False))
                 {
@@ -1202,15 +1141,7 @@ public static partial class McpMod
                 }
                 bool enabled = en.GetBoolean();
                 SendJson(response, EnsureStatus(RunOnMainThreadBlocking(() => Recorder.CombatRecorder.SetRecording(enabled))), pretty);
-            }
-            catch (MainThreadUnavailableException ex)
-            {
-                SendUnavailable(response, ex.Message, pretty);
-            }
-            catch (Exception ex)
-            {
-                SendError(response, 500, $"set_recording failed: {ex.Message}", pretty);
-            }
+            }, "set_recording failed", null, pretty);
             return;
         }
 
@@ -1236,29 +1167,19 @@ public static partial class McpMod
         // Revealing timeline epochs is a main-menu operation, so it must not require a run.
         if (string.Equals(action, "timeline_reveal_epochs", StringComparison.Ordinal))
         {
-            try
+            return RunActionHandler(response, () =>
             {
                 var result = ExecuteWithOptionalWait(request, parsed,
                     Recorder.CombatRecorder.InHandler(apiRequest, () => ExecuteTimelineRevealEpochs()));
                 SendJson(response, result, pretty);
                 return result.GetValueOrDefault("status") as string;
-            }
-            catch (MainThreadUnavailableException ex)
-            {
-                SendUnavailable(response, ex.Message, pretty);
-                return "unavailable";
-            }
-            catch (Exception ex)
-            {
-                SendError(response, 500, $"Timeline reveal failed: {ex.Message}", pretty);
-                return "exception";
-            }
+            }, "Timeline reveal failed", pretty);
         }
 
         // Handle menu actions separately (no run required)
         if (string.Equals(action, "menu_select", StringComparison.Ordinal))
         {
-            try
+            return RunActionHandler(response, () =>
             {
                 var option = parsed.TryGetValue("option", out var optElem) ? optElem.GetString() ?? "" : "";
                 var seed = parsed.TryGetValue("seed", out var seedElem) ? seedElem.GetString() : null;
@@ -1267,61 +1188,31 @@ public static partial class McpMod
                     Recorder.CombatRecorder.InHandler(apiRequest, () => ExecuteMenuSelect(option, seed, ascension)));
                 SendJson(response, result, pretty);
                 return result.GetValueOrDefault("status") as string;
-            }
-            catch (MainThreadUnavailableException ex)
-            {
-                SendUnavailable(response, ex.Message, pretty);
-                return "unavailable";
-            }
-            catch (Exception ex)
-            {
-                SendError(response, 500, $"Menu action failed: {ex.Message}", pretty);
-                return "exception";
-            }
+            }, "Menu action failed", pretty);
         }
 
         // Utility actions valid with or without a run (fork additions).
         if (string.Equals(action, "set_time_scale", StringComparison.Ordinal) || string.Equals(action, "set_ascension", StringComparison.Ordinal))
         {
-            try
+            return RunActionHandler(response, () =>
             {
+                bool timeScale = string.Equals(action, "set_time_scale", StringComparison.Ordinal);
                 var result = ExecuteWithOptionalWait(request, parsed,
-                    Recorder.CombatRecorder.InHandler(apiRequest, () => string.Equals(action, "set_time_scale"
-, StringComparison.Ordinal) ? ExecuteSetTimeScale(parsed)
+                    Recorder.CombatRecorder.InHandler(apiRequest, () => timeScale
+                        ? ExecuteSetTimeScale(parsed)
                         : ExecuteSetAscension(parsed)));
                 SendJson(response, result, pretty);
                 return result.GetValueOrDefault("status") as string;
-            }
-            catch (MainThreadUnavailableException ex)
-            {
-                SendUnavailable(response, ex.Message, pretty);
-                return "unavailable";
-            }
-            catch (Exception ex)
-            {
-                SendError(response, 500, $"Action failed: {ex.Message}", pretty);
-                return "exception";
-
-            }
+            }, "Action failed", pretty);
         }
 
-        try
+        return RunActionHandler(response, () =>
         {
             var result = ExecuteWithOptionalWait(request, parsed,
                 Recorder.CombatRecorder.InHandler(apiRequest, () => ExecuteAction(action, parsed)));
             SendJson(response, result, pretty);
             return result.GetValueOrDefault("status") as string;
-        }
-        catch (MainThreadUnavailableException ex)
-        {
-            SendUnavailable(response, ex.Message, pretty);
-            return "unavailable";
-        }
-        catch (Exception ex)
-        {
-            SendError(response, 500, $"Action failed: {ex.Message}", pretty);
-            return "exception";
-        }
+        }, "Action failed", pretty);
     }
 
     [System.Diagnostics.CodeAnalysis.SuppressMessage("Major Code Smell", "S1144:Unused private types or members should be removed",

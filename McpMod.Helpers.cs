@@ -314,7 +314,36 @@ public static partial class McpMod
         }
         catch (Exception ex)
         {
+            // The body carries only the message; the log keeps the type and the trace.
+            GD.PrintErr($"[STS2 MCP] {failurePrefix}: {ex}");
             TryDo(() => SendError(response, 500, $"{failurePrefix}: {ex.Message}", pretty, failureCode));
+        }
+    }
+
+    /// <summary>
+    /// <see cref="RunHandler"/> for an action dispatch branch, which also reports what the
+    /// recorder should store: the handler's own status, "unavailable" for a stalled main
+    /// thread, or "exception" for a failure.
+    /// </summary>
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1031:Do not catch general exception types",
+        Justification = "This is the HTTP boundary: no exception from an action executor may escape and kill the listener loop.")]
+    internal static string? RunActionHandler(
+        HttpListenerResponse response, Func<string?> handler, string failurePrefix, bool pretty = false)
+    {
+        try
+        {
+            return handler();
+        }
+        catch (MainThreadUnavailableException ex)
+        {
+            TryDo(() => SendUnavailable(response, ex.Message, pretty));
+            return "unavailable";
+        }
+        catch (Exception ex)
+        {
+            GD.PrintErr($"[STS2 MCP] {failurePrefix}: {ex}");
+            TryDo(() => SendError(response, 500, $"{failurePrefix}: {ex.Message}", pretty));
+            return "exception";
         }
     }
 
