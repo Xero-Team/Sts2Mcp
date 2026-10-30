@@ -143,10 +143,10 @@ PR.
   - **Names and files.** One public type per file, file named after it, folders
     are layers, JSON is `snake_case` and mapped in one place. The `McpMod.*.cs`
     partials are the grandfathered exception.
-  - **Toolchain targets.** `global.json`, `Directory.Build.props`, and
-    `.editorconfig` are planned, not present. Adding them is a small standalone
-    change; do not smuggle them into a feature PR, and keep the build at zero
-    warnings in the meantime.
+  - **Toolchain targets.** `Directory.Build.props` (configuration: game path, no
+    literals), `Directory.Build.targets` (analyzer gate), and `.editorconfig` are
+    committed. `global.json` is still absent; adding it is a small standalone
+    change, not something to smuggle into a feature PR.
 - **Use the gates that actually exist here.** The real gates are a clean
   `dotnet build` with zero warnings (the `CONTRIBUTING.md` checklist), the
   boundary `grep` checks, an exercised in-game path, and synchronized docs.
@@ -186,9 +186,10 @@ Use REA only when the answer depends on the shipped build: a member in
 `sts2.dll`, a Harmony target in `TryApplyHarmonyPatches`, a
 `MegaCrit.Sts2.Core.Nodes.*` class, or a resource inside a `.pck`.
 
-1. **Resolve the build first.** `STS2GameDir` in `STS2_MCP.csproj`, or
-   `build.ps1 -GameDir`, or `$env:STS2_GAME_DIR`; then the platform data
-   directory (`data_sts2_windows_x86_64`,
+1. **Resolve the build first.** `make config` (or `$env:STS2_GAME_DIR`, or
+   `-p:STS2GameDir`); `Directory.Build.props` resolves the path and no project
+   file hard-codes one. Then the platform data directory
+   (`data_sts2_windows_x86_64`,
    `SlayTheSpire2.app/Contents/Resources/data_sts2_macos_arm64`,
    `data_sts2_linuxbsd_x86_64`). List it instead of assuming file names, and
    record the game version with every conclusion. Read-only on the install
@@ -224,14 +225,16 @@ setup again. This skill is instructions only; it registers nothing.
 | Profile, compendium, wiki | `McpMod.Profile.cs`, `McpMod.Compendium.cs`, `McpMod.Wiki.cs` | State the source and its limits |
 | MCP bridge | `mcp/server.py` | Thin pass-through; no game logic |
 | Contract docs | `docs/raw-full.md`, `docs/raw-simplified.md` | Update with any API surface change |
-| Build and install | `STS2_MCP.csproj`, `build.ps1`, `mod_manifest.json` | Zero-warning build; manifest copied as `STS2_MCP.json` |
+| Build and install | `STS2_MCP.csproj`, `Directory.Build.props`, `Makefile`, `build.ps1`, `mod_manifest.json` | Zero-warning build; config comes from `STS2_GAME_DIR` / `build.local.props`; manifest copied as `STS2_MCP.json` |
 | Layer boundaries | `Core/`, `UseCases/`, `Infrastructure/`, `Transport/` (target; today flat partials) | Arrows point inward; grep checks until the project split |
-| Standard toolchain | `global.json`, `Directory.Build.props`, `.editorconfig` (absent) | Add in a standalone change; zero-warning build until then |
+| Standard toolchain | `global.json` (absent); `Directory.Build.props`, `Directory.Build.targets`, `.editorconfig` committed | Add `global.json` in a standalone change; zero-warning build until then |
 
-There are no automated tests and no CI workflows: the build, the boundary `grep`
-checks, and a manual in-game smoke test are the verification story, and the
-README "Tested against" line is the supported game version. `Core` and the pure
-formatting seam are the place where a test project would first earn its keep.
+The automated checks are the headless harnesses under `tests/` (`make test`) and
+the endpoint/docs audit (`make audit`); there are no CI workflows. The build, the
+boundary `grep` checks, and a manual in-game smoke test are the verification
+story, and the README "Tested against" line is the supported game version.
+`Core` and the pure formatting seam are the place where a test project would
+first earn its keep.
 
 ## Finish the task
 

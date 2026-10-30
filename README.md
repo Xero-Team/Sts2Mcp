@@ -189,7 +189,41 @@ The MCP server exposes the same profile data through `get_profile()`, `get_compe
 
 Requires [.NET 9 SDK](https://dotnet.microsoft.com/download/dotnet/9.0) and the base game.
 
-**PowerShell** (recommended):
+**Configure the game path once.** Nothing in the build hard-codes it: `Directory.Build.props`
+resolves it from, highest precedence first, `-p:STS2GameDir`, `STS2_GAME_DIR`, then
+`build.local.props`. Pick one:
+
+```bash
+# 1. Per-machine file (recommended; gitignored)
+cp build.local.props.example build.local.props   # then set STS2GameDir
+
+# 2. Environment variable (one-off or CI)
+export STS2_GAME_DIR="$HOME/.local/share/Steam/steamapps/common/Slay the Spire 2"
+```
+
+Windows is the same variable in PowerShell syntax:
+`$env:STS2_GAME_DIR = "D:\SteamLibrary\steamapps\common\Slay the Spire 2"`. A
+`-p:STS2GameDir="..."` argument overrides both for a single command. `make config` prints the
+resolved game/data directories, and the build stops with an actionable error when none is set.
+
+> [!NOTE]
+> `Directory.Build.props` is committed now. If an older checkout left a local copy of that file,
+> move its `STS2GameDir` value into `build.local.props` and delete the old file before pulling —
+> otherwise git refuses to overwrite it.
+
+**Make** (Linux, macOS, WSL, or Git Bash):
+
+```bash
+make build       # Release build -> out/STS2_MCP/
+make test        # headless harnesses under tests/
+make verify      # the local gate: build + format check + tests
+make install     # copy the package into <game>/mods/
+```
+
+`make help` lists the rest (`format`, `audit`, `test-mcp`, `mcp`, `clean`, ...). The Makefile
+forwards `STS2_GAME_DIR`; it has no path of its own.
+
+**PowerShell** (Windows, no make needed):
 
 ```powershell
 # Pass game path directly:
@@ -219,16 +253,15 @@ export PATH="$DOTNET_ROOT:$PATH"
 
 Homebrew installs `dotnet@9` as keg-only, so the exports above are required for the current session. Add them to `~/.zshrc` to persist across sessions.
 
-Build with `dotnet` directly (the PowerShell script is Windows-only):
+Then configure the game path as above and run `make build`, or build with `dotnet` directly (the PowerShell script is Windows-only):
 
 ```bash
-dotnet build STS2_MCP.csproj -c Release -o out/STS2_MCP \
-  -p:STS2GameDir="$HOME/Library/Application Support/Steam/steamapps/common/Slay the Spire 2"
+dotnet build STS2_MCP.csproj -c Release -o out/STS2_MCP
 ```
 
-On macOS the game ships as an app bundle. The `.csproj` detects macOS and resolves the data directory to `SlayTheSpire2.app/Contents/Resources/data_sts2_macos_arm64` automatically.
+On macOS the game ships as an app bundle. `Directory.Build.props` detects macOS and resolves the data directory to `SlayTheSpire2.app/Contents/Resources/data_sts2_macos_arm64` automatically.
 
-The mods directory on macOS lives inside the app bundle at `SlayTheSpire2.app/Contents/MacOS/mods/`. Finder hides bundle contents by default — to browse it in the GUI, right-click `SlayTheSpire2.app` → **Show Package Contents**. Or copy from the terminal:
+The mods directory on macOS lives inside the app bundle at `SlayTheSpire2.app/Contents/MacOS/mods/`. Finder hides bundle contents by default — to browse it in the GUI, right-click `SlayTheSpire2.app` → **Show Package Contents**. `make install` writes there; or copy from the terminal:
 
 ```bash
 GAME_DIR="$HOME/Library/Application Support/Steam/steamapps/common/Slay the Spire 2"

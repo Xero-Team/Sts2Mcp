@@ -14,8 +14,8 @@ mcp/.venv/
 CLAUDE.md
 GUIDE.md
 
-# Machine-local build config (game install path)
-Directory.Build.props
+# Machine-local build config (game install path); see build.local.props.example
+build.local.props
 
 # Rider / ReSharper per-user settings
 *.DotSettings.user

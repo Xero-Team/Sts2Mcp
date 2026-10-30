@@ -17,13 +17,16 @@ Layer name mapping, so the two upstream templates stay readable:
 
 ## 1. Build and toolchain
 
-These files do not exist in this repository yet. Adding any of them is a small,
-standalone change — allowed, but never inside a feature PR:
+`global.json` and `Directory.Packages.props` do not exist in this repository yet.
+`Directory.Build.props`, `Directory.Build.targets`, and `.editorconfig` are committed.
+Adding or extending any of them is a small, standalone change — allowed, but
+never inside a feature PR:
 
 | File | Standard |
 | --- | --- |
 | `global.json` | Pin the SDK family the project targets (`net9.0` today) with `rollForward: latestFeature`; do not float across major versions |
-| `Directory.Build.props` | `Nullable`, `LangVersion`, `ImplicitUsings`, `TreatWarningsAsErrors` once the tree is warning-free; do **not** set `ArtifactsPath` without updating `build.ps1` and the README install steps |
+| `Directory.Build.props` | Configuration layer: resolve `STS2GameDir` from `-p:STS2GameDir`, `STS2_GAME_DIR`, or gitignored `build.local.props`, and derive the platform data directory; never commit a machine path. Do **not** set `ArtifactsPath` without updating the Makefile, `build.ps1`, and the README install steps |
+| `Directory.Build.targets` | Analyzer packages, `AnalysisMode`/`AnalysisLevel`, the warnings-as-errors gate, and the banned-API list |
 | `Directory.Packages.props` | Only when the first NuGet dependency appears; game DLLs stay direct `Reference` items with `Private=false` |
 | `.editorconfig` | 4-space C#, LF, final newline, system usings first; `dotnet_style_readonly_field = true:warning` |
 
@@ -158,9 +161,10 @@ them repairs them, not so that they get copied:
    to any caller; neither field is documented in `docs/raw-full.md`.
 2. 482 `Dictionary<string, object?>` occurrences: there is no typed response
    contract, so field drift is invisible to the compiler.
-3. No `global.json`, `Directory.Build.props`, or `.editorconfig`: the build rules
-   live only in prose.
-4. No automated tests; the pure formatting and contract seams are untested.
+3. No `global.json`: the SDK is whatever is on PATH. `Directory.Build.props`,
+   `Directory.Build.targets`, and `.editorconfig` now carry the build rules.
+4. The headless harnesses under `tests/` cover the contract and pure seams; most
+   of the mod still has no automated test.
 5. No `docs/adr/`, so the deferred split and the legacy exceptions are unwritten.
 6. Transport blocks on async work (`GetAwaiter().GetResult()`); new code must not
    add another blocking wait.

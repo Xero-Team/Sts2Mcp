@@ -14,14 +14,21 @@
          again, so the reported version stays the manifest's. Explicit because the default
          flipped between SDKs. -->
     <IncludeSourceRevisionInInformationalVersion>true</IncludeSourceRevisionInInformationalVersion>
-    <!-- Set your STS2 install path here, or pass as: dotnet build -p:STS2GameDir="..." -->
-    <STS2GameDir Condition="'$(STS2GameDir)' == ''">D:\SteamLibrary\steamapps\common\Slay the Spire 2</STS2GameDir>
-    <STS2GameDataDir Condition="'$(STS2GameDataDir)' == '' and '$(OS)' == 'Windows_NT'">$(STS2GameDir)/data_sts2_windows_x86_64</STS2GameDataDir>
-    <!-- macOS support: DLLs live inside the .app bundle under Resources/data_sts2_macos_arm64 -->
-    <STS2GameDataDir Condition="'$(STS2GameDataDir)' == '' and $([System.Runtime.InteropServices.RuntimeInformation]::IsOSPlatform($([System.Runtime.InteropServices.OSPlatform]::OSX)))">$(STS2GameDir)/SlayTheSpire2.app/Contents/Resources/data_sts2_macos_arm64</STS2GameDataDir>
-    <!-- Linux fallback (original behavior) -->
-    <STS2GameDataDir Condition="'$(STS2GameDataDir)' == '' and '$(OS)' != 'Windows_NT' and !$([System.Runtime.InteropServices.RuntimeInformation]::IsOSPlatform($([System.Runtime.InteropServices.OSPlatform]::OSX)))">$(STS2GameDir)/data_sts2_linuxbsd_x86_64</STS2GameDataDir>
+    <!-- STS2GameDir is configuration, never a literal: Directory.Build.props resolves it
+         from -p:STS2GameDir, STS2_GAME_DIR, or build.local.props (and derives the
+         platform data directory). ValidateGameInstall below fails with instructions
+         when none of them supplied a path. -->
   </PropertyGroup>
+
+  <!-- Turn "the game path is not configured" into one actionable line instead of a
+       wall of unresolved-type errors from the compiler. PrepareForBuild runs before
+       the reference assemblies are resolved. -->
+  <Target Name="ValidateGameInstall" BeforeTargets="PrepareForBuild">
+    <Error Condition="'$(STS2GameDir)' == ''"
+           Text="STS2GameDir is not set. Export STS2_GAME_DIR, copy build.local.props.example to build.local.props and edit it, or pass -p:STS2GameDir=&quot;&lt;Slay the Spire 2 install&gt;&quot;." />
+    <Error Condition="'$(STS2GameDir)' != '' and !Exists('$(STS2GameDataDir)/sts2.dll')"
+           Text="sts2.dll was not found under '$(STS2GameDataDir)'. Check that STS2GameDir ('$(STS2GameDir)') is the Slay the Spire 2 install folder." />
+  </Target>
 
   <!-- Stamp the assembly with the commit it was built from, so a bug report can name the exact
        build instead of "some 0.4.0". Everything here is best-effort: with no git on PATH or a

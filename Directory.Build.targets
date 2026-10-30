@@ -1,13 +1,13 @@
 <Project>
 
   <!--
-    Shared build settings for every project in this repo.
+    Shared analyzer settings for every project in this repo.
 
-    This lives in Directory.Build.targets rather than Directory.Build.props on purpose:
-    Directory.Build.props is gitignored here (docs/../.gitignore "Machine-local build config")
-    because each developer points it at their own game install. A committed baseline has to
-    ride the other MSBuild convention file, which is imported after the project body - late
-    enough for analyzer settings and package references, which are consumed by targets.
+    These live in Directory.Build.targets rather than Directory.Build.props because that
+    file is the configuration layer: it resolves the machine-local game install from
+    STS2_GAME_DIR, build.local.props, or -p:STS2GameDir. This file is imported after the
+    project body - late enough for analyzer settings and package references, which are
+    consumed by targets.
   -->
 
   <PropertyGroup Label="Analysis baseline">

@@ -1,0 +1,41 @@
+<Project>
+
+  <!--
+    Build configuration shared by every project in this repo.
+
+    The game install path is machine-local, so it is configuration, not source:
+    nothing here hard-codes a path. Resolution order, highest precedence first:
+
+      1. dotnet build -p:STS2GameDir="..."     global MSBuild property, always wins
+      2. STS2_GAME_DIR                          environment variable (one-off / CI)
+      3. build.local.props                      gitignored, per-machine file
+
+    Copy build.local.props.example to build.local.props and set STS2GameDir, or
+    export STS2_GAME_DIR. With neither set, STS2_MCP.csproj stops with a message
+    that names both options. `make config` prints what was resolved.
+  -->
+
+  <PropertyGroup>
+    <!-- Read the environment once, so a set variable beats the local file below. -->
+    <_STS2GameDirFromEnvironment>$(STS2_GAME_DIR)</_STS2GameDirFromEnvironment>
+  </PropertyGroup>
+
+  <!-- A -p:STS2GameDir value is a global property and cannot be overwritten by a
+       project file, so importing the local file when it is set is harmless. -->
+  <Import Project="$(MSBuildThisFileDirectory)build.local.props"
+          Condition="'$(_STS2GameDirFromEnvironment)' == '' and Exists('$(MSBuildThisFileDirectory)build.local.props')" />
+
+  <PropertyGroup>
+    <STS2GameDir Condition="'$(STS2GameDir)' == ''">$(_STS2GameDirFromEnvironment)</STS2GameDir>
+
+    <!-- Each platform ships the managed assemblies in its own subdirectory. Keeping
+         this here, rather than in one project, means every harness that references
+         the game DLLs resolves them the same way. -->
+    <STS2GameDataDir Condition="'$(STS2GameDataDir)' == '' and '$(OS)' == 'Windows_NT'">$(STS2GameDir)/data_sts2_windows_x86_64</STS2GameDataDir>
+    <!-- macOS: DLLs live inside the .app bundle under Resources/. -->
+    <STS2GameDataDir Condition="'$(STS2GameDataDir)' == '' and $([System.Runtime.InteropServices.RuntimeInformation]::IsOSPlatform($([System.Runtime.InteropServices.OSPlatform]::OSX)))">$(STS2GameDir)/SlayTheSpire2.app/Contents/Resources/data_sts2_macos_arm64</STS2GameDataDir>
+    <!-- Linux fallback. -->
+    <STS2GameDataDir Condition="'$(STS2GameDataDir)' == '' and '$(OS)' != 'Windows_NT' and !$([System.Runtime.InteropServices.RuntimeInformation]::IsOSPlatform($([System.Runtime.InteropServices.OSPlatform]::OSX)))">$(STS2GameDir)/data_sts2_linuxbsd_x86_64</STS2GameDataDir>
+  </PropertyGroup>
+
+</Project>

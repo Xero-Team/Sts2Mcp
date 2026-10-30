@@ -8,14 +8,17 @@ nothing here changes the mod's runtime behaviour.
 
 | File | Holds |
 | --- | --- |
+| `Directory.Build.props` | Machine-local configuration: game install resolution (`-p:STS2GameDir` / `STS2_GAME_DIR` / `build.local.props`) and the platform data directory |
 | `Directory.Build.targets` | Analyzer packages, `AnalysisMode`/`AnalysisLevel`, the strict gate, the banned-API list registration |
 | `tests/Directory.Build.targets` | Turns the gate off for the standalone test harnesses, which compile production sources next to test-only stubs |
 | `.editorconfig` | Formatting conventions the tree already follows, plus the handful of rules that cannot apply to this project |
 | `BannedSymbols.txt` | API allow/deny list enforced by `Microsoft.CodeAnalysis.BannedApiAnalyzers` (rule RS0030) |
 
-`Directory.Build.props` is **not** used and must stay that way: it is gitignored because it holds
-each developer's local `STS2GameDir`. `Directory.Build.targets` is the other MSBuild convention
-file, is imported for every project in the repo, and is where shared settings can be committed.
+`Directory.Build.props` is the configuration layer: it resolves the machine-local game install from
+`-p:STS2GameDir`, `STS2_GAME_DIR`, or the gitignored `build.local.props`, and derives the platform
+data directory. It is committed and contains no machine paths. `Directory.Build.targets` is the
+other MSBuild convention file, is imported for every project in the repo, and is where the shared
+analysis settings live.
 
 `tests/Directory.Build.targets` imports those settings and then switches the gate off
 (`RunAnalyzersDuringBuild`, `EnforceCodeStyleInBuild` and both warnings-as-errors properties). The
@@ -76,14 +79,18 @@ The project references `sts2.dll`, `GodotSharp.dll` and `0Harmony.dll` out of th
 so the game directory has to be supplied. On this machine:
 
 ```sh
-export STS2GameDir="$HOME/.local/share/Steam/steamapps/common/Slay the Spire 2"
+export STS2_GAME_DIR="$HOME/.local/share/Steam/steamapps/common/Slay the Spire 2"
+# or, durable: cp build.local.props.example build.local.props and edit STS2GameDir
+# or: make build / make verify (the Makefile forwards STS2_GAME_DIR)
 
 dotnet build STS2_MCP.csproj          # analyzer + compiler warnings are errors here
 dotnet format STS2_MCP.csproj --verify-no-changes   # formatting gate
+make verify                           # build + format-check + tests/, same gate
 ```
 
-`dotnet format` needs the same game path; because it has no `-p:` passthrough in this SDK, the
-`STS2GameDir` environment variable is the portable way to give it one.
+`dotnet format` has no `-p:` passthrough, but it reads the same `Directory.Build.props`, so the
+`STS2GameDir` environment variable or `build.local.props` gives it the path. The `make` targets do
+the same thing without repeating the path.
 
 The gate is unconditional: there is no property that turns findings back into warnings. A
 contributor who hits a finding fixes the code or the rule, because a `#pragma` or a relaxed build

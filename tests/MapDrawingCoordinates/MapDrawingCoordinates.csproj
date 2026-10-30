@@ -3,11 +3,10 @@
     <OutputType>Exe</OutputType>
     <TargetFramework>net9.0</TargetFramework>
     <Nullable>enable</Nullable>
-    <STS2GameDir Condition="'$(STS2GameDir)' == ''">D:\SteamLibrary\steamapps\common\Slay the Spire 2</STS2GameDir>
-    <STS2GameDataDir Condition="'$(STS2GameDataDir)' == ''">$(STS2GameDir)/data_sts2_windows_x86_64</STS2GameDataDir>
   </PropertyGroup>
 
   <ItemGroup>
+    <!-- STS2GameDir / STS2GameDataDir come from Directory.Build.props: no path here. -->
     <Compile Include="../../McpMod.MapDrawingCoordinates.cs" Link="McpMod.MapDrawingCoordinates.cs" />
     <Reference Include="GodotSharp">
       <HintPath>$(STS2GameDataDir)/GodotSharp.dll</HintPath>

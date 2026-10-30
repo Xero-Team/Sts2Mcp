@@ -67,7 +67,8 @@
 This file is the gameplay guide. The policy for changing the repository itself:
 
 - **Review your own work, then commit.** Read the full diff, run the gates that
-  apply (`dotnet build` with zero warnings; sync `docs/raw-full.md` and
+  apply (`make verify` — zero-warning build, format check, headless tests;
+  `make audit` for an endpoint/docs change; sync `docs/raw-full.md` and
   `docs/raw-simplified.md` for any API change; update `mcp/server.py` docstrings;
   run the manual in-game check for behavior changes), then commit without asking
   when the work is one logical unit the user requested.

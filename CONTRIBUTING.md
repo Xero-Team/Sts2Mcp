@@ -27,7 +27,7 @@ Small, obvious fixes (typos, null guards, doc clarifications) don't need this �
 
 Run through this checklist for any non-trivial change:
 
-- [ ] **Clean build.** `./build.ps1 -GameDir "<your game path>"` (or `dotnet build` on macOS/Linux — see [README](README.md#build-instructions-for-macos)) returns zero warnings, zero errors.
+- [ ] **Clean build.** `make verify` (build + format check + headless tests) or `./build.ps1 -GameDir "<your game path>"` returns zero warnings, zero errors. Configure the game path once via `STS2_GAME_DIR` or `build.local.props` — see [README](README.md#build--install).
 - [ ] **Manual in-game smoke test.** Launch the game with the mod installed and exercise the affected feature path. Most of this codebase can't be unit-tested — your manual check is the test.
 - [ ] **Tested against the latest stable game version.** The version we currently target is listed in the README's "Tested against" line. If a new game patch broke something, that's a separate issue worth filing.
 - [ ] **Docs updated.** If you added or changed an API field/action, update `docs/raw-full.md` and `docs/raw-simplified.md` in the same PR. The MCP server docstrings (`mcp/server.py`) often need a touch too.

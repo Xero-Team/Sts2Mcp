@@ -8,7 +8,7 @@
 
 .PARAMETER GameDir
     Path to the Slay the Spire 2 installation directory.
-    Falls back to the STS2_GAME_DIR environment variable if not specified.
+    Falls back to the STS2_GAME_DIR environment variable, then to build.local.props.
 
 .PARAMETER Configuration
     Build configuration (default: Release).
@@ -30,14 +30,23 @@ if (-not $GameDir) {
     $GameDir = $env:STS2_GAME_DIR
 }
 if (-not $GameDir) {
+    # Same resolution order as Directory.Build.props: the gitignored local file.
+    if (Get-Command dotnet -ErrorAction SilentlyContinue) {
+        $resolved = & dotnet msbuild (Join-Path $PSScriptRoot "STS2_MCP.csproj") -nologo -getProperty:STS2GameDir 2>$null
+        if ($LASTEXITCODE -eq 0 -and $resolved) { $GameDir = "$resolved".Trim() }
+    }
+}
+if (-not $GameDir) {
     Write-Host @"
 ERROR: Game directory not specified.
 
-Provide it via parameter or environment variable:
+Provide it via parameter, environment variable, or build.local.props:
   .\build.ps1 -GameDir "D:\SteamLibrary\steamapps\common\Slay the Spire 2"
 
 Or set it once in your PowerShell profile:
   `$env:STS2_GAME_DIR = "D:\SteamLibrary\steamapps\common\Slay the Spire 2"
+
+Or copy build.local.props.example to build.local.props and set STS2GameDir there.
 "@ -ForegroundColor Red
     exit 1
 }
