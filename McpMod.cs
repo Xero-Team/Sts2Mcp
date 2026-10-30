@@ -372,228 +372,228 @@ public static partial class McpMod
     {
         // The whole dispatcher is the last safety net: a stalled main thread is a retryable
         // 503 ("nothing ran"), anything else a 500 carrying the message.
-        RunHandler(context.Response, () =>
+        RunHandler(context.Response, () => DispatchRequest(context), "Internal error", "internal_error", WantsPretty(context.Request));
+    }
+
+    private static void DispatchRequest(HttpListenerContext context)
+    {
+        var request = context.Request;
+        var response = context.Response;
+        if (!TryPrepareRequest(request, response, out bool pretty))
+            return;
+
+        string path = request.Url?.AbsolutePath ?? "/";
+
+        if (string.Equals(path, "/", StringComparison.Ordinal))
         {
-            var request = context.Request;
-            var response = context.Response;
-            // This bridge is for the local controller, never browser pages.
-            if (!string.IsNullOrEmpty(request.Headers["Origin"]))
-            {
-                SendError(response, 403, "Browser origins are not permitted");
-                return;
-            }
-            if (string.Equals(request.HttpMethod, "POST"
-, StringComparison.Ordinal) && !(request.ContentType?.StartsWith("application/json", StringComparison.OrdinalIgnoreCase) ?? false))
-            {
-                SendError(response, 415, "application/json required");
-                return;
-            }
+            HandleRootEndpoint(request, response, pretty);
+            return;
+        }
 
-            bool pretty = WantsPretty(request);
+        if (string.Equals(path, "/api/v1/singleplayer", StringComparison.Ordinal))
+        {
+            HandleSingleplayerEndpoint(request, response, pretty);
+            return;
+        }
 
-            if (string.Equals(request.HttpMethod, "OPTIONS", StringComparison.Ordinal))
-            {
-                response.StatusCode = 204;
-                response.Close();
-                return;
-            }
+        if (string.Equals(path, "/api/v1/multiplayer", StringComparison.Ordinal))
+        {
+            HandleMultiplayerEndpoint(request, response, pretty);
+            return;
+        }
 
-            string path = request.Url?.AbsolutePath ?? "/";
+        if (string.Equals(path, "/api/v1/settings", StringComparison.Ordinal))
+        {
+            SendGetOnly(request, response, pretty, () => HandleGetSettings(response));
+            return;
+        }
 
-            if (string.Equals(path, "/", StringComparison.Ordinal))
-            {
-                // A dictionary, not an anonymous type: _jsonOptions drops null *properties*,
-                // and "commit" has to stay present (as null) for clients that read it blindly.
-                // kind/endpoint_count/endpoints come from the fork's discoverable api index.
-                if (string.Equals(request.HttpMethod, "GET", StringComparison.Ordinal))
-                {
-                    var endpoints = BuildEndpointIndex();
-                    SendJson(response, new Dictionary<string, object?>(StringComparer.Ordinal)
-                    {
-                        ["message"] = $"Hello from STS2 MCP v{VersionString}",
-                        ["status"] = "ok",
-                        ["kind"] = "api_index",
-                        ["version"] = Version,
-                        ["commit"] = BuildCommit,
-                        ["schema_version"] = StateSchemaVersion,
-                        ["bound_prefixes"] = _boundPrefixes,
-                        ["endpoint_count"] = endpoints.Count,
-                        ["endpoints"] = endpoints
-                    }, pretty);
-                }
-                else
-                {
-                    SendError(response, 405, "Method not allowed", pretty, "method_not_allowed");
-                }
-            }
-            else if (string.Equals(path, "/api/v1/singleplayer", StringComparison.Ordinal))
-            {
-                if (!string.Equals(request.HttpMethod, "GET", StringComparison.Ordinal) && !string.Equals(request.HttpMethod, "POST", StringComparison.Ordinal))
-                {
-                    SendError(response, 405, "Method not allowed", pretty, "method_not_allowed");
-                    return;
-                }
+        if (string.Equals(path, "/api/v1/profiles", StringComparison.Ordinal))
+        {
+            HandleProfilesEndpoint(request, response, pretty);
+            return;
+        }
 
-                // Hard-block singleplayer endpoint during multiplayer runs
-                // to prevent calling the non-sync-safe end_turn path
-                if (IsMultiplayerRun())
-                {
-                    SendError(response, 409,
-                        "Multiplayer run is active. Use /api/v1/multiplayer instead.", pretty,
-                        "multiplayer_run_active");
-                    return;
-                }
+        if (!DispatchReadOnlyEndpoint(path, request, response, pretty))
+            SendError(response, 404, "Not found", pretty, "not_found");
+    }
 
-                if (string.Equals(request.HttpMethod, "GET", StringComparison.Ordinal))
-                    HandleGetState(request, response);
-                else if (string.Equals(request.HttpMethod, "POST", StringComparison.Ordinal))
-                    HandlePostAction(request, response);
-                else
-                    SendError(response, 405, "Method not allowed", pretty, "method_not_allowed");
-            }
-            else if (string.Equals(path, "/api/v1/multiplayer", StringComparison.Ordinal))
-            {
-                if (!string.Equals(request.HttpMethod, "GET", StringComparison.Ordinal) && !string.Equals(request.HttpMethod, "POST", StringComparison.Ordinal))
-                {
-                    SendError(response, 405, "Method not allowed", pretty, "method_not_allowed");
-                    return;
-                }
+    /// <summary>
+    /// The checks that run before routing: browser origins, the JSON content type, and the
+    /// CORS preflight. False when the answer has already been written.
+    /// </summary>
+    private static bool TryPrepareRequest(
+        HttpListenerRequest request, HttpListenerResponse response, out bool pretty)
+    {
+        pretty = WantsPretty(request);
 
-                // Guard: reject multiplayer endpoint during singleplayer runs
-                if (!IsMultiplayerRun())
-                {
-                    SendError(response, 409,
-                        "Not in a multiplayer run. Use /api/v1/singleplayer instead.", pretty,
-                        "not_multiplayer_run");
-                    return;
-                }
+        // This bridge is for the local controller, never browser pages.
+        if (!string.IsNullOrEmpty(request.Headers["Origin"]))
+        {
+            SendError(response, 403, "Browser origins are not permitted");
+            return false;
+        }
+        if (string.Equals(request.HttpMethod, "POST", StringComparison.Ordinal)
+            && !(request.ContentType?.StartsWith("application/json", StringComparison.OrdinalIgnoreCase) ?? false))
+        {
+            SendError(response, 415, "application/json required");
+            return false;
+        }
+        if (string.Equals(request.HttpMethod, "OPTIONS", StringComparison.Ordinal))
+        {
+            response.StatusCode = 204;
+            response.Close();
+            return false;
+        }
+        return true;
+    }
 
-                if (string.Equals(request.HttpMethod, "GET", StringComparison.Ordinal))
-                    HandleGetMultiplayerState(request, response);
-                else if (string.Equals(request.HttpMethod, "POST", StringComparison.Ordinal))
-                    HandlePostMultiplayerAction(request, response);
-                else
-                    SendError(response, 405, "Method not allowed", pretty, "method_not_allowed");
-            }
-            else if (string.Equals(path, "/api/v1/settings", StringComparison.Ordinal))
-            {
-                if (string.Equals(request.HttpMethod, "GET", StringComparison.Ordinal))
-                    HandleGetSettings(response);
-                else
-                    SendError(response, 405, "Method not allowed", pretty, "method_not_allowed");
-            }
-            else if (string.Equals(path, "/api/v1/profiles", StringComparison.Ordinal))
-            {
-                if (string.Equals(request.HttpMethod, "GET", StringComparison.Ordinal))
-                    HandleGetProfiles(request, response);
-                else if (string.Equals(request.HttpMethod, "POST", StringComparison.Ordinal))
-                    HandlePostProfiles(request, response);
-                else
-                    SendError(response, 405, "Method not allowed", pretty, "method_not_allowed");
-            }
-            else if (string.Equals(path, "/api/v1/profile", StringComparison.Ordinal))
-            {
-                if (string.Equals(request.HttpMethod, "GET", StringComparison.Ordinal))
-                    HandleGetProfile(request, response);
-                else
-                    SendError(response, 405, "Method not allowed", pretty);
-            }
-            else if (string.Equals(path, "/api/v1/compendium", StringComparison.Ordinal))
-            {
-                if (string.Equals(request.HttpMethod, "GET", StringComparison.Ordinal))
-                    HandleGetCompendium(request, response);
-                else
-                    SendError(response, 405, "Method not allowed", pretty);
-            }
-            else if (string.Equals(path, "/api/v1/record", StringComparison.Ordinal))
-            {
-                if (string.Equals(request.HttpMethod, "GET", StringComparison.Ordinal))
-                    SendJson(response, Recorder.CombatRecorder.Status(), pretty);
-                else
-                    SendError(response, 405, "Method not allowed", pretty);
-            }
-            else if (string.Equals(path, "/api/v1/record/inspect", StringComparison.Ordinal))
-            {
-                if (string.Equals(request.HttpMethod, "GET", StringComparison.Ordinal))
-                    HandleInspectReplay(request, response);
-                else
-                    SendError(response, 405, "Method not allowed", pretty);
-            }
-            else if (string.Equals(path, "/api/v1/wiki", StringComparison.Ordinal))
-            {
-                if (string.Equals(request.HttpMethod, "GET", StringComparison.Ordinal))
-                    HandleGetWiki(request, response);
-                else
-                    SendError(response, 405, "Method not allowed", pretty);
-            }
-            else if (string.Equals(path, "/api/v1/cardpools", StringComparison.Ordinal))
-            {
-                if (string.Equals(request.HttpMethod, "GET", StringComparison.Ordinal))
-                    HandleGetCardPools(response);
-                else
-                    SendError(response, 405, "Method not allowed");
-            }
-            else if (string.Equals(path, "/api/v1/potionpools", StringComparison.Ordinal))
-            {
-                if (string.Equals(request.HttpMethod, "GET", StringComparison.Ordinal))
-                    HandleGetPotionPools(response);
-                else
-                    SendError(response, 405, "Method not allowed");
-            }
-            else if (string.Equals(path, "/api/v1/relicbag", StringComparison.Ordinal))
-            {
-                if (string.Equals(request.HttpMethod, "GET", StringComparison.Ordinal))
-                    HandleGetRelicBag(response);
-                else
-                    SendError(response, 405, "Method not allowed");
-            }
-            else if (string.Equals(path, "/api/v1/mapdrawings", StringComparison.Ordinal))
-            {
-                if (string.Equals(request.HttpMethod, "GET", StringComparison.Ordinal))
-                    HandleGetMapDrawings(response);
-                else
-                    SendError(response, 405, "Method not allowed", pretty, "method_not_allowed");
-            }
-            else if (string.Equals(path, "/api/v1/bestiary", StringComparison.Ordinal))
-            {
-                if (string.Equals(request.HttpMethod, "GET", StringComparison.Ordinal))
-                    HandleGetBestiary(response);
-                else
-                    SendError(response, 405, "Method not allowed", pretty, "method_not_allowed");
-            }
-            else if (string.Equals(path, "/api/v1/glossary/cards", StringComparison.Ordinal))
-            {
-                if (string.Equals(request.HttpMethod, "GET", StringComparison.Ordinal))
-                    HandleGetGlossaryCards(response);
-                else
-                    SendError(response, 405, "Method not allowed", pretty, "method_not_allowed");
-            }
-            else if (string.Equals(path, "/api/v1/glossary/relics", StringComparison.Ordinal))
-            {
-                if (string.Equals(request.HttpMethod, "GET", StringComparison.Ordinal))
-                    HandleGetGlossaryRelics(response);
-                else
-                    SendError(response, 405, "Method not allowed", pretty, "method_not_allowed");
-            }
-            else if (string.Equals(path, "/api/v1/glossary/potions", StringComparison.Ordinal))
-            {
-                if (string.Equals(request.HttpMethod, "GET", StringComparison.Ordinal))
-                    HandleGetGlossaryPotions(response);
-                else
-                    SendError(response, 405, "Method not allowed", pretty, "method_not_allowed");
-            }
-            else if (string.Equals(path, "/api/v1/glossary/keywords", StringComparison.Ordinal))
-            {
-                if (string.Equals(request.HttpMethod, "GET", StringComparison.Ordinal))
-                    HandleGetGlossaryKeywords(response);
-                else
-                    SendError(response, 405, "Method not allowed", pretty, "method_not_allowed");
-            }
-            else
-            {
-                SendError(response, 404, "Not found", pretty, "not_found");
-            }
-        }, "Internal error", "internal_error", WantsPretty(context.Request));
+    /// <summary>Answers a GET-only endpoint; any other method is a 405.</summary>
+    private static void SendGetOnly(
+        HttpListenerRequest request, HttpListenerResponse response, Action handler)
+    {
+        if (string.Equals(request.HttpMethod, "GET", StringComparison.Ordinal))
+            handler();
+        else
+            SendError(response, 405, "Method not allowed");
+    }
+
+    /// <summary>Same, but the 405 body honours ?pretty and carries the error code.</summary>
+    private static void SendGetOnly(
+        HttpListenerRequest request, HttpListenerResponse response, bool pretty, Action handler)
+    {
+        if (string.Equals(request.HttpMethod, "GET", StringComparison.Ordinal))
+            handler();
+        else
+            SendError(response, 405, "Method not allowed", pretty, "method_not_allowed");
+    }
+
+    private static void HandleRootEndpoint(
+        HttpListenerRequest request, HttpListenerResponse response, bool pretty)
+    {
+        // A dictionary, not an anonymous type: _jsonOptions drops null *properties*,
+        // and "commit" has to stay present (as null) for clients that read it blindly.
+        // kind/endpoint_count/endpoints come from the fork's discoverable api index.
+        if (!string.Equals(request.HttpMethod, "GET", StringComparison.Ordinal))
+        {
+            SendError(response, 405, "Method not allowed", pretty, "method_not_allowed");
+            return;
+        }
+
+        var endpoints = BuildEndpointIndex();
+        SendJson(response, new Dictionary<string, object?>(StringComparer.Ordinal)
+        {
+            ["message"] = $"Hello from STS2 MCP v{VersionString}",
+            ["status"] = "ok",
+            ["kind"] = "api_index",
+            ["version"] = Version,
+            ["commit"] = BuildCommit,
+            ["schema_version"] = StateSchemaVersion,
+            ["bound_prefixes"] = _boundPrefixes,
+            ["endpoint_count"] = endpoints.Count,
+            ["endpoints"] = endpoints
+        }, pretty);
+    }
+
+    private static void HandleSingleplayerEndpoint(
+        HttpListenerRequest request, HttpListenerResponse response, bool pretty)
+    {
+        if (!string.Equals(request.HttpMethod, "GET", StringComparison.Ordinal) && !string.Equals(request.HttpMethod, "POST", StringComparison.Ordinal))
+        {
+            SendError(response, 405, "Method not allowed", pretty, "method_not_allowed");
+            return;
+        }
+
+        // Hard-block singleplayer endpoint during multiplayer runs
+        // to prevent calling the non-sync-safe end_turn path
+        if (IsMultiplayerRun())
+        {
+            SendError(response, 409,
+                "Multiplayer run is active. Use /api/v1/multiplayer instead.", pretty,
+                "multiplayer_run_active");
+            return;
+        }
+
+        if (string.Equals(request.HttpMethod, "GET", StringComparison.Ordinal))
+            HandleGetState(request, response);
+        else if (string.Equals(request.HttpMethod, "POST", StringComparison.Ordinal))
+            HandlePostAction(request, response);
+        else
+            SendError(response, 405, "Method not allowed", pretty, "method_not_allowed");
+    }
+
+    private static void HandleMultiplayerEndpoint(
+        HttpListenerRequest request, HttpListenerResponse response, bool pretty)
+    {
+        if (!string.Equals(request.HttpMethod, "GET", StringComparison.Ordinal) && !string.Equals(request.HttpMethod, "POST", StringComparison.Ordinal))
+        {
+            SendError(response, 405, "Method not allowed", pretty, "method_not_allowed");
+            return;
+        }
+
+        // Guard: reject multiplayer endpoint during singleplayer runs
+        if (!IsMultiplayerRun())
+        {
+            SendError(response, 409,
+                "Not in a multiplayer run. Use /api/v1/singleplayer instead.", pretty,
+                "not_multiplayer_run");
+            return;
+        }
+
+        if (string.Equals(request.HttpMethod, "GET", StringComparison.Ordinal))
+            HandleGetMultiplayerState(request, response);
+        else if (string.Equals(request.HttpMethod, "POST", StringComparison.Ordinal))
+            HandlePostMultiplayerAction(request, response);
+        else
+            SendError(response, 405, "Method not allowed", pretty, "method_not_allowed");
+    }
+
+    private static void HandleProfilesEndpoint(
+        HttpListenerRequest request, HttpListenerResponse response, bool pretty)
+    {
+        if (string.Equals(request.HttpMethod, "GET", StringComparison.Ordinal))
+            HandleGetProfiles(request, response);
+        else if (string.Equals(request.HttpMethod, "POST", StringComparison.Ordinal))
+            HandlePostProfiles(request, response);
+        else
+            SendError(response, 405, "Method not allowed", pretty, "method_not_allowed");
+    }
+
+    /// <summary>The GET-only catalog endpoints. False when the path is not one of them.</summary>
+    private static bool DispatchReadOnlyEndpoint(
+        string path, HttpListenerRequest request, HttpListenerResponse response, bool pretty)
+    {
+        if (string.Equals(path, "/api/v1/profile", StringComparison.Ordinal))
+            SendGetOnly(request, response, () => HandleGetProfile(request, response));
+        else if (string.Equals(path, "/api/v1/compendium", StringComparison.Ordinal))
+            SendGetOnly(request, response, () => HandleGetCompendium(request, response));
+        else if (string.Equals(path, "/api/v1/record", StringComparison.Ordinal))
+            SendGetOnly(request, response, () => SendJson(response, Recorder.CombatRecorder.Status(), pretty));
+        else if (string.Equals(path, "/api/v1/record/inspect", StringComparison.Ordinal))
+            SendGetOnly(request, response, () => HandleInspectReplay(request, response));
+        else if (string.Equals(path, "/api/v1/wiki", StringComparison.Ordinal))
+            SendGetOnly(request, response, () => HandleGetWiki(request, response));
+        else if (string.Equals(path, "/api/v1/cardpools", StringComparison.Ordinal))
+            SendGetOnly(request, response, () => HandleGetCardPools(response));
+        else if (string.Equals(path, "/api/v1/potionpools", StringComparison.Ordinal))
+            SendGetOnly(request, response, () => HandleGetPotionPools(response));
+        else if (string.Equals(path, "/api/v1/relicbag", StringComparison.Ordinal))
+            SendGetOnly(request, response, () => HandleGetRelicBag(response));
+        else if (string.Equals(path, "/api/v1/mapdrawings", StringComparison.Ordinal))
+            SendGetOnly(request, response, pretty, () => HandleGetMapDrawings(response));
+        else if (string.Equals(path, "/api/v1/bestiary", StringComparison.Ordinal))
+            SendGetOnly(request, response, pretty, () => HandleGetBestiary(response));
+        else if (string.Equals(path, "/api/v1/glossary/cards", StringComparison.Ordinal))
+            SendGetOnly(request, response, pretty, () => HandleGetGlossaryCards(response));
+        else if (string.Equals(path, "/api/v1/glossary/relics", StringComparison.Ordinal))
+            SendGetOnly(request, response, pretty, () => HandleGetGlossaryRelics(response));
+        else if (string.Equals(path, "/api/v1/glossary/potions", StringComparison.Ordinal))
+            SendGetOnly(request, response, pretty, () => HandleGetGlossaryPotions(response));
+        else if (string.Equals(path, "/api/v1/glossary/keywords", StringComparison.Ordinal))
+            SendGetOnly(request, response, pretty, () => HandleGetGlossaryKeywords(response));
+        else
+            return false;
+        return true;
     }
 
     private static List<Dictionary<string, object?>> BuildEndpointIndex()
