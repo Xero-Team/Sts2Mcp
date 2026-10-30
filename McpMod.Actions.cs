@@ -315,7 +315,7 @@ public static partial class McpMod
         return true;
     }
 
-    /// <summary>A resolved target for the play, or the error that refused it.</summary>
+    /// <summary>A resolved target for a play or a potion, or the error that refused it.</summary>
     private sealed record PlayTargetResolution(
         Creature? Target,
         Dictionary<string, object?>? Failure);
@@ -451,122 +451,15 @@ public static partial class McpMod
         var potion = player.GetPotionAtSlotIndex(slot);
         if (potion == null)
             return Error(DescribeEmptyPotionSlot(player, slot));
-        if (potion.IsQueued)
-            return Error($"Potion '{SafeGetText(() => potion.Title)}' is already queued for use");
-        if (potion.Owner.Creature.IsDead)
-            return Error("Cannot use potion - player creature is dead");
-        if (!potion.PassesCustomUsabilityCheck)
-        {
-            // Some potions are only usable against the merchant (Foul Potion sells for
-            // gold instead of exploding), and the merchant target is only findable while
-            // the inventory panel is closed. Close it and re-check rather than refusing.
-            if (TryCloseMerchantInventory(player) && potion.PassesCustomUsabilityCheck)
-            {
-                // usable now; fall through
-            }
-            else
-            {
-                return Error(
-                    $"Potion '{SafeGetText(() => potion.Title)}' cannot be used right now"
-                    + (IsInMerchantRoom(player)
-                        ? " (in a shop: this potion has no merchant interaction, or the merchant is not available)"
-                        : ""));
-            }
-        }
 
-        bool inCombat = CombatManager.Instance.IsInProgress;
-        if (potion.Usage == PotionUsage.CombatOnly)
-        {
-            if (!inCombat)
-                return Error($"Potion '{SafeGetText(() => potion.Title)}' can only be used in combat");
-            if (!IsCombatPlayPhase())
-                return Error("Cannot use potions outside of play phase");
-        }
-        else if (potion.Usage == PotionUsage.Automatic)
-            return Error($"Potion '{SafeGetText(() => potion.Title)}' is automatic and cannot be manually used");
+        var unusable = ValidatePotionUsable(player, potion);
+        if (unusable != null)
+            return unusable;
 
-        if (inCombat && CombatManager.Instance.PlayerActionsDisabled)
-            return Error("Player actions are currently disabled");
-
-        // Resolve target
-        Creature? target = null;
-        var combatState = player.Creature.CombatState;
-
-        switch (potion.TargetType)
-        {
-            case TargetType.AnyEnemy:
-                {
-                    if (combatState == null)
-                        return Error("No combat state for target resolution");
-
-                    string? targetId = TryReadTargetId(data);
-                    if (targetId == null)
-                    {
-                        // With a single living enemy there is nothing to disambiguate, so
-                        // pick it rather than refusing. Otherwise say so loudly: this used
-                        // to fall through to target = null and the potion was consumed
-                        // against nothing while the call reported success.
-                        var alive = combatState.Enemies.Where(e => e.IsAlive).ToList();
-                        if (alive.Count != 1)
-                            return Error(
-                                $"Potion '{SafeGetText(() => potion.Title)}' requires a target enemy. "
-                                + $"Provide 'target' with an entity_id or combat_id ({alive.Count} enemies alive).");
-                        target = alive[0];
-                        break;
-                    }
-
-                    target = ResolveTarget(combatState, targetId);
-                    if (target == null)
-                        return Error($"Target '{targetId}' not found among alive enemies");
-                    break;
-                }
-            case TargetType.Self:
-                // PotionModel.IsValidTarget requires target == owner for Self
-                // (unlike cards, where Self passes no target).
-                target = player.Creature;
-                break;
-            case TargetType.AnyPlayer:
-                // Any living player, self included (PotionModel.IsValidTarget).
-                // Optional 'target' throws the potion to a teammate
-                // (players[].entity_id, e.g. "player_1", or a numeric
-                // combat_id); default = self, the pre-existing behavior.
-                if (data.TryGetValue("target", out var playerElem))
-                {
-                    string playerId = playerElem.GetString() ?? "";
-                    target = ResolvePlayerTarget(player, combatState, playerId);
-                    if (target is not { IsAlive: true })
-                        return Error($"Target '{playerId}' not found among living players");
-                }
-                else
-                    target = player.Creature;
-                break;
-            case TargetType.AnyAlly:
-                // Another living player, never self (PotionModel.IsValidTarget
-                // rejects self and the use would be silently cancelled). No
-                // such potion exists today; handled for completeness.
-                if (data.TryGetValue("target", out var allyElem))
-                {
-                    string allyId = allyElem.GetString() ?? "";
-                    target = ResolvePlayerTarget(player, combatState, allyId);
-                    if (target == player.Creature)
-                        return Error($"Potion '{SafeGetText(() => potion.Title)}' targets an ally and cannot target yourself. Valid targets: {ListAllyTargetIds(player)}");
-                    if (target is not { IsAlive: true })
-                        return Error($"Target '{allyId}' not found among living teammates");
-                }
-                else
-                {
-                    target = player.RunState.Players
-                        .Where(p => p != player && p.Creature.IsAlive)
-                        .OrderBy(p => p.Creature.CurrentHp)
-                        .FirstOrDefault()?.Creature;
-                    if (target == null)
-                        return Error($"Potion '{SafeGetText(() => potion.Title)}' requires a living teammate to target and there is none");
-                }
-                break;
-            default:
-                target = null;
-                break;
-        }
+        var targetResolution = ResolvePotionTarget(player, player.Creature.CombatState, potion, data);
+        if (targetResolution.Failure != null)
+            return targetResolution.Failure;
+        var target = targetResolution.Target;
 
         if (target != null && !potion.IsValidTarget(target))
             return Error($"Potion '{SafeGetText(() => potion.Title)}' cannot target {SafeGetText(() => target.Monster?.Title) ?? "that creature"}");
@@ -588,6 +481,134 @@ public static partial class McpMod
             ["status"] = "ok",
             ["message"] = $"Using potion '{SafeGetText(() => potion.Title)}' from slot {slot}{targetMsg}"
         };
+    }
+
+    /// <summary>
+    /// The reasons a potion cannot be used right now, in the order the game checks them. Some
+    /// potions are only usable against the merchant (Foul Potion sells for gold instead of
+    /// exploding), and that target is only findable while the inventory panel is closed, so
+    /// that case closes it and re-checks rather than refusing.
+    /// </summary>
+    private static Dictionary<string, object?>? ValidatePotionUsable(Player player, PotionModel potion)
+    {
+        if (potion.IsQueued)
+            return Error($"Potion '{SafeGetText(() => potion.Title)}' is already queued for use");
+        if (potion.Owner.Creature.IsDead)
+            return Error("Cannot use potion - player creature is dead");
+        if (!potion.PassesCustomUsabilityCheck
+            && (!TryCloseMerchantInventory(player) || !potion.PassesCustomUsabilityCheck))
+        {
+            return Error(
+                $"Potion '{SafeGetText(() => potion.Title)}' cannot be used right now"
+                + (IsInMerchantRoom(player)
+                    ? " (in a shop: this potion has no merchant interaction, or the merchant is not available)"
+                    : ""));
+        }
+
+        bool inCombat = CombatManager.Instance.IsInProgress;
+        if (potion.Usage == PotionUsage.CombatOnly)
+        {
+            if (!inCombat)
+                return Error($"Potion '{SafeGetText(() => potion.Title)}' can only be used in combat");
+            if (!IsCombatPlayPhase())
+                return Error("Cannot use potions outside of play phase");
+        }
+        else if (potion.Usage == PotionUsage.Automatic)
+        {
+            return Error($"Potion '{SafeGetText(() => potion.Title)}' is automatic and cannot be manually used");
+        }
+
+        if (inCombat && CombatManager.Instance.PlayerActionsDisabled)
+            return Error("Player actions are currently disabled");
+        return null;
+    }
+
+    private static PlayTargetResolution ResolvePotionTarget(
+        Player player, ICombatState? combatState, PotionModel potion, Dictionary<string, JsonElement> data)
+        => potion.TargetType switch
+        {
+            TargetType.AnyEnemy => ResolvePotionEnemyTarget(combatState, potion, data),
+            // PotionModel.IsValidTarget requires target == owner for Self
+            // (unlike cards, where Self passes no target).
+            TargetType.Self => new PlayTargetResolution(player.Creature, null),
+            TargetType.AnyPlayer => ResolvePotionPlayerTarget(player, combatState, data),
+            TargetType.AnyAlly => ResolvePotionAllyTarget(player, combatState, potion, data),
+            _ => new PlayTargetResolution(null, null),
+        };
+
+    private static PlayTargetResolution ResolvePotionEnemyTarget(
+        ICombatState? combatState, PotionModel potion, Dictionary<string, JsonElement> data)
+    {
+        if (combatState == null)
+            return new PlayTargetResolution(null, Error("No combat state for target resolution"));
+
+        string? targetId = TryReadTargetId(data);
+        if (targetId == null)
+        {
+            // With a single living enemy there is nothing to disambiguate, so
+            // pick it rather than refusing. Otherwise say so loudly: this used
+            // to fall through to target = null and the potion was consumed
+            // against nothing while the call reported success.
+            var alive = combatState.Enemies.Where(e => e.IsAlive).ToList();
+            if (alive.Count != 1)
+            {
+                return new PlayTargetResolution(null, Error(
+                    $"Potion '{SafeGetText(() => potion.Title)}' requires a target enemy. "
+                    + $"Provide 'target' with an entity_id or combat_id ({alive.Count} enemies alive)."));
+            }
+            return new PlayTargetResolution(alive[0], null);
+        }
+
+        var target = ResolveTarget(combatState, targetId);
+        return target == null
+            ? new PlayTargetResolution(null, Error($"Target '{targetId}' not found among alive enemies"))
+            : new PlayTargetResolution(target, null);
+    }
+
+    private static PlayTargetResolution ResolvePotionPlayerTarget(
+        Player player, ICombatState? combatState, Dictionary<string, JsonElement> data)
+    {
+        // Any living player, self included (PotionModel.IsValidTarget).
+        // Optional 'target' throws the potion to a teammate
+        // (players[].entity_id, e.g. "player_1", or a numeric
+        // combat_id); default = self, the pre-existing behavior.
+        if (!data.TryGetValue("target", out var playerElem))
+            return new PlayTargetResolution(player.Creature, null);
+
+        string playerId = playerElem.GetString() ?? "";
+        var target = ResolvePlayerTarget(player, combatState, playerId);
+        return target is not { IsAlive: true }
+            ? new PlayTargetResolution(null, Error($"Target '{playerId}' not found among living players"))
+            : new PlayTargetResolution(target, null);
+    }
+
+    private static PlayTargetResolution ResolvePotionAllyTarget(
+        Player player, ICombatState? combatState, PotionModel potion, Dictionary<string, JsonElement> data)
+    {
+        // Another living player, never self (PotionModel.IsValidTarget
+        // rejects self and the use would be silently cancelled). No
+        // such potion exists today; handled for completeness.
+        if (!data.TryGetValue("target", out var allyElem))
+        {
+            var teammate = player.RunState.Players
+                .Where(p => p != player && p.Creature.IsAlive)
+                .OrderBy(p => p.Creature.CurrentHp)
+                .FirstOrDefault()?.Creature;
+            return teammate == null
+                ? new PlayTargetResolution(null, Error($"Potion '{SafeGetText(() => potion.Title)}' requires a living teammate to target and there is none"))
+                : new PlayTargetResolution(teammate, null);
+        }
+
+        string allyId = allyElem.GetString() ?? "";
+        var target = ResolvePlayerTarget(player, combatState, allyId);
+        if (target == player.Creature)
+        {
+            return new PlayTargetResolution(null, Error(
+                $"Potion '{SafeGetText(() => potion.Title)}' targets an ally and cannot target yourself. Valid targets: {ListAllyTargetIds(player)}"));
+        }
+        return target is not { IsAlive: true }
+            ? new PlayTargetResolution(null, Error($"Target '{allyId}' not found among living teammates"))
+            : new PlayTargetResolution(target, null);
     }
 
     /// <summary>
