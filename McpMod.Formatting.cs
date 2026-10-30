@@ -247,40 +247,57 @@ public static partial class McpMod
             FormatLobbyMarkdown(sb, lobby);
         }
 
-        // Multiplayer Join — friends list
-        if (state.TryGetValue("friends", out var friendsObj) &&
-            friendsObj is List<Dictionary<string, object?>> friends)
+        AppendMenuFriendsMarkdown(sb, state);
+        AppendMenuStartRunMarkdown(sb, state);
+
+        if (state.TryGetValue("options", out var optionsObj) && optionsObj != null)
+            FormatMenuOptionsMarkdown(sb, optionsObj);
+
+        AppendMenuCharactersMarkdown(sb, state);
+        AppendMenuSelectedMarkdown(sb, state);
+    }
+
+    /// <summary>Multiplayer Join — friends list, with the FastMP/loading notes.</summary>
+    private static void AppendMenuFriendsMarkdown(StringBuilder sb, Dictionary<string, object?> state)
+    {
+        if (!state.TryGetValue("friends", out var friendsObj)
+            || friendsObj is not List<Dictionary<string, object?>> friends)
+            return;
+
+        bool fastMp = state.TryGetValue("fast_mp", out var fastObj) && fastObj is true;
+        bool loading = state.TryGetValue("loading", out var loadingObj) && loadingObj is true;
+        bool noFriends = state.TryGetValue("no_friends", out var noObj) && noObj is true;
+
+        sb.AppendLine($"### Friends ({friends.Count})"
+                      + (fastMp ? "  _[FastMP — auto-joins localhost:33771]_" : "")
+                      + (loading ? "  _[loading...]_" : ""));
+        if (friends.Count == 0)
         {
-            bool fastMp = state.TryGetValue("fast_mp", out var fastObj) && fastObj is true;
-            bool loading = state.TryGetValue("loading", out var loadingObj) && loadingObj is true;
-            bool noFriends = state.TryGetValue("no_friends", out var noObj) && noObj is true;
-
-            sb.AppendLine($"### Friends ({friends.Count})"
-                          + (fastMp ? "  _[FastMP — auto-joins localhost:33771]_" : "")
-                          + (loading ? "  _[loading...]_" : ""));
-            if (friends.Count == 0)
-            {
-                sb.AppendLine(noFriends
-                    ? "_No friends with open lobbies. Use `refresh` to retry._"
-                    : "_(empty)_");
-            }
-            else
-            {
-                foreach (var friend in friends)
-                {
-                    var idx = friend.GetValueOrDefault("index")?.ToString() ?? "?";
-                    var name = friend.GetValueOrDefault("name")?.ToString() ?? "(unknown)";
-                    var pid = friend.GetValueOrDefault("player_id")?.ToString() ?? "?";
-                    var enabled = !friend.TryGetValue("enabled", out var en) || en is not false;
-                    sb.AppendLine($"- `join_{idx}` **{name}** ({pid}){(enabled ? "" : " (disabled)")}");
-                }
-            }
-            sb.AppendLine();
+            sb.AppendLine(noFriends
+                ? "_No friends with open lobbies. Use `refresh` to retry._"
+                : "_(empty)_");
         }
+        else
+        {
+            foreach (var friend in friends)
+            {
+                var idx = friend.GetValueOrDefault("index")?.ToString() ?? "?";
+                var name = friend.GetValueOrDefault("name")?.ToString() ?? "(unknown)";
+                var pid = friend.GetValueOrDefault("player_id")?.ToString() ?? "?";
+                var enabled = !friend.TryGetValue("enabled", out var en) || en is not false;
+                sb.AppendLine($"- `join_{idx}` **{name}** ({pid}){(enabled ? "" : " (disabled)")}");
+            }
+        }
+        sb.AppendLine();
+    }
 
-        // Ascension / seed / run modifiers — the start-a-run screens (character_select
-        // and custom_run). In MP the lobby block above already carries the synced
-        // ascension, but the panel is the local source of truth on both screens.
+    /// <summary>
+    /// Ascension / seed / run modifiers — the start-a-run screens (character_select and
+    /// custom_run). In MP the lobby block already carries the synced ascension, but the
+    /// panel is the local source of truth on both screens.
+    /// </summary>
+    private static void AppendMenuStartRunMarkdown(StringBuilder sb, Dictionary<string, object?> state)
+    {
         if (state.TryGetValue("ascension", out var ascObj) && ascObj is int ascensionLevel)
         {
             var max = state.GetValueOrDefault("max_ascension")?.ToString();
@@ -294,65 +311,68 @@ public static partial class McpMod
             sb.AppendLine();
         }
 
-        if (state.TryGetValue("modifiers", out var modifiersObj) &&
-            modifiersObj is List<Dictionary<string, object?>> modifiers &&
-            modifiers.Count > 0)
-        {
-            sb.AppendLine("### Run Modifiers");
-            foreach (var modifier in modifiers)
-            {
-                // `key` is the selectable name — it differs from `id` only where several
-                // tickboxes share one modifier id (the per-character card modifiers).
-                var id = modifier.GetValueOrDefault("id")?.ToString() ?? "?";
-                var key = modifier.GetValueOrDefault("key")?.ToString() ?? id;
-                var title = modifier.GetValueOrDefault("title")?.ToString() ?? key;
-                var description = modifier.GetValueOrDefault("description")?.ToString();
-                var ticked = modifier.TryGetValue("ticked", out var tickedObj) && tickedObj is true;
-                sb.AppendLine($"- [{(ticked ? "x" : " ")}] `{key}` **{title}**"
-                              + (string.IsNullOrWhiteSpace(description) ? "" : $" - {description}"));
-            }
-            sb.AppendLine();
-            sb.AppendLine("Toggle with `menu_select` using `modifier_<key>`. Some modifiers are mutually "
-                          + "exclusive, so enabling one may disable another.");
-            sb.AppendLine();
-        }
+        if (!state.TryGetValue("modifiers", out var modifiersObj)
+            || modifiersObj is not List<Dictionary<string, object?>> modifiers
+            || modifiers.Count == 0)
+            return;
 
-        if (state.TryGetValue("options", out var optionsObj) && optionsObj != null)
-            FormatMenuOptionsMarkdown(sb, optionsObj);
-
-        if (state.TryGetValue("characters", out var charactersObj) &&
-            charactersObj is List<Dictionary<string, object?>> characters &&
-            characters.Count > 0)
+        sb.AppendLine("### Run Modifiers");
+        foreach (var modifier in modifiers)
         {
-            sb.AppendLine("### Characters");
-            foreach (var character in characters)
-            {
-                var id = character.GetValueOrDefault("id")?.ToString() ?? "?";
-                var name = character.GetValueOrDefault("name")?.ToString() ?? id;
-                var locked = character.TryGetValue("locked", out var lockedObj) && lockedObj is true ? " (LOCKED)" : "";
-                var hp = character.GetValueOrDefault("hp")?.ToString() ?? "?";
-                var gold = character.GetValueOrDefault("gold")?.ToString() ?? "?";
-                var energy = character.GetValueOrDefault("energy")?.ToString() ?? "?";
-                sb.AppendLine($"- `{id}` **{name}**{locked} - HP: {hp} | Gold: {gold} | Energy: {energy}");
-            }
-            sb.AppendLine();
-            sb.AppendLine("Use `menu_select` with an unlocked character ID or name, then `confirm`/`embark`.");
-            sb.AppendLine();
+            // `key` is the selectable name — it differs from `id` only where several
+            // tickboxes share one modifier id (the per-character card modifiers).
+            var id = modifier.GetValueOrDefault("id")?.ToString() ?? "?";
+            var key = modifier.GetValueOrDefault("key")?.ToString() ?? id;
+            var title = modifier.GetValueOrDefault("title")?.ToString() ?? key;
+            var description = modifier.GetValueOrDefault("description")?.ToString();
+            var ticked = modifier.TryGetValue("ticked", out var tickedObj) && tickedObj is true;
+            sb.AppendLine($"- [{(ticked ? "x" : " ")}] `{key}` **{title}**"
+                          + (string.IsNullOrWhiteSpace(description) ? "" : $" - {description}"));
         }
+        sb.AppendLine();
+        sb.AppendLine("Toggle with `menu_select` using `modifier_<key>`. Some modifiers are mutually "
+                      + "exclusive, so enabling one may disable another.");
+        sb.AppendLine();
+    }
 
-        // What the screen currently has chosen — character_select / custom_run.
-        if (state.TryGetValue("selected", out var selectedObj) &&
-            selectedObj is Dictionary<string, object?> selected)
+    private static void AppendMenuCharactersMarkdown(StringBuilder sb, Dictionary<string, object?> state)
+    {
+        if (!state.TryGetValue("characters", out var charactersObj)
+            || charactersObj is not List<Dictionary<string, object?>> characters
+            || characters.Count == 0)
+            return;
+
+        sb.AppendLine("### Characters");
+        foreach (var character in characters)
         {
-            var character = selected.GetValueOrDefault("character")?.ToString();
-            sb.AppendLine("**Selected character:** " + (string.IsNullOrEmpty(character) ? "_(none yet)_" : character));
-            if (selected.GetValueOrDefault("modifiers") is List<string> selectedModifiers)
-            {
-                sb.AppendLine("**Enabled modifiers:** "
-                              + (selectedModifiers.Count > 0 ? string.Join(", ", selectedModifiers) : "_(none)_"));
-            }
-            sb.AppendLine();
+            var id = character.GetValueOrDefault("id")?.ToString() ?? "?";
+            var name = character.GetValueOrDefault("name")?.ToString() ?? id;
+            var locked = character.TryGetValue("locked", out var lockedObj) && lockedObj is true ? " (LOCKED)" : "";
+            var hp = character.GetValueOrDefault("hp")?.ToString() ?? "?";
+            var gold = character.GetValueOrDefault("gold")?.ToString() ?? "?";
+            var energy = character.GetValueOrDefault("energy")?.ToString() ?? "?";
+            sb.AppendLine($"- `{id}` **{name}**{locked} - HP: {hp} | Gold: {gold} | Energy: {energy}");
         }
+        sb.AppendLine();
+        sb.AppendLine("Use `menu_select` with an unlocked character ID or name, then `confirm`/`embark`.");
+        sb.AppendLine();
+    }
+
+    /// <summary>What the screen currently has chosen — character_select / custom_run.</summary>
+    private static void AppendMenuSelectedMarkdown(StringBuilder sb, Dictionary<string, object?> state)
+    {
+        if (!state.TryGetValue("selected", out var selectedObj)
+            || selectedObj is not Dictionary<string, object?> selected)
+            return;
+
+        var character = selected.GetValueOrDefault("character")?.ToString();
+        sb.AppendLine("**Selected character:** " + (string.IsNullOrEmpty(character) ? "_(none yet)_" : character));
+        if (selected.GetValueOrDefault("modifiers") is List<string> selectedModifiers)
+        {
+            sb.AppendLine("**Enabled modifiers:** "
+                          + (selectedModifiers.Count > 0 ? string.Join(", ", selectedModifiers) : "_(none)_"));
+        }
+        sb.AppendLine();
     }
 
     private static void FormatLobbyMarkdown(StringBuilder sb, Dictionary<string, object?> lobby)
