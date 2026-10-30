@@ -60,7 +60,7 @@ public static partial class McpMod
     {
         var unlockState = ResolvePotionPoolUnlockState(out var source);
         if (unlockState == null)
-            return new Dictionary<string, object?> { ["error"] = "No profile or run data available." };
+            return new Dictionary<string, object?>(StringComparer.Ordinal) { ["error"] = "No profile or run data available." };
 
         lock (_potionPoolsCacheLock)
         {
@@ -70,7 +70,7 @@ public static partial class McpMod
                 return _potionPoolsCache;
         }
 
-        var pools = new Dictionary<string, object?>();
+        var pools = new Dictionary<string, object?>(StringComparer.Ordinal);
         foreach (var pool in ModelDb.AllPotionPools)
         {
             // PotionPoolModel has no Title (unlike CardPoolModel), so the
@@ -90,7 +90,7 @@ public static partial class McpMod
                 continue;
             }
 
-            pools[title!] = new Dictionary<string, object?>
+            pools[title!] = new Dictionary<string, object?>(StringComparer.Ordinal)
             {
                 ["potions"] = potions.Select(BuildPotionPoolEntry).ToList()
             };
@@ -99,7 +99,7 @@ public static partial class McpMod
         // PotionFactory.GetPotionOptions concatenates the character's own pool
         // with SharedPotionPool, in that order, so a client needs to know which
         // pool belongs to which character to rebuild the same list.
-        var characters = new Dictionary<string, object?>();
+        var characters = new Dictionary<string, object?>(StringComparer.Ordinal);
         foreach (var character in ModelDb.AllCharacters)
         {
             var name = SafeGetText(() => character.Title);
@@ -107,7 +107,7 @@ public static partial class McpMod
                 characters[name!] = SafeGet(() => (object?)character.PotionPool?.Id?.Entry);
         }
 
-        var result = new Dictionary<string, object?>
+        var result = new Dictionary<string, object?>(StringComparer.Ordinal)
         {
             ["source"] = source,
             ["characters"] = characters,
@@ -125,7 +125,7 @@ public static partial class McpMod
 
     private static Dictionary<string, object?> BuildPotionPoolEntry(PotionModel potion)
     {
-        return new Dictionary<string, object?>
+        return new Dictionary<string, object?>(StringComparer.Ordinal)
         {
             ["id"] = potion.Id.Entry,
             ["name"] = SafeGetText(() => potion.Title) ?? potion.Id.Entry,

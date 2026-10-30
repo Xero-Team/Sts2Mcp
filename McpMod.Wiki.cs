@@ -119,7 +119,7 @@ public static partial class McpMod
             .Select(match => BuildWikiResult(match.Candidate, match.Score))
             .ToList();
 
-        return new Dictionary<string, object?>
+        return new Dictionary<string, object?>(StringComparer.Ordinal)
         {
             ["status"] = "ok",
             ["profile_id"] = saveManager.CurrentProfileId,
@@ -136,7 +136,7 @@ public static partial class McpMod
                 (false, true) => "Lists every card and relic discovered by the active profile, in name order.",
                 (false, false) => "Searches only cards and relics discovered by the active profile, then returns the best fuzzy matches instead of exposing the full catalog."
             },
-            ["counts"] = new Dictionary<string, object?>
+            ["counts"] = new Dictionary<string, object?>(StringComparer.Ordinal)
             {
                 ["discovered_cards"] = discoveredCards.Count,
                 ["discovered_relics"] = discoveredRelics.Count,
@@ -242,7 +242,7 @@ public static partial class McpMod
         if (candidate.Relic != null)
             return BuildWikiRelicResult(candidate, score);
 
-        return new Dictionary<string, object?>
+        return new Dictionary<string, object?>(StringComparer.Ordinal)
         {
             ["item_type"] = candidate.Kind,
             ["id"] = candidate.Id,
@@ -259,7 +259,7 @@ public static partial class McpMod
         var upgradedVariant = upgraded != null
             ? BuildWikiCardVariant(upgraded, "upgraded")
             : card.IsUpgradable
-                ? new Dictionary<string, object?>
+                ? new Dictionary<string, object?>(StringComparer.Ordinal)
                 {
                     ["variant"] = "upgraded",
                     ["description"] = SafeGetCardUpgradePreviewDescription(card),
@@ -267,7 +267,7 @@ public static partial class McpMod
                 }
                 : null;
 
-        var result = new Dictionary<string, object?>
+        var result = new Dictionary<string, object?>(StringComparer.Ordinal)
         {
             ["item_type"] = "card",
             ["id"] = candidate.Id,
@@ -288,7 +288,7 @@ public static partial class McpMod
 
     private static Dictionary<string, object?> BuildWikiCardVariant(CardModel card, string variant)
     {
-        return new Dictionary<string, object?>
+        return new Dictionary<string, object?>(StringComparer.Ordinal)
         {
             ["variant"] = variant,
             ["id"] = SafeGetText(() => card.Id.Entry),
@@ -309,7 +309,7 @@ public static partial class McpMod
     private static Dictionary<string, object?> BuildWikiRelicResult(WikiCandidate candidate, double score)
     {
         var relic = candidate.Relic!;
-        return new Dictionary<string, object?>
+        return new Dictionary<string, object?>(StringComparer.Ordinal)
         {
             ["item_type"] = "relic",
             ["id"] = candidate.Id,

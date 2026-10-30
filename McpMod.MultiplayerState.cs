@@ -134,7 +134,7 @@ public static partial class McpMod
         else if (topOverlay is NGameOverScreen)
         {
             result["state_type"] = "game_over";
-            result["game_over"] = new Dictionary<string, object?>
+            result["game_over"] = new Dictionary<string, object?>(StringComparer.Ordinal)
             {
                 ["message"] = "Run ended.",
                 ["options"] = new List<string> { "main_menu" }
@@ -145,7 +145,7 @@ public static partial class McpMod
                  && topOverlay is not NCardRewardSelectionScreen)
         {
             result["state_type"] = "overlay";
-            result["overlay"] = new Dictionary<string, object?>
+            result["overlay"] = new Dictionary<string, object?>(StringComparer.Ordinal)
             {
                 ["screen_type"] = topOverlay.GetType().Name,
                 ["message"] = $"An overlay ({topOverlay.GetType().Name}) is active. It may require manual interaction in-game."
@@ -275,7 +275,7 @@ public static partial class McpMod
         }
 
         // Common run info
-        var runInfo = new Dictionary<string, object?>
+        var runInfo = new Dictionary<string, object?>(StringComparer.Ordinal)
         {
             ["act"] = runState.CurrentActIndex + 1,
             ["floor"] = runState.TotalFloor,
@@ -300,7 +300,7 @@ public static partial class McpMod
 
         try
         {
-            result["profile"] = new Dictionary<string, object?>
+            result["profile"] = new Dictionary<string, object?>(StringComparer.Ordinal)
             {
                 ["number_of_runs"] = runState.UnlockState.NumberOfRuns,
                 ["first_run_ironclad_present"] = HasFirstRunIronclad(runState)
@@ -331,7 +331,7 @@ public static partial class McpMod
     private static Dictionary<string, object?> BuildMultiplayerBattleState(RunState runState, CombatRoom combatRoom)
     {
         var combatState = CombatManager.Instance.DebugOnlyGetState();
-        var battle = new Dictionary<string, object?>();
+        var battle = new Dictionary<string, object?>(StringComparer.Ordinal);
 
         if (combatState == null)
         {
@@ -464,7 +464,7 @@ public static partial class McpMod
             }
             catch { /* target creature may be gone */ }
 
-            plays.Add(new Dictionary<string, object?>
+            plays.Add(new Dictionary<string, object?>(StringComparer.Ordinal)
             {
                 // Stable per-combat sequence number — the history only appends
                 // within a fight, so pollers dedup with "index > last seen".
@@ -549,7 +549,7 @@ public static partial class McpMod
             if (!inScope)
                 continue;
 
-            rows.Add(new Dictionary<string, object?>
+            rows.Add(new Dictionary<string, object?>(StringComparer.Ordinal)
             {
                 ["index"] = idx++,
                 ["kind"] = kind,
@@ -611,7 +611,7 @@ public static partial class McpMod
         foreach (var player in runState.Players)
         {
             totals.TryGetValue(player, out var byRound);
-            result.Add(new Dictionary<string, object?>
+            result.Add(new Dictionary<string, object?>(StringComparer.Ordinal)
             {
                 ["player"] = SafeGetText(() => player.Character.Title),
                 ["is_local"] = LocalContext.IsMe(player),
@@ -679,7 +679,7 @@ public static partial class McpMod
             foreach (var player in runState.Players)
             {
                 var vote = mapSync.GetVote(player);
-                votes.Add(new Dictionary<string, object?>
+                votes.Add(new Dictionary<string, object?>(StringComparer.Ordinal)
                 {
                     ["player"] = SafeGetText(() => player.Character.Title),
                     ["is_local"] = LocalContext.IsMe(player),
@@ -725,7 +725,7 @@ public static partial class McpMod
                 foreach (var player in runState.Players)
                 {
                     var vote = eventSync.GetPlayerVote(player);
-                    votes.Add(new Dictionary<string, object?>
+                    votes.Add(new Dictionary<string, object?>(StringComparer.Ordinal)
                     {
                         ["player"] = SafeGetText(() => player.Character.Title),
                         ["is_local"] = LocalContext.IsMe(player),
@@ -771,7 +771,7 @@ public static partial class McpMod
                 foreach (var player in runState.Players)
                 {
                     var vote = treasureSync.GetPlayerVote(player);
-                    bids.Add(new Dictionary<string, object?>
+                    bids.Add(new Dictionary<string, object?>(StringComparer.Ordinal)
                     {
                         ["player"] = SafeGetText(() => player.Character.Title),
                         ["is_local"] = LocalContext.IsMe(player),
@@ -802,7 +802,7 @@ public static partial class McpMod
         for (int i = 0; i < runState.Players.Count; i++)
         {
             var player = runState.Players[i];
-            var entry = new Dictionary<string, object?>
+            var entry = new Dictionary<string, object?>(StringComparer.Ordinal)
             {
                 // Stable target id for ally/player-targeting cards and potions
                 // (play_card / use_potion 'target' parameter).

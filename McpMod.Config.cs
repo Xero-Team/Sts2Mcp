@@ -227,7 +227,7 @@ public static partial class McpMod
     {
         try
         {
-            var defaultConfig = new Dictionary<string, object>
+            var defaultConfig = new Dictionary<string, object>(StringComparer.Ordinal)
             {
                 ["port"] = config.Port,
                 ["instant_mode"] = config.InstantMode,
@@ -271,7 +271,7 @@ public static partial class McpMod
 
             // Merge into the file instead of rewriting it: the recorder's "record" and
             // "record_dir" keys are hand-edited and must survive an instant_mode toggle.
-            var data = new Dictionary<string, object?>();
+            var data = new Dictionary<string, object?>(StringComparer.Ordinal);
             try
             {
                 if (File.Exists(configPath))

@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Text.Json;
 using Godot;
@@ -103,7 +104,7 @@ public static partial class McpMod
         RunManager.Instance.ActionQueueSynchronizer.RequestEnqueue(
             new EndPlayerTurnAction(player, roundNumber));
 
-        return new Dictionary<string, object?>
+        return new Dictionary<string, object?>(StringComparer.Ordinal)
         {
             ["status"] = "ok",
             ["message"] = "Submitted end turn (waiting for other players)"
@@ -131,7 +132,7 @@ public static partial class McpMod
         RunManager.Instance.ActionQueueSynchronizer.RequestEnqueue(
             new UndoEndPlayerTurnAction(player, roundNumber));
 
-        return new Dictionary<string, object?>
+        return new Dictionary<string, object?>(StringComparer.Ordinal)
         {
             ["status"] = "ok",
             ["message"] = "Undid end turn - continue playing cards"

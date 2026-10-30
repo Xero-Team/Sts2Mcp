@@ -138,7 +138,7 @@ public static partial class McpMod
         var profiles = new List<Dictionary<string, object?>>();
         for (int i = 1; i <= 3; i++)
         {
-            var profileData = new Dictionary<string, object?>
+            var profileData = new Dictionary<string, object?>(StringComparer.Ordinal)
             {
                 ["id"] = i,
                 ["profile_id"] = i,
@@ -168,7 +168,7 @@ public static partial class McpMod
             profiles.Add(profileData);
         }
 
-        return new Dictionary<string, object?>
+        return new Dictionary<string, object?>(StringComparer.Ordinal)
         {
             ["status"] = "ok",
             ["kind"] = "profiles",
@@ -198,7 +198,7 @@ public static partial class McpMod
             {
                 if (TrySwitchProfileViaOpenScreen(tree.Root, profileId))
                 {
-                    return new Dictionary<string, object?>
+                    return new Dictionary<string, object?>(StringComparer.Ordinal)
                     {
                         ["status"] = "ok",
                         ["message"] = $"Switch requested for profile {profileId} (via UI)",
@@ -211,7 +211,7 @@ public static partial class McpMod
                 if (mainMenu != null && IsNodeVisible(mainMenu))
                 {
                     mainMenu.OpenProfileScreen();
-                    return new Dictionary<string, object?>
+                    return new Dictionary<string, object?>(StringComparer.Ordinal)
                     {
                         ["status"] = "ok",
                         ["message"] = "Opened profile screen. Send switch again to select profile."
@@ -220,7 +220,7 @@ public static partial class McpMod
             }
 
             sm.SwitchProfileId(profileId);
-            return new Dictionary<string, object?>
+            return new Dictionary<string, object?>(StringComparer.Ordinal)
             {
                 ["status"] = "ok",
                 ["message"] = $"Switched to profile {profileId} (requires restart)",
@@ -234,7 +234,7 @@ public static partial class McpMod
                 return Error("Cannot delete the active profile", "active_profile_delete");
 
             sm.DeleteProfile(profileId);
-            return new Dictionary<string, object?>
+            return new Dictionary<string, object?>(StringComparer.Ordinal)
             {
                 ["status"] = "ok",
                 ["message"] = $"Deleted profile {profileId}"
@@ -279,7 +279,7 @@ public static partial class McpMod
         if (saveManager == null || progress == null)
             return Error("No profile data available.", "profile_data_unavailable");
 
-        var result = new Dictionary<string, object?>();
+        var result = new Dictionary<string, object?>(StringComparer.Ordinal);
         var profileId = saveManager.CurrentProfileId;
         var progressPath = GetProfileProgressPath(profileId);
         var resolvedProgressPath = ResolveProfileProgressPath(profileId);
@@ -297,7 +297,7 @@ public static partial class McpMod
         foreach (var kv in progress.CharacterStats.OrderBy(kv => kv.Key.Entry, StringComparer.Ordinal))
         {
             var stats = kv.Value;
-            characters.Add(new Dictionary<string, object?>
+            characters.Add(new Dictionary<string, object?>(StringComparer.Ordinal)
             {
                 ["id"] = kv.Key.Entry,
                 ["max_ascension"] = stats.MaxAscension,
@@ -316,7 +316,7 @@ public static partial class McpMod
         foreach (var kv in progress.CardStats.OrderBy(kv => kv.Key.Entry, StringComparer.Ordinal))
         {
             var stats = kv.Value;
-            cards.Add(new Dictionary<string, object?>
+            cards.Add(new Dictionary<string, object?>(StringComparer.Ordinal)
             {
                 ["id"] = kv.Key.Entry,
                 ["times_picked"] = stats.TimesPicked,
@@ -330,7 +330,7 @@ public static partial class McpMod
         var encounters = new List<Dictionary<string, object?>>();
         foreach (var kv in progress.EncounterStats.OrderBy(kv => kv.Key.Entry, StringComparer.Ordinal))
         {
-            var enc = new Dictionary<string, object?>
+            var enc = new Dictionary<string, object?>(StringComparer.Ordinal)
             {
                 ["id"] = kv.Key.Entry,
                 ["total_wins"] = kv.Value.TotalWins,
@@ -339,7 +339,7 @@ public static partial class McpMod
             var fightStats = new List<Dictionary<string, object?>>();
             foreach (var fs in kv.Value.FightStats)
             {
-                fightStats.Add(new Dictionary<string, object?>
+                fightStats.Add(new Dictionary<string, object?>(StringComparer.Ordinal)
                 {
                     ["character"] = fs.Character.Entry,
                     ["wins"] = fs.Wins,
@@ -355,7 +355,7 @@ public static partial class McpMod
         var enemies = new List<Dictionary<string, object?>>();
         foreach (var kv in progress.EnemyStats.OrderBy(kv => kv.Key.Entry, StringComparer.Ordinal))
         {
-            var enemy = new Dictionary<string, object?>
+            var enemy = new Dictionary<string, object?>(StringComparer.Ordinal)
             {
                 ["id"] = kv.Key.Entry,
                 ["total_wins"] = kv.Value.TotalWins,
@@ -364,7 +364,7 @@ public static partial class McpMod
             var fightStats = new List<Dictionary<string, object?>>();
             foreach (var fs in kv.Value.FightStats)
             {
-                fightStats.Add(new Dictionary<string, object?>
+                fightStats.Add(new Dictionary<string, object?>(StringComparer.Ordinal)
                 {
                     ["character"] = fs.Character.Entry,
                     ["wins"] = fs.Wins,
@@ -380,7 +380,7 @@ public static partial class McpMod
         var ancients = new List<Dictionary<string, object?>>();
         foreach (var kv in progress.AncientStats.OrderBy(kv => kv.Key.Entry, StringComparer.Ordinal))
         {
-            var anc = new Dictionary<string, object?>
+            var anc = new Dictionary<string, object?>(StringComparer.Ordinal)
             {
                 ["id"] = kv.Key.Entry,
                 ["total_visits"] = kv.Value.TotalVisits,
@@ -390,7 +390,7 @@ public static partial class McpMod
             var charStats = new List<Dictionary<string, object?>>();
             foreach (var cs in kv.Value.CharStats)
             {
-                charStats.Add(new Dictionary<string, object?>
+                charStats.Add(new Dictionary<string, object?>(StringComparer.Ordinal)
                 {
                     ["character"] = cs.Character.Entry,
                     ["wins"] = cs.Wins,
@@ -412,7 +412,7 @@ public static partial class McpMod
         var achievements = new List<Dictionary<string, object?>>();
         foreach (var kv in progress.UnlockedAchievements)
         {
-            achievements.Add(new Dictionary<string, object?>
+            achievements.Add(new Dictionary<string, object?>(StringComparer.Ordinal)
             {
                 ["id"] = kv.Key,
                 ["unlocked_at"] = kv.Value
@@ -422,7 +422,7 @@ public static partial class McpMod
 
         result["epochs"] = progress.Epochs
             .OrderBy(e => e.Id?.ToString(), StringComparer.Ordinal)
-            .Select(e => new Dictionary<string, object?>
+            .Select(e => new Dictionary<string, object?>(StringComparer.Ordinal)
             {
                 ["id"] = e.Id,
                 ["state"] = e.State.ToString(),

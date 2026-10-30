@@ -62,7 +62,7 @@ public static partial class McpMod
         // the caller polls /api/v1/singleplayer until the battle appears.
         _ = RunManager.Instance.EnterRoom(room);
 
-        return new Dictionary<string, object?>
+        return new Dictionary<string, object?>(StringComparer.Ordinal)
         {
             ["status"] = "ok",
             ["message"] = $"Starting encounter {name}",
@@ -106,7 +106,7 @@ public static partial class McpMod
         // the caller polls /api/v1/singleplayer until the event appears.
         _ = RunManager.Instance.EnterRoom(room);
 
-        return new Dictionary<string, object?>
+        return new Dictionary<string, object?>(StringComparer.Ordinal)
         {
             ["status"] = "ok",
             ["message"] = $"Starting event {name}",
@@ -130,7 +130,7 @@ public static partial class McpMod
 
         _ = RunManager.Instance.EnterRoom(new MerchantRoom());
 
-        return new Dictionary<string, object?>
+        return new Dictionary<string, object?>(StringComparer.Ordinal)
         {
             ["status"] = "ok",
             ["message"] = "Starting merchant room",
@@ -146,7 +146,7 @@ public static partial class McpMod
         if (!CombatManager.Instance.IsInProgress)
             return Error("Not in combat");
 
-        return new Dictionary<string, object?>
+        return new Dictionary<string, object?>(StringComparer.Ordinal)
         {
             ["status"] = "ok",
             ["message"] = IsPlayPhase(player)
@@ -167,7 +167,7 @@ public static partial class McpMod
             return Error("NGame not available");
 
         _ = game.ReturnToMainMenu();
-        return new Dictionary<string, object?>
+        return new Dictionary<string, object?>(StringComparer.Ordinal)
         {
             ["status"] = "ok",
             ["message"] = "Returning to main menu",
@@ -226,7 +226,7 @@ public static partial class McpMod
         // own loop and the caller polls the state until the card shows up.
         _ = CardPileCmd.AddGeneratedCardToCombat(card, pile, player, CardPilePosition.Top);
 
-        return new Dictionary<string, object?>
+        return new Dictionary<string, object?>(StringComparer.Ordinal)
         {
             ["status"] = "ok",
             ["message"] = $"Adding {SafeGetText(() => card.Id.Entry)} to {pile}",
@@ -254,7 +254,7 @@ public static partial class McpMod
 
         _ = PlayerCmd.SetStars(amount, player);
 
-        return new Dictionary<string, object?>
+        return new Dictionary<string, object?>(StringComparer.Ordinal)
         {
             ["status"] = "ok",
             ["message"] = $"Setting stars to {amount}",
@@ -279,7 +279,7 @@ public static partial class McpMod
 
         _ = PlayerCmd.SetEnergy(amount, player);
 
-        return new Dictionary<string, object?>
+        return new Dictionary<string, object?>(StringComparer.Ordinal)
         {
             ["status"] = "ok",
             ["message"] = $"Setting energy to {amount}",
@@ -353,7 +353,7 @@ public static partial class McpMod
 
         CardCmd.Enchant(enchantment, card, amount);
 
-        return new Dictionary<string, object?>
+        return new Dictionary<string, object?>(StringComparer.Ordinal)
         {
             ["status"] = "ok",
             ["message"] =
@@ -376,7 +376,7 @@ public static partial class McpMod
         int from = RunManager.Instance.DebugOnlyGetState()!.CurrentActIndex;
         _ = RunManager.Instance.EnterNextAct();
 
-        return new Dictionary<string, object?>
+        return new Dictionary<string, object?>(StringComparer.Ordinal)
         {
             ["status"] = "ok",
             ["message"] = $"Entering act after index {from}",
@@ -402,7 +402,7 @@ public static partial class McpMod
 
         _ = CreatureCmd.GainMaxHp(player.Creature, amount);
 
-        return new Dictionary<string, object?>
+        return new Dictionary<string, object?>(StringComparer.Ordinal)
         {
             ["status"] = "ok",
             ["message"] = $"Gaining {amount} max HP",
@@ -423,7 +423,7 @@ public static partial class McpMod
         foreach (var card in upgradable)
             CardCmd.Upgrade(card);
 
-        return new Dictionary<string, object?>
+        return new Dictionary<string, object?>(StringComparer.Ordinal)
         {
             ["status"] = "ok",
             ["message"] = $"Upgrading {upgradable.Count} cards",
@@ -471,7 +471,7 @@ public static partial class McpMod
         // stalls unless the task is driven the way CombatManager drives its own hooks.
         _ = ApplyPowerAsync(player, canonical.ToMutable(), target, amount);
 
-        return new Dictionary<string, object?>
+        return new Dictionary<string, object?>(StringComparer.Ordinal)
         {
             ["status"] = "ok",
             ["message"] = $"Applying {amount} {SafeGetText(() => canonical.Id.Entry)} to {targetId}",

@@ -194,7 +194,7 @@ public static partial class McpMod
         // "status" is carried here too so a client never has to branch on the HTTP code:
         // transport-level failures (bad JSON, unknown route, wrong method) read exactly
         // like the action-level failures produced by Error().
-        var data = new Dictionary<string, object?>
+        var data = new Dictionary<string, object?>(StringComparer.Ordinal)
         {
             ["status"] = "error",
             ["error"] = message
@@ -222,7 +222,7 @@ public static partial class McpMod
         HttpListenerResponse response, string message, bool pretty = false)
     {
         response.StatusCode = 503;
-        SendJson(response, new Dictionary<string, object?>
+        SendJson(response, new Dictionary<string, object?>(StringComparer.Ordinal)
         {
             ["error"] = message,
             ["status"] = "error",
@@ -358,7 +358,7 @@ public static partial class McpMod
         string? errorCode = null,
         [CallerFilePath] string callerFilePath = "")
     {
-        var data = new Dictionary<string, object?> { ["status"] = "error", ["error"] = message };
+        var data = new Dictionary<string, object?>(StringComparer.Ordinal) { ["status"] = "error", ["error"] = message };
         if (string.IsNullOrWhiteSpace(errorCode)
             && (callerFilePath.EndsWith("McpMod.Actions.cs", StringComparison.Ordinal)
                 || callerFilePath.EndsWith("McpMod.MultiplayerActions.cs", StringComparison.Ordinal)))
@@ -432,7 +432,7 @@ public static partial class McpMod
             if (btn is Control ctrl && IsNodeVisible(ctrl))
             {
                 var isEnabled = btn.GetType().GetProperty("IsEnabled")?.GetValue(btn) as bool?;
-                options.Add(new Dictionary<string, object?>
+                options.Add(new Dictionary<string, object?>(StringComparer.Ordinal)
                 {
                     ["name"] = label,
                     ["enabled"] = isEnabled ?? true
@@ -636,7 +636,7 @@ public static partial class McpMod
         var result = new List<Dictionary<string, object?>>();
         try
         {
-            var seen = new HashSet<string>();
+            var seen = new HashSet<string>(StringComparer.Ordinal);
             foreach (var tip in IHoverTip.RemoveDupes(tips))
             {
                 try
@@ -667,7 +667,7 @@ public static partial class McpMod
                     string key = title ?? description!;
                     if (!seen.Add(key)) continue;
 
-                    var entry = new Dictionary<string, object?>
+                    var entry = new Dictionary<string, object?>(StringComparer.Ordinal)
                     {
                         ["name"] = title,
                         ["description"] = description
@@ -973,8 +973,8 @@ public static partial class McpMod
             state["message"] = "Enable Tutorials? Choose yes or no.";
             state["options"] = new List<Dictionary<string, object?>>
             {
-                new() { ["name"] = "no", ["enabled"] = true },
-                new() { ["name"] = "yes", ["enabled"] = true }
+                new(StringComparer.Ordinal) { ["name"] = "no", ["enabled"] = true },
+                new(StringComparer.Ordinal) { ["name"] = "yes", ["enabled"] = true }
             };
             return state;
         }
@@ -988,8 +988,8 @@ public static partial class McpMod
             state["message"] = "Tutorial popup active. Use advance to dismiss.";
             state["options"] = new List<Dictionary<string, object?>>
             {
-                new() { ["name"] = "advance", ["enabled"] = canAdvance },
-                new() { ["name"] = "proceed", ["enabled"] = canAdvance }
+                new(StringComparer.Ordinal) { ["name"] = "advance", ["enabled"] = canAdvance },
+                new(StringComparer.Ordinal) { ["name"] = "proceed", ["enabled"] = canAdvance }
             };
             return state;
         }
@@ -1011,7 +1011,7 @@ public static partial class McpMod
         var stateOptions = new List<Dictionary<string, object?>>();
         foreach (var option in options)
         {
-            stateOptions.Add(new Dictionary<string, object?>
+            stateOptions.Add(new Dictionary<string, object?>(StringComparer.Ordinal)
             {
                 ["name"] = option.Name,
                 ["enabled"] = option.Button.IsEnabled

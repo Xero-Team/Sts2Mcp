@@ -300,7 +300,7 @@ internal static class CombatRecorder
         if (enabled)
         {
             if (!Install("runtime"))
-                return new() { ["status"] = "error", ["error"] = $"Recorder could not be installed: {InstallError}" };
+                return new(StringComparer.Ordinal) { ["status"] = "error", ["error"] = $"Recorder could not be installed: {InstallError}" };
             lock (Gate)
             {
                 if (!_active)
@@ -324,14 +324,14 @@ internal static class CombatRecorder
                 _pending = null;
             }
         }
-        return new() { ["status"] = "ok", ["message"] = enabled ? "Recording on" : "Recording off", ["recording"] = Status() };
+        return new(StringComparer.Ordinal) { ["status"] = "ok", ["message"] = enabled ? "Recording on" : "Recording off", ["recording"] = Status() };
     }
 
     internal static Dictionary<string, object?> Status()
     {
         lock (Gate)
         {
-            return new()
+            return new(StringComparer.Ordinal)
             {
                 ["schema"] = Schema,
                 ["config_enabled"] = ConfigEnabled,
@@ -343,7 +343,7 @@ internal static class CombatRecorder
                 ["root"] = Root,
                 ["session"] = SessionId,
                 ["records_opened"] = _recordsOpened,
-                ["current"] = _rec == null ? null : new Dictionary<string, object?>
+                ["current"] = _rec == null ? null : new Dictionary<string, object?>(StringComparer.Ordinal)
                 {
                     ["id"] = _rec.Id,
                     ["dir"] = _rec.Dir,

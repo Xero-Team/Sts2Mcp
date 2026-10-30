@@ -33,8 +33,8 @@ internal sealed class RecordWriter
     };
 
     private readonly BlockingCollection<Item> _queue = new(new ConcurrentQueue<Item>());
-    private readonly Dictionary<string, string> _prevHash = new();
-    private readonly Dictionary<string, FileStream> _open = new();
+    private readonly Dictionary<string, string> _prevHash = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, FileStream> _open = new(StringComparer.Ordinal);
     private readonly Thread _thread;
 
     private int _failures;

@@ -87,7 +87,7 @@ public static partial class McpMod
     internal static Dictionary<string, object?> NewStateResult(
         string stateType = "unknown", string kind = "singleplayer_state")
     {
-        return new Dictionary<string, object?>
+        return new Dictionary<string, object?>(StringComparer.Ordinal)
         {
             ["state_type"] = stateType,
             ["status"] = "ok",
@@ -154,7 +154,7 @@ public static partial class McpMod
                                 if (btn is Control ctrl && IsNodeVisible(ctrl))
                                 {
                                     var isEnabled = btn.GetType().GetProperty("IsEnabled")?.GetValue(btn) as bool?;
-                                    modeOptions.Add(new Dictionary<string, object?>
+                                    modeOptions.Add(new Dictionary<string, object?>(StringComparer.Ordinal)
                                     {
                                         ["name"] = label,
                                         ["enabled"] = isEnabled ?? true
@@ -185,7 +185,7 @@ public static partial class McpMod
                                     if (btn is Control ctrl && IsNodeVisible(ctrl))
                                     {
                                         var isEnabled = btn.GetType().GetProperty("IsEnabled")?.GetValue(btn) as bool?;
-                                        modeOptions.Add(new Dictionary<string, object?>
+                                        modeOptions.Add(new Dictionary<string, object?>(StringComparer.Ordinal)
                                         {
                                             ["name"] = label,
                                             ["enabled"] = isEnabled ?? true
@@ -216,7 +216,7 @@ public static partial class McpMod
                                         if (btn is Control ctrl && IsNodeVisible(ctrl))
                                         {
                                             var isEnabled = btn.GetType().GetProperty("IsEnabled")?.GetValue(btn) as bool?;
-                                            mpOptions.Add(new Dictionary<string, object?>
+                                            mpOptions.Add(new Dictionary<string, object?>(StringComparer.Ordinal)
                                             {
                                                 ["name"] = label,
                                                 ["enabled"] = isEnabled ?? true
@@ -283,8 +283,8 @@ public static partial class McpMod
                                 result["message"] = "Timeline screen.";
                                 result["options"] = new List<Dictionary<string, object?>>
                             {
-                                new() { ["name"] = "advance", ["enabled"] = true },
-                                new() { ["name"] = "back", ["enabled"] = true }
+                                new(StringComparer.Ordinal) { ["name"] = "advance", ["enabled"] = true },
+                                new(StringComparer.Ordinal) { ["name"] = "back", ["enabled"] = true }
                             };
 
                                 // Read epochs from ProgressState (stable, not hover-dependent)
@@ -323,7 +323,7 @@ public static partial class McpMod
                                                     break;
                                             }
 
-                                            epochList.Add(new Dictionary<string, object?>
+                                            epochList.Add(new Dictionary<string, object?>(StringComparer.Ordinal)
                                             {
                                                 ["id"] = eraName,
                                                 ["name"] = name,
@@ -372,7 +372,7 @@ public static partial class McpMod
                                             if (btnId is int id)
                                             {
                                                 var enabled = btn.GetType().GetProperty("IsEnabled")?.GetValue(btn) as bool?;
-                                                options.Add(new Dictionary<string, object?>
+                                                options.Add(new Dictionary<string, object?>(StringComparer.Ordinal)
                                                 {
                                                     ["name"] = $"profile_{id}",
                                                     ["enabled"] = enabled ?? true
@@ -385,7 +385,7 @@ public static partial class McpMod
                                         ?? FindFirst<NBackButton>(profileScreen);
                                     if (backBtn is NClickableControl backClickable && IsNodeVisible(backClickable))
                                     {
-                                        options.Add(new Dictionary<string, object?>
+                                        options.Add(new Dictionary<string, object?>(StringComparer.Ordinal)
                                         {
                                             ["name"] = "back",
                                             ["enabled"] = backClickable.IsEnabled
@@ -564,7 +564,7 @@ public static partial class McpMod
         else if (topOverlay is NGameOverScreen gameOverScreen)
         {
             result["state_type"] = "game_over";
-            result["game_over"] = new Dictionary<string, object?>
+            result["game_over"] = new Dictionary<string, object?>(StringComparer.Ordinal)
             {
                 ["message"] = "Run ended.",
                 ["options"] = new List<string> { "main_menu" }
@@ -580,7 +580,7 @@ public static partial class McpMod
             // (rewards, card reward, Crystal Sphere) are excluded so the
             // fallback below reports "map" once mapIsOpen is true.
             result["state_type"] = "overlay";
-            result["overlay"] = new Dictionary<string, object?>
+            result["overlay"] = new Dictionary<string, object?>(StringComparer.Ordinal)
             {
                 ["screen_type"] = topOverlay.GetType().Name,
                 ["message"] = $"An overlay ({topOverlay.GetType().Name}) is active. It may require manual interaction in-game."
@@ -842,7 +842,7 @@ public static partial class McpMod
         }
 
         // Common run info
-        var runInfo = new Dictionary<string, object?>
+        var runInfo = new Dictionary<string, object?>(StringComparer.Ordinal)
         {
             ["act"] = runState.CurrentActIndex + 1,
             ["floor"] = runState.TotalFloor,
@@ -874,7 +874,7 @@ public static partial class McpMod
         // them has to know whether that override is active.
         try
         {
-            result["profile"] = new Dictionary<string, object?>
+            result["profile"] = new Dictionary<string, object?>(StringComparer.Ordinal)
             {
                 ["number_of_runs"] = SaveManager.Instance.Progress.NumberOfRuns,
                 ["first_run_ironclad_present"] = HasFirstRunIronclad(runState)
@@ -914,7 +914,7 @@ public static partial class McpMod
     /// them, not working - reporting "still resolving" here deadlocks any caller that
     /// waits for it to clear, because only the caller can clear it.
     /// </summary>
-    private static readonly HashSet<string> _playerInputStates = new()
+    private static readonly HashSet<string> _playerInputStates = new(StringComparer.Ordinal)
     {
         "card_select", "hand_select", "bundle_select", "relic_select", "card_reward",
         "rewards", "event", "rest_site", "shop", "fake_merchant", "treasure",
@@ -1020,7 +1020,7 @@ public static partial class McpMod
     {
         var backButton = GetSubmenuBackButton(settingsScreen);
 
-        return new Dictionary<string, object?>
+        return new Dictionary<string, object?>(StringComparer.Ordinal)
         {
             ["state_type"] = "menu",
             ["menu_screen"] = "settings",
@@ -1030,7 +1030,7 @@ public static partial class McpMod
                 : "Settings screen.",
             ["options"] = new List<Dictionary<string, object?>>
             {
-                new() { ["name"] = "back", ["enabled"] = backButton?.IsEnabled ?? true }
+                new(StringComparer.Ordinal) { ["name"] = "back", ["enabled"] = backButton?.IsEnabled ?? true }
             }
         };
     }
@@ -1134,7 +1134,7 @@ public static partial class McpMod
                 if (GetInstanceFieldValue(pauseMenu, field) is not Control button || !button.Visible)
                     continue;
 
-                options.Add(new Dictionary<string, object?>
+                options.Add(new Dictionary<string, object?>(StringComparer.Ordinal)
                 {
                     ["name"] = name,
                     ["enabled"] = (button as NClickableControl)?.IsEnabled ?? true
@@ -1147,7 +1147,7 @@ public static partial class McpMod
 
     private static Dictionary<string, object?> BuildPauseMenuState(NPauseMenu pauseMenu)
     {
-        return new Dictionary<string, object?>
+        return new Dictionary<string, object?>(StringComparer.Ordinal)
         {
             ["state_type"] = "menu",
             ["menu_screen"] = "pause",
@@ -1171,7 +1171,7 @@ public static partial class McpMod
         var screen = SubmenuScreenName(submenu);
         var backButton = GetSubmenuBackButton(submenu);
 
-        return new Dictionary<string, object?>
+        return new Dictionary<string, object?>(StringComparer.Ordinal)
         {
             ["state_type"] = "menu",
             ["menu_screen"] = screen,
@@ -1181,7 +1181,7 @@ public static partial class McpMod
                           + "underneath; 'back' returns to the previous screen.",
             ["options"] = new List<Dictionary<string, object?>>
             {
-                new() { ["name"] = "back", ["enabled"] = backButton?.IsEnabled ?? true }
+                new(StringComparer.Ordinal) { ["name"] = "back", ["enabled"] = backButton?.IsEnabled ?? true }
             }
         };
     }
@@ -1218,7 +1218,7 @@ public static partial class McpMod
             if (btn.Character is not { } cm || !IsNodeVisible(btn))
                 return null;
 
-            var charData = new Dictionary<string, object?>
+            var charData = new Dictionary<string, object?>(StringComparer.Ordinal)
             {
                 ["name"] = SafeGetText(() => cm.Title),
                 ["id"] = cm.Id.Entry,
@@ -1232,7 +1232,7 @@ public static partial class McpMod
             var startRelics = new List<Dictionary<string, object?>>();
             foreach (var relic in cm.StartingRelics)
             {
-                startRelics.Add(new Dictionary<string, object?>
+                startRelics.Add(new Dictionary<string, object?>(StringComparer.Ordinal)
                 {
                     ["name"] = SafeGetText(() => relic.Title),
                     ["description"] = SafeGetText(() => relic.DynamicDescription)
@@ -1343,7 +1343,7 @@ public static partial class McpMod
             try
             {
                 bool ticked = entry.Tickbox.IsTicked;
-                var modifierState = new Dictionary<string, object?>
+                var modifierState = new Dictionary<string, object?>(StringComparer.Ordinal)
                 {
                     ["id"] = entry.Id,
                     ["key"] = entry.Key,
@@ -1356,7 +1356,7 @@ public static partial class McpMod
                     modifierState["character"] = entry.CharacterId;
                 modifiers.Add(modifierState);
 
-                options.Add(new Dictionary<string, object?>
+                options.Add(new Dictionary<string, object?>(StringComparer.Ordinal)
                 {
                     ["name"] = ModifierOptionPrefix + entry.Key,
                     ["enabled"] = entry.Tickbox.IsEnabled
@@ -1400,12 +1400,12 @@ public static partial class McpMod
         var confirmBtn = GetInstanceFieldValue(screen, confirmField);
         if (confirmBtn is NClickableControl confirmClickable && IsNodeVisible(confirmClickable))
         {
-            options.Add(new Dictionary<string, object?>
+            options.Add(new Dictionary<string, object?>(StringComparer.Ordinal)
             {
                 ["name"] = "confirm",
                 ["enabled"] = confirmClickable.IsEnabled
             });
-            options.Add(new Dictionary<string, object?>
+            options.Add(new Dictionary<string, object?>(StringComparer.Ordinal)
             {
                 ["name"] = "embark",
                 ["enabled"] = confirmClickable.IsEnabled
@@ -1419,7 +1419,7 @@ public static partial class McpMod
         var backBtn = GetInstanceFieldValue(screen, "_backButton");
         if (backBtn is NClickableControl backClickable && IsNodeVisible(backClickable))
         {
-            options.Add(new Dictionary<string, object?>
+            options.Add(new Dictionary<string, object?>(StringComparer.Ordinal)
             {
                 ["name"] = "back",
                 ["enabled"] = backClickable.IsEnabled
@@ -1446,7 +1446,7 @@ public static partial class McpMod
             var unreadyBtn = GetInstanceFieldValue(screen, "_unreadyButton");
             if (unreadyBtn is NClickableControl unreadyClickable && IsNodeVisible(unreadyClickable))
             {
-                options.Add(new Dictionary<string, object?>
+                options.Add(new Dictionary<string, object?>(StringComparer.Ordinal)
                 {
                     ["name"] = "unready",
                     ["enabled"] = unreadyClickable.IsEnabled
@@ -1454,7 +1454,7 @@ public static partial class McpMod
             }
         }
 
-        var selected = new Dictionary<string, object?>
+        var selected = new Dictionary<string, object?>(StringComparer.Ordinal)
         {
             ["character"] = GetSelectedCharacterId(buttons)
         };
@@ -1477,7 +1477,7 @@ public static partial class McpMod
     {
         if (GetInstanceFieldValue(panel, arrowField) is NClickableControl arrow && IsNodeVisible(arrow))
         {
-            options.Add(new Dictionary<string, object?>
+            options.Add(new Dictionary<string, object?>(StringComparer.Ordinal)
             {
                 ["name"] = optionName,
                 ["enabled"] = arrow.IsEnabled
@@ -1498,7 +1498,7 @@ public static partial class McpMod
             var charData = BuildCharacterButtonEntry(btn);
             if (charData == null)
                 continue;
-            options.Add(new Dictionary<string, object?>
+            options.Add(new Dictionary<string, object?>(StringComparer.Ordinal)
             {
                 ["name"] = charData["id"],
                 ["enabled"] = !(bool)(charData["locked"] ?? false)
@@ -1551,7 +1551,7 @@ public static partial class McpMod
         // roster's own field names survived the rename.
         var roster = GetStartRunLobbyPlayers(lobby);
 
-        var lobbyState = new Dictionary<string, object?>
+        var lobbyState = new Dictionary<string, object?>(StringComparer.Ordinal)
         {
             ["type"] = lobby.NetService.Type switch
             {
@@ -1584,7 +1584,7 @@ public static partial class McpMod
 
         foreach (var p in roster)
         {
-            var entry = new Dictionary<string, object?>
+            var entry = new Dictionary<string, object?>(StringComparer.Ordinal)
             {
                 ["id"] = p.Id.ToString(),
                 ["slot_id"] = p.SlotId,
@@ -1733,14 +1733,14 @@ public static partial class McpMod
                     try { name = PlatformUtil.GetPlayerName(PlatformUtil.PrimaryPlatform, friendBtn.PlayerId); }
                     catch (Exception ex) { Warn("menu.multiplayer_join.friends.name", ex); }
 
-                    friends.Add(new Dictionary<string, object?>
+                    friends.Add(new Dictionary<string, object?>(StringComparer.Ordinal)
                     {
                         ["index"] = index,
                         ["name"] = name,
                         ["player_id"] = friendBtn.PlayerId.ToString(),
                         ["enabled"] = friendBtn.IsEnabled
                     });
-                    options.Add(new Dictionary<string, object?>
+                    options.Add(new Dictionary<string, object?>(StringComparer.Ordinal)
                     {
                         ["name"] = $"join_{index}",
                         ["enabled"] = friendBtn.IsEnabled
@@ -1754,7 +1754,7 @@ public static partial class McpMod
         var refreshBtn = GetInstanceFieldValue(joinScreen, "_refreshButton") as NClickableControl;
         if (refreshBtn != null && IsNodeVisible(refreshBtn))
         {
-            options.Add(new Dictionary<string, object?>
+            options.Add(new Dictionary<string, object?>(StringComparer.Ordinal)
             {
                 ["name"] = "refresh",
                 ["enabled"] = refreshBtn.IsEnabled && !loading
@@ -1795,7 +1795,7 @@ public static partial class McpMod
         if (lobby != null)
         {
             var connectedPlayers = GetLoadLobbyPlayers(lobby);
-            var info = new Dictionary<string, object?>
+            var info = new Dictionary<string, object?>(StringComparer.Ordinal)
             {
                 ["type"] = lobby.NetService.Type switch
                 {
@@ -1863,7 +1863,7 @@ public static partial class McpMod
                         bool isReady = false;
                         try { isReady = lobby.IsPlayerReady(sp.NetId); }
                         catch (Exception ex) { Warn("menu.multiplayer_load_lobby.players.is_ready", ex); }
-                        players.Add(new Dictionary<string, object?>
+                        players.Add(new Dictionary<string, object?>(StringComparer.Ordinal)
                         {
                             ["id"] = sp.NetId.ToString(),
                             ["is_local"] = sp.NetId == lobby.NetService.NetId,
@@ -1886,12 +1886,12 @@ public static partial class McpMod
         var confirmBtn = GetInstanceFieldValue(loadLobby, "_confirmButton") as NClickableControl;
         if (confirmBtn != null && IsNodeVisible(confirmBtn))
         {
-            options.Add(new Dictionary<string, object?>
+            options.Add(new Dictionary<string, object?>(StringComparer.Ordinal)
             {
                 ["name"] = "confirm",
                 ["enabled"] = confirmBtn.IsEnabled
             });
-            options.Add(new Dictionary<string, object?>
+            options.Add(new Dictionary<string, object?>(StringComparer.Ordinal)
             {
                 ["name"] = "embark",
                 ["enabled"] = confirmBtn.IsEnabled
@@ -1901,7 +1901,7 @@ public static partial class McpMod
         var backBtn2 = GetInstanceFieldValue(loadLobby, "_backButton") as NClickableControl;
         if (backBtn2 != null && IsNodeVisible(backBtn2))
         {
-            options.Add(new Dictionary<string, object?>
+            options.Add(new Dictionary<string, object?>(StringComparer.Ordinal)
             {
                 ["name"] = "back",
                 ["enabled"] = backBtn2.IsEnabled
@@ -1911,7 +1911,7 @@ public static partial class McpMod
         var unreadyBtn2 = GetInstanceFieldValue(loadLobby, "_unreadyButton") as NClickableControl;
         if (unreadyBtn2 != null && IsNodeVisible(unreadyBtn2))
         {
-            options.Add(new Dictionary<string, object?>
+            options.Add(new Dictionary<string, object?>(StringComparer.Ordinal)
             {
                 ["name"] = "unready",
                 ["enabled"] = unreadyBtn2.IsEnabled
@@ -1976,7 +1976,7 @@ public static partial class McpMod
     private static Dictionary<string, object?> BuildBattleState(RunState runState, CombatRoom combatRoom)
     {
         var combatState = CombatManager.Instance.DebugOnlyGetState();
-        var battle = new Dictionary<string, object?>();
+        var battle = new Dictionary<string, object?>(StringComparer.Ordinal);
 
         if (combatState == null)
         {
@@ -2151,7 +2151,7 @@ public static partial class McpMod
 
     private static Dictionary<string, object?> BuildPlayerState(Player player)
     {
-        var state = new Dictionary<string, object?>();
+        var state = new Dictionary<string, object?>(StringComparer.Ordinal);
         var creature = player.Creature;
         var combatState = player.PlayerCombatState;
 
@@ -2377,7 +2377,7 @@ public static partial class McpMod
     // RoomSet's lists are protected, but they are the only place the act's room
     // ORDER lives, and re-deriving it would mean replaying GenerateRooms.
     private static FieldInfo? _actRoomsField;
-    private static readonly Dictionary<string, FieldInfo?> _roomSetFields = new();
+    private static readonly Dictionary<string, FieldInfo?> _roomSetFields = new(StringComparer.Ordinal);
 
     /// <summary>The act's pre-rolled encounter and event queues plus their
     /// consumed counters, or null when the run has not finished act setup.</summary>
@@ -2440,7 +2440,7 @@ public static partial class McpMod
             EncounterModel? bossEncounter = null;
             try { bossEncounter = act.BossEncounter; } catch { }
             var secondBossEncounter = act.SecondBossEncounter;
-            var encounters = new Dictionary<string, object?>
+            var encounters = new Dictionary<string, object?>(StringComparer.Ordinal)
             {
                 ["normal"] = normal,
                 ["normal_visited"] = Visited("normalEncountersVisited"),
@@ -2458,7 +2458,7 @@ public static partial class McpMod
                 encounters["second_boss"] = secondBossId;
 
             bool isMultiplayer = runState.Players.Count > 1;
-            return new Dictionary<string, object?>
+            return new Dictionary<string, object?>(StringComparer.Ordinal)
             {
                 ["index"] = runState.CurrentActIndex,
                 ["id"] = act.Id.Entry,
@@ -2491,14 +2491,14 @@ public static partial class McpMod
             var rooms = new List<Dictionary<string, object?>>();
             foreach (var room in entry.Rooms)
             {
-                rooms.Add(new Dictionary<string, object?>
+                rooms.Add(new Dictionary<string, object?>(StringComparer.Ordinal)
                 {
                     ["room_type"] = room.RoomType.ToString(),
                     ["model_id"] = room.ModelId?.Entry,
                     ["monster_ids"] = room.MonsterIds.Select(m => m.Entry).ToList()
                 });
             }
-            history.Add(new Dictionary<string, object?>
+            history.Add(new Dictionary<string, object?>(StringComparer.Ordinal)
             {
                 ["map_point_type"] = entry.MapPointType.ToString(),
                 ["rooms"] = rooms
@@ -2514,7 +2514,7 @@ public static partial class McpMod
         var relics = new List<Dictionary<string, object?>>();
         foreach (var relic in player.Relics)
         {
-            relics.Add(new Dictionary<string, object?>
+            relics.Add(new Dictionary<string, object?>(StringComparer.Ordinal)
             {
                 ["id"] = relic.Id.Entry,
                 ["name"] = SafeGetText(() => relic.Title),
@@ -2531,13 +2531,13 @@ public static partial class McpMod
                 ["is_wax"] = relic.IsWax,
                 ["vars"] = relic.DynamicVars.ToDictionary(
                     pair => pair.Key,
-                    pair => (object?)new Dictionary<string, object?>
+                    pair => (object?)new Dictionary<string, object?>(StringComparer.Ordinal)
                     {
                         ["base"] = pair.Value.BaseValue,
                         ["enchanted"] = pair.Value.EnchantedValue,
                         ["preview"] = pair.Value.PreviewValue,
                         ["rendered"] = pair.Value.ToString()
-                    }),
+                    }, StringComparer.Ordinal),
                 ["runtime"] = BuildRelicRuntimeState(relic),
                 ["rarity"] = relic.Rarity.ToString(),
                 ["keywords"] = BuildHoverTips(relic.HoverTipsExcludingRelic)
@@ -2578,7 +2578,7 @@ public static partial class McpMod
 
     private static Dictionary<string, object?> BuildRelicRuntimeState(RelicModel relic)
     {
-        var runtime = new Dictionary<string, object?>();
+        var runtime = new Dictionary<string, object?>(StringComparer.Ordinal);
         if (relic is MegaCrit.Sts2.Core.Models.Relics.PaelsTooth tooth)
         {
             // Render fresh copies as they will return. UpgradeInternal changes
@@ -2657,7 +2657,7 @@ public static partial class McpMod
 
     private static Dictionary<string, object?> BuildPotionInfo(PotionModel potion)
     {
-        return new Dictionary<string, object?>
+        return new Dictionary<string, object?>(StringComparer.Ordinal)
         {
             ["id"] = potion.Id.Entry,
             ["name"] = SafeGetText(() => potion.Title),
@@ -2775,7 +2775,7 @@ public static partial class McpMod
         if (combatState == null)
             return targets;
 
-        var entityCounts = new Dictionary<string, int>();
+        var entityCounts = new Dictionary<string, int>(StringComparer.Ordinal);
         foreach (var creature in combatState.Enemies)
         {
             if (!creature.IsAlive)
@@ -2786,7 +2786,7 @@ public static partial class McpMod
                 count = 0;
             entityCounts[baseId] = count + 1;
 
-            targets.Add(new Dictionary<string, object?>
+            targets.Add(new Dictionary<string, object?>(StringComparer.Ordinal)
             {
                 ["entity_id"] = $"{baseId}_{count}",
                 ["combat_id"] = creature.CombatId,
@@ -2811,13 +2811,13 @@ public static partial class McpMod
         var energy = card.EnergyCost;
         if (EnergyLocalModifiersField.GetValue(energy) is not List<LocalCostModifier> modifiers)
             throw new InvalidOperationException("CardEnergyCost._localModifiers has an unsupported shape.");
-        return new Dictionary<string, object?>
+        return new Dictionary<string, object?>(StringComparer.Ordinal)
         {
             ["canonical"] = energy.Canonical,
             ["base"] = energy.GetWithModifiers(CostModifiers.None),
             ["costs_x"] = energy.CostsX,
             ["captured_x"] = energy.CostsX ? energy.CapturedXValue : (int?)null,
-            ["modifiers"] = modifiers.Select(modifier => new Dictionary<string, object?>
+            ["modifiers"] = modifiers.Select(modifier => new Dictionary<string, object?>(StringComparer.Ordinal)
             {
                 ["amount"] = modifier.Amount,
                 ["kind"] = modifier.Type.ToString(),
@@ -2835,13 +2835,13 @@ public static partial class McpMod
     {
         if (StarCostModifiersField.GetValue(card) is not List<TemporaryCardCost> modifiers)
             throw new InvalidOperationException("CardModel._temporaryStarCosts has an unsupported shape.");
-        return new Dictionary<string, object?>
+        return new Dictionary<string, object?>(StringComparer.Ordinal)
         {
             ["canonical"] = card.CanonicalStarCost,
             ["base"] = card.BaseStarCost,
             ["costs_x"] = card.HasStarCostX,
             ["last_spent"] = card.LastStarsSpent,
-            ["modifiers"] = modifiers.Select(modifier => new Dictionary<string, object?>
+            ["modifiers"] = modifiers.Select(modifier => new Dictionary<string, object?>(StringComparer.Ordinal)
             {
                 ["cost"] = modifier.Cost,
                 ["clears_when_turn_ends"] = modifier.ClearsWhenTurnEnds,
@@ -2885,7 +2885,7 @@ public static partial class McpMod
                 desc.Add("Evoke", orb.EvokeVal);
                 return desc;
             });
-            var info = new Dictionary<string, object?>
+            var info = new Dictionary<string, object?>(StringComparer.Ordinal)
             {
                 ["id"] = orb.Id.Entry,
                 ["name"] = SafeGetText(() => orb.Title),
@@ -2922,7 +2922,7 @@ public static partial class McpMod
             ? NetDeckCard.FromModel(deckCard).DeckIndex
             : null;
         var upgradedPreview = SafeBuildUpgradedCardPreview(card);
-        var info = new Dictionary<string, object?>
+        var info = new Dictionary<string, object?>(StringComparer.Ordinal)
         {
             ["id"] = card.Id.Entry,
             ["name"] = SafeGetText(() => card.Title),
@@ -3008,7 +3008,7 @@ public static partial class McpMod
         // Match description rendering, including the enchantment's own DynamicVars.
         using UnpoweredCardVars? scope = UnpoweredValues ? UnpoweredCardVars.Apply(card) : null;
         var text = card.Enchantment.DynamicExtraCardText?.GetFormattedText();
-        return new Dictionary<string, object?>
+        return new Dictionary<string, object?>(StringComparer.Ordinal)
         {
             ["amount"] = card.Enchantment.Amount,
             ["status"] = card.Enchantment.Status.ToString(),
@@ -3041,7 +3041,7 @@ public static partial class McpMod
         else return null;
         var additive = card.Enchantment?.EnchantDamageAdditive(damage, props) ?? 0m;
         var multiplier = card.Enchantment?.EnchantDamageMultiplicative(damage + additive, props) ?? 1m;
-        var state = new Dictionary<string, object?>
+        var state = new Dictionary<string, object?>(StringComparer.Ordinal)
         {
             ["base"] = damage.ToString(System.Globalization.CultureInfo.InvariantCulture),
             ["enchantment_additive"] = additive.ToString(System.Globalization.CultureInfo.InvariantCulture),
@@ -3050,16 +3050,16 @@ public static partial class McpMod
         if (extra.HasValue)
             state["extra"] = extra.Value.ToString(System.Globalization.CultureInfo.InvariantCulture);
         if (card.Enchantment is MegaCrit.Sts2.Core.Models.Enchantments.Momentum momentum)
-            state["after_play"] = new Dictionary<string, object?>
+            state["after_play"] = new Dictionary<string, object?>(StringComparer.Ordinal)
             {
                 ["kind"] = "Momentum",
                 ["amount"] = momentum.Amount.ToString(System.Globalization.CultureInfo.InvariantCulture)
             };
         else if (card.Enchantment is MegaCrit.Sts2.Core.Models.Enchantments.Vigorous vigorous
                  && vigorous.Status == MegaCrit.Sts2.Core.Entities.Enchantments.EnchantmentStatus.Normal)
-            state["after_play"] = new Dictionary<string, object?> { ["kind"] = "Vigorous" };
+            state["after_play"] = new Dictionary<string, object?>(StringComparer.Ordinal) { ["kind"] = "Vigorous" };
         else if (card.Enchantment is MegaCrit.Sts2.Core.Models.Enchantments.Corrupted)
-            state["after_play"] = new Dictionary<string, object?> { ["kind"] = "Corrupted" };
+            state["after_play"] = new Dictionary<string, object?>(StringComparer.Ordinal) { ["kind"] = "Corrupted" };
         return state;
     }
 
@@ -3097,7 +3097,7 @@ public static partial class McpMod
         var preview = SafeBuildUpgradedCardPreview(card);
         if (preview == null) return null;
 
-        return new Dictionary<string, object?>
+        return new Dictionary<string, object?>(StringComparer.Ordinal)
         {
             ["name"] = SafeGetText(() => preview.Title),
             ["cost"] = GetCostDisplay(preview),
@@ -3127,8 +3127,8 @@ public static partial class McpMod
     /// whole hand). Cards that create upgraded copies (Begone, Primal Force...) are not
     /// here: the copies arrive already upgraded and read correctly without a preview.
     /// </summary>
-    private static readonly HashSet<string> HandUpgradeCardIds = new() { "ARMAMENTS", "APOTHEOSIS" };
-    private static readonly HashSet<string> HandUpgradePotionIds = new() { "BLESSING_OF_THE_FORGE" };
+    private static readonly HashSet<string> HandUpgradeCardIds = new(StringComparer.Ordinal) { "ARMAMENTS", "APOTHEOSIS" };
+    private static readonly HashSet<string> HandUpgradePotionIds = new(StringComparer.Ordinal) { "BLESSING_OF_THE_FORGE" };
 
     private static bool CanUpgradeHandThisTurn(Player player, IEnumerable<CardModel> hand)
     {
@@ -3205,7 +3205,7 @@ public static partial class McpMod
                 {
                     card.UpdateDynamicVarPreview(CardPreviewMode.Normal, enemy, card.DynamicVars);
 
-                    var preview = new Dictionary<string, object?>
+                    var preview = new Dictionary<string, object?>(StringComparer.Ordinal)
                     {
                         ["target"] = GetStableEntityId(enemy),
                         ["combat_id"] = enemy.CombatId
@@ -3269,7 +3269,7 @@ public static partial class McpMod
     /// </summary>
     private static Dictionary<string, object?> ReadDynamicVarValues(CardModel card)
     {
-        var values = new Dictionary<string, object?>();
+        var values = new Dictionary<string, object?>(StringComparer.Ordinal);
         try
         {
             foreach (var (name, dynamicVar) in card.DynamicVars)
@@ -3293,7 +3293,7 @@ public static partial class McpMod
     /// Slippery takes the enemy down by 1, and reporting 18 sends the caller into a
     /// fight it cannot win. Keyed by power type because that survives an id rename.
     /// </summary>
-    private static readonly Dictionary<string, string> _perHitDamageCaps = new()
+    private static readonly Dictionary<string, string> _perHitDamageCaps = new(StringComparer.Ordinal)
     {
         ["SlipperyPower"] = "next hit reduced to 1",
         ["IntangiblePower"] = "all damage reduced to 1",
@@ -3321,7 +3321,7 @@ public static partial class McpMod
                     int remaining = typeName == "SlipperyPower" ? System.Math.Max(power.Amount, 0) : int.MaxValue;
                     int cappedHits = System.Math.Min(hits, remaining);
 
-                    return new Dictionary<string, object?>
+                    return new Dictionary<string, object?>(StringComparer.Ordinal)
                     {
                         ["capped_by"] = SafeGetText(() => power.Title) ?? typeName,
                         ["power_id"] = SafeGetText(() => power.Id.Entry),
@@ -3333,7 +3333,7 @@ public static partial class McpMod
 
                 if (typeName == HardenedShellPowerName)
                 {
-                    return new Dictionary<string, object?>
+                    return new Dictionary<string, object?>(StringComparer.Ordinal)
                     {
                         ["capped_by"] = SafeGetText(() => power.Title) ?? typeName,
                         ["power_id"] = SafeGetText(() => power.Id.Entry),
@@ -3418,7 +3418,7 @@ public static partial class McpMod
         var list = new List<Dictionary<string, object?>>();
         foreach (var card in cards)
         {
-            list.Add(new Dictionary<string, object?>
+            list.Add(new Dictionary<string, object?>(StringComparer.Ordinal)
             {
                 ["id"] = card.Id.Entry,
                 ["is_upgraded"] = card.IsUpgraded
@@ -3438,7 +3438,7 @@ public static partial class McpMod
     // Ids are now assigned once per creature, on first sight, and keyed by the stable
     // CombatId. A creature keeps its id for the whole fight, even after its neighbours die.
     private static readonly Dictionary<uint, string> _entityIdByCombatId = new();
-    private static readonly Dictionary<string, int> _entityIdNextIndex = new();
+    private static readonly Dictionary<string, int> _entityIdNextIndex = new(StringComparer.Ordinal);
     private static ICombatState? _entityIdCombatToken;
 
     // card uid registry
@@ -3451,7 +3451,7 @@ public static partial class McpMod
     // Each card instance gets a uid on first sight that stays with it for the whole
     // combat, wherever it moves between hand, draw, discard and exhaust.
     private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<CardModel, string> _cardUids = new();
-    private static readonly Dictionary<string, int> _cardUidNextIndex = new();
+    private static readonly Dictionary<string, int> _cardUidNextIndex = new(StringComparer.Ordinal);
     private static object? _cardUidCombatToken;
 
     /// <summary>
@@ -3673,7 +3673,7 @@ public static partial class McpMod
         }
         catch (Exception ex) { Warn("enemy.local_creature", ex); }
 
-        var state = new Dictionary<string, object?>
+        var state = new Dictionary<string, object?>(StringComparer.Ordinal)
         {
             ["entity_id"] = entityId,
             ["combat_id"] = creature.CombatId,
@@ -3806,7 +3806,7 @@ public static partial class McpMod
         if (turns == null)
             return null;
 
-        var revive = new Dictionary<string, object?>
+        var revive = new Dictionary<string, object?>(StringComparer.Ordinal)
         {
             ["in_turns"] = turns
         };
@@ -3923,7 +3923,7 @@ public static partial class McpMod
             }
             if (props.Length == 0)
                 return null;
-            var stats = new Dictionary<string, object?>();
+            var stats = new Dictionary<string, object?>(StringComparer.Ordinal);
             foreach (var p in props)
             {
                 try { stats[p.Name] = (int)p.GetValue(monster)!; }
@@ -3976,7 +3976,7 @@ public static partial class McpMod
         var intents = new List<Dictionary<string, object?>>();
         foreach (var intent in moveIntents)
         {
-            var intentData = new Dictionary<string, object?>
+            var intentData = new Dictionary<string, object?>(StringComparer.Ordinal)
             {
                 ["type"] = intent.IntentType.ToString(),
                 // The concrete class is always available and never throws, so
@@ -4066,7 +4066,7 @@ public static partial class McpMod
 
     private static Dictionary<string, object?> BuildEventState(EventRoom eventRoom, RunState runState)
     {
-        var state = new Dictionary<string, object?>();
+        var state = new Dictionary<string, object?>(StringComparer.Ordinal);
 
         var eventModel = eventRoom.LocalMutableEvent ?? eventRoom.CanonicalEvent;
         bool isAncient = eventModel is AncientEventModel;
@@ -4136,7 +4136,7 @@ public static partial class McpMod
                 try
                 {
                     var opt = button.Option;
-                    var optData = new Dictionary<string, object?>
+                    var optData = new Dictionary<string, object?>(StringComparer.Ordinal)
                     {
                         ["index"] = index,
                         // The option's stable, language-independent id
@@ -4180,7 +4180,7 @@ public static partial class McpMod
 
     private static Dictionary<string, object?> BuildFakeMerchantState(EventRoom eventRoom, RunState runState)
     {
-        var state = new Dictionary<string, object?>();
+        var state = new Dictionary<string, object?>(StringComparer.Ordinal);
         // LocalMutableEvent holds the per-player mutable copy with populated inventory;
         // CanonicalEvent is the shared template which may not have it.
         var fakeMerchant = (FakeMerchant)(eventRoom.LocalMutableEvent ?? eventRoom.CanonicalEvent);
@@ -4198,7 +4198,7 @@ public static partial class McpMod
         if (fakeMerchant.StartedFight)
         {
             // After the foul potion fight, merchant is gone - just show proceed
-            state["shop"] = new Dictionary<string, object?>
+            state["shop"] = new Dictionary<string, object?>(StringComparer.Ordinal)
             {
                 ["items"] = new List<Dictionary<string, object?>>(),
                 ["inventory_open"] = false,
@@ -4254,7 +4254,7 @@ public static partial class McpMod
 
     private static Dictionary<string, object?> BuildFakeMerchantShopItems(MerchantInventory? inventory)
     {
-        var state = new Dictionary<string, object?>();
+        var state = new Dictionary<string, object?>(StringComparer.Ordinal);
 
         if (inventory == null)
         {
@@ -4269,7 +4269,7 @@ public static partial class McpMod
         // FakeMerchant only sells relics (no cards, potions, or card removal)
         foreach (var entry in inventory.RelicEntries)
         {
-            var item = new Dictionary<string, object?>
+            var item = new Dictionary<string, object?>(StringComparer.Ordinal)
             {
                 ["index"] = index,
                 ["category"] = "relic",
@@ -4296,7 +4296,7 @@ public static partial class McpMod
 
     private static Dictionary<string, object?> BuildRestSiteState(RestSiteRoom restSiteRoom, RunState runState)
     {
-        var state = new Dictionary<string, object?>();
+        var state = new Dictionary<string, object?>(StringComparer.Ordinal);
 
         var uiRoom = NRestSiteRoom.Instance;
         var options = new List<Dictionary<string, object?>>();
@@ -4314,7 +4314,7 @@ public static partial class McpMod
             var button = uiRoom?.GetButtonForOption(opt);
             bool enabled = opt.IsEnabled && (button?.IsEnabled ?? true);
             bool hasButton = uiRoom != null && FindRestSiteButton(uiRoom, opt) != null;
-            options.Add(new Dictionary<string, object?>
+            options.Add(new Dictionary<string, object?>(StringComparer.Ordinal)
             {
                 ["index"] = index,
                 ["id"] = opt.OptionId,
@@ -4348,7 +4348,7 @@ public static partial class McpMod
 
     private static Dictionary<string, object?> BuildShopState(MerchantRoom merchantRoom, RunState runState)
     {
-        var state = new Dictionary<string, object?>();
+        var state = new Dictionary<string, object?>(StringComparer.Ordinal);
         bool isOpen = NMerchantRoom.Instance?.Inventory?.IsOpen ?? false;
         state["is_open"] = isOpen;
         state["available_actions"] = BuildShopAvailableActions(isOpen);
@@ -4370,7 +4370,7 @@ public static partial class McpMod
         // Cards
         foreach (var entry in inventory.CardEntries)
         {
-            var item = new Dictionary<string, object?>
+            var item = new Dictionary<string, object?>(StringComparer.Ordinal)
             {
                 ["index"] = index,
                 ["category"] = "card",
@@ -4410,7 +4410,7 @@ public static partial class McpMod
         // Relics
         foreach (var entry in inventory.RelicEntries)
         {
-            var item = new Dictionary<string, object?>
+            var item = new Dictionary<string, object?>(StringComparer.Ordinal)
             {
                 ["index"] = index,
                 ["category"] = "relic",
@@ -4434,7 +4434,7 @@ public static partial class McpMod
         // Potions
         foreach (var entry in inventory.PotionEntries)
         {
-            var item = new Dictionary<string, object?>
+            var item = new Dictionary<string, object?>(StringComparer.Ordinal)
             {
                 ["index"] = index,
                 ["category"] = "potion",
@@ -4460,7 +4460,7 @@ public static partial class McpMod
         // Card removal
         if (inventory.CardRemovalEntry is { } removal)
         {
-            items.Add(new Dictionary<string, object?>
+            items.Add(new Dictionary<string, object?>(StringComparer.Ordinal)
             {
                 ["index"] = index,
                 ["category"] = "card_removal",
@@ -4484,7 +4484,7 @@ public static partial class McpMod
                 var held = localPlayer.GetPotionAtSlotIndex(slot);
                 if (held == null || !CanSellPotionToMerchant(localPlayer, held))
                     continue;
-                sellable.Add(new Dictionary<string, object?>
+                sellable.Add(new Dictionary<string, object?>(StringComparer.Ordinal)
                 {
                     ["slot"] = slot,
                     ["potion_id"] = held.Id.Entry,
@@ -4513,13 +4513,13 @@ public static partial class McpMod
     {
         return new List<Dictionary<string, object?>>
         {
-            new()
+            new(StringComparer.Ordinal)
             {
                 ["action"] = "shop_purchase",
                 ["parameter"] = "index",
                 ["description"] = "Purchase an item from the shop items list."
             },
-            new()
+            new(StringComparer.Ordinal)
             {
                 ["action"] = "proceed",
                 ["description"] = isOpen
@@ -4547,7 +4547,7 @@ public static partial class McpMod
         foreach (var nmp in travelable)
         {
             var pt = nmp.Point;
-            var option = new Dictionary<string, object?>
+            var option = new Dictionary<string, object?>(StringComparer.Ordinal)
             {
                 ["index"] = index,
                 ["col"] = pt.coord.col,
@@ -4561,7 +4561,7 @@ public static partial class McpMod
             // 1-level lookahead
             var children = pt.Children
                 .OrderBy(c => c.coord.col)
-                .Select(c => new Dictionary<string, object?>
+                .Select(c => new Dictionary<string, object?>(StringComparer.Ordinal)
                 {
                     ["col"] = c.coord.col,
                     ["row"] = c.coord.row,
@@ -4578,7 +4578,7 @@ public static partial class McpMod
 
     private static Dictionary<string, object?> BuildMapState(RunState runState)
     {
-        var state = new Dictionary<string, object?>();
+        var state = new Dictionary<string, object?>(StringComparer.Ordinal);
 
         var map = runState.Map;
         var visitedCoords = runState.VisitedMapCoords;
@@ -4587,7 +4587,7 @@ public static partial class McpMod
         {
             state["marked_nodes"] = marks
                 .OrderBy(kv => kv.Key.Item1).ThenBy(kv => kv.Key.Item2)
-                .Select(kv => new Dictionary<string, object?>
+                .Select(kv => new Dictionary<string, object?>(StringComparer.Ordinal)
                 {
                     ["col"] = kv.Key.Item1,
                     ["row"] = kv.Key.Item2,
@@ -4600,7 +4600,7 @@ public static partial class McpMod
         if (visitedCoords.Count > 0)
         {
             var cur = visitedCoords[visitedCoords.Count - 1];
-            state["current_position"] = new Dictionary<string, object?>
+            state["current_position"] = new Dictionary<string, object?>(StringComparer.Ordinal)
             {
                 ["col"] = cur.col,
                 ["row"] = cur.row,
@@ -4612,7 +4612,7 @@ public static partial class McpMod
         var visited = new List<Dictionary<string, object?>>();
         foreach (var coord in visitedCoords)
         {
-            visited.Add(new Dictionary<string, object?>
+            visited.Add(new Dictionary<string, object?>(StringComparer.Ordinal)
             {
                 ["col"] = coord.col,
                 ["row"] = coord.row,
@@ -4710,7 +4710,7 @@ public static partial class McpMod
     /// </summary>
     private static Dictionary<string, object?> BuildEncountersSeen(RunState runState)
     {
-        var result = new Dictionary<string, object?>();
+        var result = new Dictionary<string, object?>(StringComparer.Ordinal);
         try
         {
             var history = runState.MapPointHistory;
@@ -4745,7 +4745,7 @@ public static partial class McpMod
                     if (target == null)
                         continue;
 
-                    var info = new Dictionary<string, object?>
+                    var info = new Dictionary<string, object?>(StringComparer.Ordinal)
                     {
                         ["floor"] = i + 1,           // 1-based within the act
                         ["id"] = SafeGetText(() => room.ModelId?.Entry)
@@ -4836,7 +4836,7 @@ public static partial class McpMod
 
     private static Dictionary<string, object?> BuildBossInfo(MapPoint pt, string? bossId, string? bossName)
     {
-        var boss = new Dictionary<string, object?>
+        var boss = new Dictionary<string, object?>(StringComparer.Ordinal)
         {
             ["col"] = pt.coord.col,
             ["row"] = pt.coord.row
@@ -4860,7 +4860,7 @@ public static partial class McpMod
         IReadOnlyDictionary<(int, int), List<string>>? marks = null,
         IReadOnlyDictionary<(int col, int row), Vector2>? drawingNodePositions = null)
     {
-        var node = new Dictionary<string, object?>
+        var node = new Dictionary<string, object?>(StringComparer.Ordinal)
         {
             ["col"] = pt.coord.col,
             ["row"] = pt.coord.row,
@@ -5127,7 +5127,7 @@ public static partial class McpMod
         var card = SpecialRewardCardField?.GetValue(reward) as CardModel
             ?? throw new InvalidOperationException("A populated SpecialCardReward must expose its exact card");
         var saved = reward.ToSerializable();
-        return new Dictionary<string, object?>
+        return new Dictionary<string, object?>(StringComparer.Ordinal)
         {
             ["type"] = "special_card",
             ["card_reference"] = GetCardObjectIdentity(card),
@@ -5138,7 +5138,7 @@ public static partial class McpMod
 
     private static Dictionary<string, object?> BuildRewardsState(NRewardsScreen rewardsScreen, RunState runState)
     {
-        var state = new Dictionary<string, object?>();
+        var state = new Dictionary<string, object?>(StringComparer.Ordinal);
 
         // Reward items
         var rewardButtons = GetRewardButtons(rewardsScreen);
@@ -5229,7 +5229,7 @@ public static partial class McpMod
 
     private static Dictionary<string, object?> BuildCardRewardState(NCardRewardSelectionScreen cardScreen)
     {
-        var state = new Dictionary<string, object?>();
+        var state = new Dictionary<string, object?>(StringComparer.Ordinal);
         var parent = GetCardRewardParent(cardScreen);
         state["parent_reward_id"] = parent?.Id;
         state["selection_state"] = parent?.SelectionState ?? "unknown";
@@ -5301,7 +5301,7 @@ public static partial class McpMod
                 ? optionIds[i]
                 : label ?? $"option_{i}";
 
-            result.Add(new Dictionary<string, object?>
+            result.Add(new Dictionary<string, object?>(StringComparer.Ordinal)
             {
                 ["index"] = i,
                 ["option_id"] = optionId,
@@ -5315,7 +5315,7 @@ public static partial class McpMod
 
     private static Dictionary<string, object?> BuildCardSelectState(NCardGridSelectionScreen screen, RunState runState)
     {
-        var state = new Dictionary<string, object?>();
+        var state = new Dictionary<string, object?>(StringComparer.Ordinal);
 
         // Screen type
         state["screen_type"] = screen switch
@@ -5385,7 +5385,7 @@ public static partial class McpMod
             AddCardHolderState(cardInfo, holder);
             cards.Add(cardInfo);
             if (cardInfo["is_selected"] is true)
-                selectedCardEntries.Add(new Dictionary<string, object?>(cardInfo));
+                selectedCardEntries.Add(new Dictionary<string, object?>(cardInfo, StringComparer.Ordinal));
             index++;
         }
         state["cards"] = cards;
@@ -5479,7 +5479,7 @@ public static partial class McpMod
         // the selected card for the only available next action.
         var availableActions = new List<Dictionary<string, object?>>
         {
-            new()
+            new(StringComparer.Ordinal)
             {
                 ["action"] = "select_card",
                 ["parameter"] = "index",
@@ -5490,7 +5490,7 @@ public static partial class McpMod
         };
         if (canConfirm)
         {
-            availableActions.Add(new Dictionary<string, object?>
+            availableActions.Add(new Dictionary<string, object?>(StringComparer.Ordinal)
             {
                 ["action"] = "confirm_selection",
                 ["description"] = "Confirm the selected card(s) and leave this selection step."
@@ -5498,7 +5498,7 @@ public static partial class McpMod
         }
         if (canCancel)
         {
-            availableActions.Add(new Dictionary<string, object?>
+            availableActions.Add(new Dictionary<string, object?>(StringComparer.Ordinal)
             {
                 ["action"] = "cancel_selection",
                 ["description"] = previewShowing
@@ -5548,7 +5548,7 @@ public static partial class McpMod
 
     private static Dictionary<string, object?> BuildChooseCardState(NChooseACardSelectionScreen screen, RunState runState)
     {
-        var state = new Dictionary<string, object?>();
+        var state = new Dictionary<string, object?>(StringComparer.Ordinal);
         state["screen_type"] = "choose";
 
         state["prompt"] = "Choose a card.";
@@ -5624,7 +5624,7 @@ public static partial class McpMod
 
     private static Dictionary<string, object?> BuildBundleSelectState(NChooseABundleSelectionScreen screen, RunState runState)
     {
-        var state = new Dictionary<string, object?>();
+        var state = new Dictionary<string, object?>(StringComparer.Ordinal);
         state["screen_type"] = "bundle";
 
         state["prompt"] = "Choose a bundle.";
@@ -5644,7 +5644,7 @@ public static partial class McpMod
                 cardIndex++;
             }
 
-            bundles.Add(new Dictionary<string, object?>
+            bundles.Add(new Dictionary<string, object?>(StringComparer.Ordinal)
             {
                 ["index"] = index,
                 ["card_count"] = cards.Count,
@@ -5686,7 +5686,7 @@ public static partial class McpMod
         state["can_confirm"] = IsControlVisibleOrActionable(confirmButton);
         var chooseActions = new List<Dictionary<string, object?>>
         {
-            new()
+            new(StringComparer.Ordinal)
             {
                 ["action"] = "select_card",
                 ["parameter"] = "index",
@@ -5695,7 +5695,7 @@ public static partial class McpMod
         };
         if (state["can_cancel"] is true)
         {
-            chooseActions.Add(new Dictionary<string, object?>
+            chooseActions.Add(new Dictionary<string, object?>(StringComparer.Ordinal)
             {
                 ["action"] = "cancel_selection",
                 ["description"] = "Skip or cancel this card choice."
@@ -5708,7 +5708,7 @@ public static partial class McpMod
 
     private static Dictionary<string, object?> BuildHandSelectState(NPlayerHand hand, RunState runState)
     {
-        var state = new Dictionary<string, object?>();
+        var state = new Dictionary<string, object?>(StringComparer.Ordinal);
 
         // Mode
         state["mode"] = hand.CurrentMode switch
@@ -5808,7 +5808,7 @@ public static partial class McpMod
                 {
                     var card = holder.CardModel;
                     if (card == null) continue;
-                    selectedCards.Add(new Dictionary<string, object?>
+                    selectedCards.Add(new Dictionary<string, object?>(StringComparer.Ordinal)
                     {
                         ["index"] = selIdx,
                         ["name"] = SafeGetText(() => card.Title)
@@ -5829,7 +5829,7 @@ public static partial class McpMod
 
     private static Dictionary<string, object?> BuildRelicSelectState(NChooseARelicSelection screen, RunState runState)
     {
-        var state = new Dictionary<string, object?>();
+        var state = new Dictionary<string, object?>(StringComparer.Ordinal);
 
         state["prompt"] = "Choose a relic.";
 
@@ -5843,7 +5843,7 @@ public static partial class McpMod
             var relic = holder.Relic?.Model;
             if (relic == null) continue;
 
-            relics.Add(new Dictionary<string, object?>
+            relics.Add(new Dictionary<string, object?>(StringComparer.Ordinal)
             {
                 ["index"] = index,
                 ["id"] = relic.Id.Entry,
@@ -5866,7 +5866,7 @@ public static partial class McpMod
 
     private static Dictionary<string, object?> BuildCrystalSphereState(NCrystalSphereScreen screen, RunState runState)
     {
-        var state = new Dictionary<string, object?>();
+        var state = new Dictionary<string, object?>(StringComparer.Ordinal);
 
         var instructionsTitle = screen.GetNodeOrNull<Godot.Control>("%InstructionsTitle");
         if (instructionsTitle != null)
@@ -5893,7 +5893,7 @@ public static partial class McpMod
         foreach (var cell in cells.OrderBy(c => c.Entity.Y).ThenBy(c => c.Entity.X))
         {
             var cellVisible = cell.Visible && cell.IsVisibleInTree();
-            var cellState = new Dictionary<string, object?>
+            var cellState = new Dictionary<string, object?>(StringComparer.Ordinal)
             {
                 ["x"] = cell.Entity.X,
                 ["y"] = cell.Entity.Y,
@@ -5912,7 +5912,7 @@ public static partial class McpMod
             cellStates.Add(cellState);
             if (cell.Entity.IsHidden && cellVisible)
             {
-                clickableCells.Add(new Dictionary<string, object?>
+                clickableCells.Add(new Dictionary<string, object?>(StringComparer.Ordinal)
                 {
                     ["x"] = cell.Entity.X,
                     ["y"] = cell.Entity.Y
@@ -5928,7 +5928,7 @@ public static partial class McpMod
                      .Select(c => c.Entity.Item!)
                      .Distinct())
         {
-            revealedItems.Add(new Dictionary<string, object?>
+            revealedItems.Add(new Dictionary<string, object?>(StringComparer.Ordinal)
             {
                 ["item_type"] = item.GetType().Name,
                 ["x"] = item.Position.X,
@@ -5998,7 +5998,7 @@ public static partial class McpMod
 
     private static Dictionary<string, object?> BuildTreasureState(TreasureRoom treasureRoom, RunState runState)
     {
-        var state = new Dictionary<string, object?>();
+        var state = new Dictionary<string, object?>(StringComparer.Ordinal);
 
         var treasureUI = FindFirst<NTreasureRoom>(
             ((Godot.SceneTree)Godot.Engine.GetMainLoop()).Root);
@@ -6032,7 +6032,7 @@ public static partial class McpMod
             {
                 var relic = holder.Relic?.Model;
                 if (relic == null) continue;
-                relics.Add(new Dictionary<string, object?>
+                relics.Add(new Dictionary<string, object?>(StringComparer.Ordinal)
                 {
                     ["index"] = index,
                     ["id"] = relic.Id.Entry,
@@ -6076,7 +6076,7 @@ public static partial class McpMod
             bool isVisible;
             try { isVisible = power.IsVisible; }
             catch (Exception ex) { Warn("status.is_visible", ex); isVisible = true; }
-            var entry = new Dictionary<string, object?>
+            var entry = new Dictionary<string, object?>(StringComparer.Ordinal)
             {
                 ["id"] = power.Id.Entry,
                 ["amount"] = power.Amount,
@@ -6090,13 +6090,13 @@ public static partial class McpMod
                 ["is_visible"] = isVisible,
                 ["vars"] = power.DynamicVars.ToDictionary(
                     pair => pair.Key,
-                    pair => (object?)new Dictionary<string, object?>
+                    pair => (object?)new Dictionary<string, object?>(StringComparer.Ordinal)
                     {
                         ["base"] = pair.Value.BaseValue,
                         ["enchanted"] = pair.Value.EnchantedValue,
                         ["preview"] = pair.Value.PreviewValue,
                         ["rendered"] = pair.Value.ToString()
-                    }),
+                    }, StringComparer.Ordinal),
                 ["runtime"] = BuildPowerRuntimeState(power)
             };
             powers.Add(entry);
@@ -6149,7 +6149,7 @@ public static partial class McpMod
 
     private static Dictionary<string, object?> BuildPowerRuntimeState(PowerModel power)
     {
-        var runtime = new Dictionary<string, object?>();
+        var runtime = new Dictionary<string, object?>(StringComparer.Ordinal);
         var seen = new HashSet<object>(ReferenceEqualityComparer.Instance);
 
         // Concrete and intermediate power classes contain state such as
@@ -6182,9 +6182,9 @@ public static partial class McpMod
         if (value is Enum enumValue)
             return enumValue.ToString();
         if (value is Creature creature)
-            return new Dictionary<string, object?> { ["kind"] = "creature", ["combat_id"] = creature.CombatId };
+            return new Dictionary<string, object?>(StringComparer.Ordinal) { ["kind"] = "creature", ["combat_id"] = creature.CombatId };
         if (value is CardPlay cardPlay)
-            return new Dictionary<string, object?>
+            return new Dictionary<string, object?>(StringComparer.Ordinal)
             {
                 ["kind"] = "card_play",
                 ["play_id"] = GetCardPlayIdentity(cardPlay),
@@ -6204,16 +6204,16 @@ public static partial class McpMod
             return cardState;
         }
         if (value is AbstractModel model)
-            return new Dictionary<string, object?> { ["kind"] = "model", ["id"] = model.Id.Entry };
+            return new Dictionary<string, object?>(StringComparer.Ordinal) { ["kind"] = "model", ["id"] = model.Id.Entry };
         if (depth >= 5 || !seen.Add(value))
-            return new Dictionary<string, object?> { ["kind"] = "reference", ["type"] = value.GetType().FullName };
+            return new Dictionary<string, object?>(StringComparer.Ordinal) { ["kind"] = "reference", ["type"] = value.GetType().FullName };
 
         if (value is IDictionary dictionary)
         {
             var entries = new List<Dictionary<string, object?>>();
             foreach (DictionaryEntry pair in dictionary)
             {
-                entries.Add(new Dictionary<string, object?>
+                entries.Add(new Dictionary<string, object?>(StringComparer.Ordinal)
                 {
                     ["key"] = SerializePowerRuntimeValue(pair.Key, seen, depth + 1),
                     ["value"] = SerializePowerRuntimeValue(pair.Value, seen, depth + 1)
@@ -6229,7 +6229,7 @@ public static partial class McpMod
             return items;
         }
 
-        var result = new Dictionary<string, object?> { ["kind"] = "object", ["type"] = value.GetType().FullName };
+        var result = new Dictionary<string, object?>(StringComparer.Ordinal) { ["kind"] = "object", ["type"] = value.GetType().FullName };
         foreach (var field in value.GetType().GetFields(BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public))
         {
             if (!field.IsStatic && !field.IsLiteral)
@@ -6248,7 +6248,7 @@ public static partial class McpMod
         var osty = combatState.GetPet<Osty>();
         if (osty != null)
         {
-            pets.Add(new Dictionary<string, object?>
+            pets.Add(new Dictionary<string, object?>(StringComparer.Ordinal)
             {
                 ["id"] = osty.Monster?.Id.Entry ?? "OSTY",
                 ["combat_id"] = osty.CombatId,

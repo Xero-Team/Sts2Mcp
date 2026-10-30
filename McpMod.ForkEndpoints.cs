@@ -44,11 +44,11 @@ public static partial class McpMod
         if (settings == null || prefs == null)
             return Error("Settings data is not available", "settings_data_unavailable");
 
-        return new Dictionary<string, object?>
+        return new Dictionary<string, object?>(StringComparer.Ordinal)
         {
             ["status"] = "ok",
             ["kind"] = "settings",
-            ["display"] = new Dictionary<string, object?>
+            ["display"] = new Dictionary<string, object?>(StringComparer.Ordinal)
             {
                 ["fullscreen"] = settings.Fullscreen,
                 ["resolution"] = $"{settings.WindowSize.X}x{settings.WindowSize.Y}",
@@ -59,14 +59,14 @@ public static partial class McpMod
                 ["target_display"] = settings.TargetDisplay,
                 ["limit_fps_background"] = settings.LimitFpsInBackground,
             },
-            ["audio"] = new Dictionary<string, object?>
+            ["audio"] = new Dictionary<string, object?>(StringComparer.Ordinal)
             {
                 ["master"] = settings.VolumeMaster,
                 ["bgm"] = settings.VolumeBgm,
                 ["sfx"] = settings.VolumeSfx,
                 ["ambience"] = settings.VolumeAmbience,
             },
-            ["gameplay"] = new Dictionary<string, object?>
+            ["gameplay"] = new Dictionary<string, object?>(StringComparer.Ordinal)
             {
                 ["fast_mode"] = prefs.FastMode.ToString(),
                 ["screen_shake"] = prefs.ScreenShakeOptionIndex,
@@ -75,7 +75,7 @@ public static partial class McpMod
                 ["text_effects"] = prefs.TextEffectsEnabled,
                 ["long_press"] = prefs.IsLongPressEnabled,
             },
-            ["mods"] = new Dictionary<string, object?>
+            ["mods"] = new Dictionary<string, object?>(StringComparer.Ordinal)
             {
                 ["enabled"] = settings.ModSettings?.PlayerAgreedToModLoading ?? false,
             },
@@ -186,7 +186,7 @@ public static partial class McpMod
         }
 
         var runState = RunManager.Instance.DebugOnlyGetState();
-        var players = runState?.Players.Select((player, index) => new Dictionary<string, object?>
+        var players = runState?.Players.Select((player, index) => new Dictionary<string, object?>(StringComparer.Ordinal)
         {
             ["index"] = index,
             ["character"] = player.Character?.Id.Entry,
@@ -250,7 +250,7 @@ public static partial class McpMod
             return;
         }
 
-        SendJson(response, new Dictionary<string, object?>
+        SendJson(response, new Dictionary<string, object?>(StringComparer.Ordinal)
         {
             ["status"] = "ok",
             ["kind"] = payload.Kind,
@@ -275,7 +275,7 @@ public static partial class McpMod
 
     private static Dictionary<string, object?> GlossaryError(string message, string errorCode)
     {
-        return new Dictionary<string, object?>
+        return new Dictionary<string, object?>(StringComparer.Ordinal)
         {
             ["status"] = "error",
             ["error"] = message,
@@ -293,7 +293,7 @@ public static partial class McpMod
             return GlossaryError("Could not read run state.", RunStateUnavailableErrorCode);
 
         var result = new List<Dictionary<string, object?>>();
-        var seen = new HashSet<string>();
+        var seen = new HashSet<string>(StringComparer.Ordinal);
 
         foreach (var pool in ModelDb.AllSharedCardPools)
             AddCardsFromPool(pool, SafeGetText(() => pool.Title) ?? pool.Id.Entry, result, seen);
@@ -322,7 +322,7 @@ public static partial class McpMod
             seen.Add(id);
 
             var upgradedPreview = SafeBuildUpgradedCardPreview(card);
-            result.Add(new Dictionary<string, object?>
+            result.Add(new Dictionary<string, object?>(StringComparer.Ordinal)
             {
                 ["id"] = id,
                 ["name"] = SafeGetText(() => card.Title),
@@ -355,7 +355,7 @@ public static partial class McpMod
             return GlossaryError("Could not read run state.", RunStateUnavailableErrorCode);
 
         var result = new List<Dictionary<string, object?>>();
-        var seen = new HashSet<string>();
+        var seen = new HashSet<string>(StringComparer.Ordinal);
 
         var sharedPool = ModelDb.RelicPool<SharedRelicPool>();
         AddRelicsFromPool(sharedPool, "Shared", result, seen);
@@ -384,7 +384,7 @@ public static partial class McpMod
             if (seen.Contains(id)) continue;
             seen.Add(id);
 
-            result.Add(new Dictionary<string, object?>
+            result.Add(new Dictionary<string, object?>(StringComparer.Ordinal)
             {
                 ["id"] = id,
                 ["name"] = SafeGetText(() => relic.Title),
@@ -406,7 +406,7 @@ public static partial class McpMod
             return GlossaryError("Could not read run state.", RunStateUnavailableErrorCode);
 
         var result = new List<Dictionary<string, object?>>();
-        var seen = new HashSet<string>();
+        var seen = new HashSet<string>(StringComparer.Ordinal);
 
         var sharedPool = ModelDb.PotionPool<SharedPotionPool>();
         AddPotionsFromPool(sharedPool, "Shared", result, seen);
@@ -435,7 +435,7 @@ public static partial class McpMod
             if (seen.Contains(id)) continue;
             seen.Add(id);
 
-            result.Add(new Dictionary<string, object?>
+            result.Add(new Dictionary<string, object?>(StringComparer.Ordinal)
             {
                 ["id"] = id,
                 ["name"] = SafeGetText(() => potion.Title),
@@ -495,7 +495,7 @@ public static partial class McpMod
         var result = new List<Dictionary<string, object?>>();
         foreach (var kv in keywords.OrderBy(k => k.Key, StringComparer.Ordinal))
         {
-            result.Add(new Dictionary<string, object?>
+            result.Add(new Dictionary<string, object?>(StringComparer.Ordinal)
             {
                 ["name"] = kv.Key,
                 ["description"] = kv.Value
@@ -539,7 +539,7 @@ public static partial class McpMod
         {
             if (type.IsAbstract || !type.IsSubclassOf(typeof(MonsterModel)) || type.FullName!.Contains("+")) continue;
 
-            var entry = new Dictionary<string, object?>
+            var entry = new Dictionary<string, object?>(StringComparer.Ordinal)
             {
                 ["id"] = ModelId.SlugifyCategory(type.Name),
                 ["class"] = type.Name,
@@ -581,7 +581,7 @@ public static partial class McpMod
         {
             if (type.IsAbstract || !type.IsSubclassOf(typeof(EncounterModel)) || type.FullName!.Contains("+")) continue;
 
-            var entry = new Dictionary<string, object?>
+            var entry = new Dictionary<string, object?>(StringComparer.Ordinal)
             {
                 ["id"] = ModelId.SlugifyCategory(type.Name),
                 ["class"] = type.Name,
@@ -639,7 +639,7 @@ public static partial class McpMod
             .OrderBy(entry => entry.TryGetValue("id", out var id) ? id?.ToString() : "", StringComparer.Ordinal)
             .ToList();
 
-        return new Dictionary<string, object?>
+        return new Dictionary<string, object?>(StringComparer.Ordinal)
         {
             ["status"] = "ok",
             ["kind"] = "bestiary",

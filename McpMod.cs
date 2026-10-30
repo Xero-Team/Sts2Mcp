@@ -422,7 +422,7 @@ public static partial class McpMod
                 if (request.HttpMethod == "GET")
                 {
                     var endpoints = BuildEndpointIndex();
-                    SendJson(response, new Dictionary<string, object?>
+                    SendJson(response, new Dictionary<string, object?>(StringComparer.Ordinal)
                     {
                         ["message"] = $"Hello from STS2 MCP v{VersionString}",
                         ["status"] = "ok",
@@ -637,27 +637,27 @@ public static partial class McpMod
     {
         return new List<Dictionary<string, object?>>
         {
-            new() { ["method"] = "GET", ["path"] = "/api/v1/singleplayer", ["description"] = "Read singleplayer state with status/kind envelope and active-run context" },
-            new() { ["method"] = "POST", ["path"] = "/api/v1/singleplayer", ["description"] = "Perform singleplayer action" },
-            new() { ["method"] = "GET", ["path"] = "/api/v1/multiplayer", ["description"] = "Read multiplayer state with status/kind envelope and active-run context" },
-            new() { ["method"] = "POST", ["path"] = "/api/v1/multiplayer", ["description"] = "Perform multiplayer action" },
-            new() { ["method"] = "GET", ["path"] = "/api/v1/settings", ["description"] = "Read settings and preferences" },
-            new() { ["method"] = "GET", ["path"] = "/api/v1/profile", ["description"] = "Read active profile progress plus normalized save/run context" },
-            new() { ["method"] = "GET", ["path"] = "/api/v1/compendium", ["description"] = "Read Compendium-shaped profile progress plus normalized save/run context" },
-            new() { ["method"] = "GET", ["path"] = "/api/v1/bestiary", ["description"] = "Read monster and encounter metadata" },
-            new() { ["method"] = "GET", ["path"] = "/api/v1/glossary/cards", ["description"] = "Read active-run card pool metadata plus profile/save/run context" },
-            new() { ["method"] = "GET", ["path"] = "/api/v1/glossary/relics", ["description"] = "Read active-run relic pool metadata plus profile/save/run context" },
-            new() { ["method"] = "GET", ["path"] = "/api/v1/glossary/potions", ["description"] = "Read active-run potion pool metadata plus profile/save/run context" },
-            new() { ["method"] = "GET", ["path"] = "/api/v1/glossary/keywords", ["description"] = "Read active-run keyword metadata plus profile/save/run context" },
-            new() { ["method"] = "GET", ["path"] = "/api/v1/profiles", ["description"] = "List profile slots plus normalized save context" },
-            new() { ["method"] = "POST", ["path"] = "/api/v1/profiles", ["description"] = "Switch or delete profile slots" },
-            new() { ["method"] = "GET", ["path"] = "/api/v1/record", ["description"] = "Read combat recorder status" },
-            new() { ["method"] = "GET", ["path"] = "/api/v1/record/inspect", ["description"] = "Inspect a recorded combat replay" },
-            new() { ["method"] = "GET", ["path"] = "/api/v1/wiki", ["description"] = "Fuzzy-search discovered card and relic wiki entries" },
-            new() { ["method"] = "GET", ["path"] = "/api/v1/cardpools", ["description"] = "Read the active card pools" },
-            new() { ["method"] = "GET", ["path"] = "/api/v1/potionpools", ["description"] = "Read the active potion pools" },
-            new() { ["method"] = "GET", ["path"] = "/api/v1/relicbag", ["description"] = "Read the generated relic bag" },
-            new() { ["method"] = "GET", ["path"] = "/api/v1/mapdrawings", ["description"] = "Read stroke and live node drawing positions" }
+            new(StringComparer.Ordinal) { ["method"] = "GET", ["path"] = "/api/v1/singleplayer", ["description"] = "Read singleplayer state with status/kind envelope and active-run context" },
+            new(StringComparer.Ordinal) { ["method"] = "POST", ["path"] = "/api/v1/singleplayer", ["description"] = "Perform singleplayer action" },
+            new(StringComparer.Ordinal) { ["method"] = "GET", ["path"] = "/api/v1/multiplayer", ["description"] = "Read multiplayer state with status/kind envelope and active-run context" },
+            new(StringComparer.Ordinal) { ["method"] = "POST", ["path"] = "/api/v1/multiplayer", ["description"] = "Perform multiplayer action" },
+            new(StringComparer.Ordinal) { ["method"] = "GET", ["path"] = "/api/v1/settings", ["description"] = "Read settings and preferences" },
+            new(StringComparer.Ordinal) { ["method"] = "GET", ["path"] = "/api/v1/profile", ["description"] = "Read active profile progress plus normalized save/run context" },
+            new(StringComparer.Ordinal) { ["method"] = "GET", ["path"] = "/api/v1/compendium", ["description"] = "Read Compendium-shaped profile progress plus normalized save/run context" },
+            new(StringComparer.Ordinal) { ["method"] = "GET", ["path"] = "/api/v1/bestiary", ["description"] = "Read monster and encounter metadata" },
+            new(StringComparer.Ordinal) { ["method"] = "GET", ["path"] = "/api/v1/glossary/cards", ["description"] = "Read active-run card pool metadata plus profile/save/run context" },
+            new(StringComparer.Ordinal) { ["method"] = "GET", ["path"] = "/api/v1/glossary/relics", ["description"] = "Read active-run relic pool metadata plus profile/save/run context" },
+            new(StringComparer.Ordinal) { ["method"] = "GET", ["path"] = "/api/v1/glossary/potions", ["description"] = "Read active-run potion pool metadata plus profile/save/run context" },
+            new(StringComparer.Ordinal) { ["method"] = "GET", ["path"] = "/api/v1/glossary/keywords", ["description"] = "Read active-run keyword metadata plus profile/save/run context" },
+            new(StringComparer.Ordinal) { ["method"] = "GET", ["path"] = "/api/v1/profiles", ["description"] = "List profile slots plus normalized save context" },
+            new(StringComparer.Ordinal) { ["method"] = "POST", ["path"] = "/api/v1/profiles", ["description"] = "Switch or delete profile slots" },
+            new(StringComparer.Ordinal) { ["method"] = "GET", ["path"] = "/api/v1/record", ["description"] = "Read combat recorder status" },
+            new(StringComparer.Ordinal) { ["method"] = "GET", ["path"] = "/api/v1/record/inspect", ["description"] = "Inspect a recorded combat replay" },
+            new(StringComparer.Ordinal) { ["method"] = "GET", ["path"] = "/api/v1/wiki", ["description"] = "Fuzzy-search discovered card and relic wiki entries" },
+            new(StringComparer.Ordinal) { ["method"] = "GET", ["path"] = "/api/v1/cardpools", ["description"] = "Read the active card pools" },
+            new(StringComparer.Ordinal) { ["method"] = "GET", ["path"] = "/api/v1/potionpools", ["description"] = "Read the active potion pools" },
+            new(StringComparer.Ordinal) { ["method"] = "GET", ["path"] = "/api/v1/relicbag", ["description"] = "Read the generated relic bag" },
+            new(StringComparer.Ordinal) { ["method"] = "GET", ["path"] = "/api/v1/mapdrawings", ["description"] = "Read stroke and live node drawing positions" }
         };
     }
 
@@ -735,7 +735,7 @@ public static partial class McpMod
             try
             {
                 response.StatusCode = 500;
-                SendJson(response, new Dictionary<string, object?>
+                SendJson(response, new Dictionary<string, object?>(StringComparer.Ordinal)
                 {
                     ["status"] = "error",
                     ["error"] = $"Failed to read multiplayer game state: {ex.Message}",
@@ -852,7 +852,7 @@ public static partial class McpMod
             // ?passive=1: read without the UI side effects some screens have (auto-opening the
             // merchant inventory, force-clicking the fake merchant / treasure chest). A watcher that
             // polls the state while a human plays must not reopen what the human just closed.
-            bool passive = ReadFlagParam(new Dictionary<string, JsonElement>(), request, "passive", false);
+            bool passive = ReadFlagParam(new Dictionary<string, JsonElement>(StringComparer.Ordinal), request, "passive", false);
             var state = RunOnMainThreadBlocking(() =>
             {
                 _passiveRead = passive;
@@ -897,7 +897,7 @@ public static partial class McpMod
             try
             {
                 response.StatusCode = 500;
-                SendJson(response, new Dictionary<string, object?>
+                SendJson(response, new Dictionary<string, object?>(StringComparer.Ordinal)
                 {
                     ["status"] = "error",
                     ["error"] = $"Failed to read game state: {ex.Message}",

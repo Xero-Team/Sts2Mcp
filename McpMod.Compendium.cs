@@ -59,7 +59,7 @@ public static partial class McpMod
 
         var cardStats = progress.CardStats
             .OrderBy(kv => kv.Key.Entry, StringComparer.Ordinal)
-            .Select(kv => new Dictionary<string, object?>
+            .Select(kv => new Dictionary<string, object?>(StringComparer.Ordinal)
             {
                 ["id"] = kv.Key.Entry,
                 ["times_picked"] = kv.Value.TimesPicked,
@@ -70,7 +70,7 @@ public static partial class McpMod
 
         var characterStats = progress.CharacterStats
             .OrderBy(kv => kv.Key.Entry, StringComparer.Ordinal)
-            .Select(kv => new Dictionary<string, object?>
+            .Select(kv => new Dictionary<string, object?>(StringComparer.Ordinal)
             {
                 ["id"] = kv.Key.Entry,
                 ["max_ascension"] = kv.Value.MaxAscension,
@@ -99,7 +99,7 @@ public static partial class McpMod
             EncounterStats = BuildEncounterStats(progress),
             EnemyStats = BuildEnemyStats(progress),
             RunHistoryProgressMembers = BuildRunHistoryProgressMembers(progress),
-            GlobalStats = new Dictionary<string, object?>
+            GlobalStats = new Dictionary<string, object?>(StringComparer.Ordinal)
             {
                 ["total_playtime"] = progress.TotalPlaytime,
                 ["total_unlocks"] = progress.TotalUnlocks,
@@ -122,7 +122,7 @@ public static partial class McpMod
 
         var runHistory = BuildRunHistorySection(snapshot);
 
-        return new Dictionary<string, object?>
+        return new Dictionary<string, object?>(StringComparer.Ordinal)
         {
             ["status"] = "ok",
             ["kind"] = "compendium",
@@ -133,9 +133,9 @@ public static partial class McpMod
             ["save_scope"] = snapshot.SaveScope,
             ["current_run"] = BuildCurrentRunContext(snapshot),
             ["source"] = "SaveManager.Progress plus model metadata endpoints",
-            ["sections"] = new Dictionary<string, object?>
+            ["sections"] = new Dictionary<string, object?>(StringComparer.Ordinal)
             {
-                ["card_library"] = new Dictionary<string, object?>
+                ["card_library"] = new Dictionary<string, object?>(StringComparer.Ordinal)
                 {
                     ["ui_label"] = "Card Library",
                     ["status"] = "exposed",
@@ -145,7 +145,7 @@ public static partial class McpMod
                     ["discovered_ids"] = snapshot.DiscoveredCards,
                     ["stats"] = snapshot.CardStats
                 },
-                ["relic_collection"] = new Dictionary<string, object?>
+                ["relic_collection"] = new Dictionary<string, object?>(StringComparer.Ordinal)
                 {
                     ["ui_label"] = "Relic Collection",
                     ["status"] = "partially_exposed",
@@ -155,7 +155,7 @@ public static partial class McpMod
                     ["discovered_ids"] = snapshot.DiscoveredRelics,
                     ["limitation"] = "Profile exposes discovered relic IDs; per-relic obtained counts are not exposed by a typed API here."
                 },
-                ["potion_lab"] = new Dictionary<string, object?>
+                ["potion_lab"] = new Dictionary<string, object?>(StringComparer.Ordinal)
                 {
                     ["ui_label"] = "Potion Lab",
                     ["status"] = "partially_exposed",
@@ -165,7 +165,7 @@ public static partial class McpMod
                     ["discovered_ids"] = snapshot.DiscoveredPotions,
                     ["limitation"] = "Profile exposes discovered potion IDs; per-potion lab UI metadata is not exposed by a typed API here."
                 },
-                ["bestiary"] = new Dictionary<string, object?>
+                ["bestiary"] = new Dictionary<string, object?>(StringComparer.Ordinal)
                 {
                     ["ui_label"] = "Bestiary",
                     ["status"] = "locked_in_ui",
@@ -175,7 +175,7 @@ public static partial class McpMod
                     ["enemy_stats"] = snapshot.EnemyStats,
                     ["limitation"] = "The current game UI labels Bestiary as future/locked; the endpoint exposes reflected model metadata and profile fight stats when available."
                 },
-                ["character_stats"] = new Dictionary<string, object?>
+                ["character_stats"] = new Dictionary<string, object?>(StringComparer.Ordinal)
                 {
                     ["ui_label"] = "Character Stats",
                     ["status"] = "exposed",
@@ -205,8 +205,8 @@ public static partial class McpMod
         public List<Dictionary<string, object?>> CharacterStats { get; init; } = new();
         public List<Dictionary<string, object?>> EncounterStats { get; init; } = new();
         public List<Dictionary<string, object?>> EnemyStats { get; init; } = new();
-        public Dictionary<string, object?> RunHistoryProgressMembers { get; init; } = new();
-        public Dictionary<string, object?> GlobalStats { get; init; } = new();
+        public Dictionary<string, object?> RunHistoryProgressMembers { get; init; } = new(StringComparer.Ordinal);
+        public Dictionary<string, object?> GlobalStats { get; init; } = new(StringComparer.Ordinal);
     }
 
     private static List<Dictionary<string, object?>> BuildEncounterStats(dynamic progress)
@@ -227,7 +227,7 @@ public static partial class McpMod
 
     private static Dictionary<string, object?> BuildFightStatsEntry(string id, dynamic stats)
     {
-        var entry = new Dictionary<string, object?>
+        var entry = new Dictionary<string, object?>(StringComparer.Ordinal)
         {
             ["id"] = id,
             ["total_wins"] = stats.TotalWins,
@@ -237,7 +237,7 @@ public static partial class McpMod
         var byCharacter = new List<Dictionary<string, object?>>();
         foreach (var fs in stats.FightStats)
         {
-            byCharacter.Add(new Dictionary<string, object?>
+            byCharacter.Add(new Dictionary<string, object?>(StringComparer.Ordinal)
             {
                 ["character"] = fs.Character.Entry,
                 ["wins"] = fs.Wins,
@@ -263,7 +263,7 @@ public static partial class McpMod
 
     private static Dictionary<string, object?> BuildRunHistoryProgressMembers(object progress)
     {
-        var values = new Dictionary<string, object?>();
+        var values = new Dictionary<string, object?>(StringComparer.Ordinal);
         foreach (var member in GetRunHistoryMembers(progress.GetType()))
         {
             try
@@ -310,7 +310,7 @@ public static partial class McpMod
                 .OrderByDescending(file => file.LastWriteTimeUtc)
                 .ToList();
 
-            return new Dictionary<string, object?>
+            return new Dictionary<string, object?>(StringComparer.Ordinal)
             {
                 ["ui_label"] = "Run History",
                 ["status"] = files.Count > 0 ? "exposed" : "exposed_empty",
@@ -325,7 +325,7 @@ public static partial class McpMod
             };
         }
 
-        return new Dictionary<string, object?>
+        return new Dictionary<string, object?>(StringComparer.Ordinal)
         {
             ["ui_label"] = "Run History",
             ["status"] = values.Count > 0 ? "partially_exposed" : "exposed_empty",
@@ -339,7 +339,7 @@ public static partial class McpMod
 
     private static Dictionary<string, object?> BuildRunHistoryEntry(FileInfo file, int profileId, string saveScope)
     {
-        var entry = new Dictionary<string, object?>
+        var entry = new Dictionary<string, object?>(StringComparer.Ordinal)
         {
             ["id"] = Path.GetFileNameWithoutExtension(file.Name),
             ["run_id"] = $"{saveScope}:profile{profileId}:{Path.GetFileNameWithoutExtension(file.Name)}",
@@ -372,7 +372,7 @@ public static partial class McpMod
             {
                 entry["players"] = players.EnumerateArray().Select(player =>
                 {
-                    var playerEntry = new Dictionary<string, object?>();
+                    var playerEntry = new Dictionary<string, object?>(StringComparer.Ordinal);
                     CopyJsonScalar(player, playerEntry, "id");
                     CopyJsonScalar(player, playerEntry, "character");
                     if (player.TryGetProperty("deck", out var deck) && deck.ValueKind == JsonValueKind.Array)
@@ -425,7 +425,7 @@ public static partial class McpMod
         if (!isRunInProgress)
             return null;
 
-        var result = new Dictionary<string, object?>
+        var result = new Dictionary<string, object?>(StringComparer.Ordinal)
         {
             ["is_in_progress"] = true,
             ["profile_id"] = profileId,
@@ -727,7 +727,7 @@ public static partial class McpMod
 
         if (value is IDictionary dictionary)
         {
-            var result = new Dictionary<string, object?>();
+            var result = new Dictionary<string, object?>(StringComparer.Ordinal);
             var count = 0;
             foreach (DictionaryEntry item in dictionary)
             {
@@ -749,7 +749,7 @@ public static partial class McpMod
             return result;
         }
 
-        var obj = new Dictionary<string, object?>();
+        var obj = new Dictionary<string, object?>(StringComparer.Ordinal);
         foreach (var property in type.GetProperties(BindingFlags.Instance | BindingFlags.Public))
         {
             if (property.GetIndexParameters().Length != 0)

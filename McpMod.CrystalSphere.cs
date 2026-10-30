@@ -92,7 +92,7 @@ public static partial class McpMod
                 if (!CrystalSphereTraces.TryGetValue(__instance, out var trace))
                     return;
                 var tool = GetInstanceMemberValue(__instance, "CrystalSphereTool")?.ToString();
-                trace.Clicks.Add(new Dictionary<string, object?>
+                trace.Clicks.Add(new Dictionary<string, object?>(StringComparer.Ordinal)
                 {
                     ["tool"] = tool == "Big" ? "big" : "small",
                     ["x"] = GetInstanceMemberValue(clickedCell, "X"),
@@ -143,7 +143,7 @@ public static partial class McpMod
             if (divinations == null)
                 return null;
             var traced = CrystalSphereTraces.TryGetValue(minigame, out var trace) && trace.RngAtStart != null;
-            return new Dictionary<string, object?>
+            return new Dictionary<string, object?>(StringComparer.Ordinal)
             {
                 ["rng_at_start"] = traced ? trace!.RngAtStart : null,
                 ["divinations_left"] = divinations,

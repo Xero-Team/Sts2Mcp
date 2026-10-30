@@ -50,7 +50,7 @@ public static partial class McpMod
             var lines = new List<Dictionary<string, object?>>();
             foreach (var line in playerDrawings.lines)
             {
-                lines.Add(new Dictionary<string, object?>
+                lines.Add(new Dictionary<string, object?>(StringComparer.Ordinal)
                 {
                     ["mode"] = line.isEraser ? "erase" : "draw",
                     ["points"] = line.mapPoints
@@ -59,7 +59,7 @@ public static partial class McpMod
                 });
             }
 
-            players.Add(new Dictionary<string, object?>
+            players.Add(new Dictionary<string, object?>(StringComparer.Ordinal)
             {
                 ["player_id"] = playerDrawings.playerId.ToString(),
                 ["is_local"] = playerDrawings.playerId == LocalContext.NetId,
@@ -70,7 +70,7 @@ public static partial class McpMod
         var nodes = BuildMapDrawingNodePositions(mapScreen)
             .OrderBy(pair => pair.Key.row)
             .ThenBy(pair => pair.Key.col)
-            .Select(pair => new Dictionary<string, object?>
+            .Select(pair => new Dictionary<string, object?>(StringComparer.Ordinal)
             {
                 ["col"] = pair.Key.col,
                 ["row"] = pair.Key.row,
@@ -78,7 +78,7 @@ public static partial class McpMod
             })
             .ToList();
 
-        return new Dictionary<string, object?>
+        return new Dictionary<string, object?>(StringComparer.Ordinal)
         {
             ["status"] = "ok",
             ["coordinate_space"] = BuildMapDrawingCoordinateSpace(),
@@ -155,7 +155,7 @@ public static partial class McpMod
             }
         }
 
-        return new Dictionary<string, object?>
+        return new Dictionary<string, object?>(StringComparer.Ordinal)
         {
             ["status"] = "ok",
             ["message"] = $"Added {parsedStrokes.Count} map drawing stroke(s) with {totalPoints} requested point(s)",
@@ -177,7 +177,7 @@ public static partial class McpMod
             return Error("The local player is already drawing a line");
 
         drawings.ClearDrawnLinesLocal();
-        return new Dictionary<string, object?>
+        return new Dictionary<string, object?>(StringComparer.Ordinal)
         {
             ["status"] = "ok",
             ["message"] = "Cleared the local player's map drawings"
@@ -283,12 +283,12 @@ public static partial class McpMod
 
     private static Dictionary<string, object?> BuildMapDrawingPoint(Vector2 point)
     {
-        return new Dictionary<string, object?> { ["x"] = point.X, ["y"] = point.Y };
+        return new Dictionary<string, object?>(StringComparer.Ordinal) { ["x"] = point.X, ["y"] = point.Y };
     }
 
     private static Dictionary<string, object?> BuildMapDrawingCoordinateSpace()
     {
-        return new Dictionary<string, object?>
+        return new Dictionary<string, object?>(StringComparer.Ordinal)
         {
             ["name"] = "map_normalized",
             ["x_min"] = MinMapDrawingX,

@@ -509,7 +509,7 @@ public static partial class McpMod
         string op,
         params (string key, object? value)[] fields)
     {
-        var result = new Dictionary<string, object?> { ["op"] = op };
+        var result = new Dictionary<string, object?>(StringComparer.Ordinal) { ["op"] = op };
         foreach (var (key, value) in fields)
             result[key] = value;
         return result;

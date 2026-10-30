@@ -15,7 +15,7 @@ internal sealed class RewardSession
         internal string? LastSelection { get; set; }
         internal string? LastOptionId { get; set; }
         internal bool Resolving { get; set; }
-        internal Dictionary<string, object?> Describe(bool claimable) => new()
+        internal Dictionary<string, object?> Describe(bool claimable) => new(StringComparer.Ordinal)
         {
             ["reward_id"] = Id,
             ["selection_state"] = SelectionState,

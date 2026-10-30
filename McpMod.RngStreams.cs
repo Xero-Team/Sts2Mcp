@@ -73,7 +73,7 @@ public static partial class McpMod
             if (rngSet == null)
                 return null;
 
-            var streams = new Dictionary<string, object?>();
+            var streams = new Dictionary<string, object?>(StringComparer.Ordinal);
 
             // The base run seed and its input string. The map LAYOUT is not one of
             // the enumerated streams: StandardActMap builds from a fresh
@@ -119,7 +119,7 @@ public static partial class McpMod
             if (rngSet == null)
                 return null;
 
-            var streams = new Dictionary<string, object?>();
+            var streams = new Dictionary<string, object?>(StringComparer.Ordinal);
 
             var seedProp = rngSet.GetType().GetProperty("Seed", BindingFlags.Public | BindingFlags.Instance);
             var seed = seedProp?.GetValue(rngSet);
@@ -253,7 +253,7 @@ public static partial class McpMod
         var counter = SafeGet(() => GetInstanceMemberValue(rng, "Counter"));
         if (seed != null && counter != null)
         {
-            return new Dictionary<string, object?>
+            return new Dictionary<string, object?>(StringComparer.Ordinal)
             {
                 ["seed"] = seed,
                 ["counter"] = counter,
@@ -277,7 +277,7 @@ public static partial class McpMod
         if (counter == null || Array.Exists(state, word => word == null))
             return null;
 
-        return new Dictionary<string, object?>
+        return new Dictionary<string, object?>(StringComparer.Ordinal)
         {
             ["state"] = state,
             ["counter"] = counter,
@@ -308,7 +308,7 @@ public static partial class McpMod
             _oddsSetProps[type] = props;
         }
 
-        var result = new Dictionary<string, object?>();
+        var result = new Dictionary<string, object?>(StringComparer.Ordinal);
         foreach (var prop in props)
         {
             var odds = SafeGet(() => prop.GetValue(oddsSet));
@@ -341,7 +341,7 @@ public static partial class McpMod
         if (props.Length == 0)
             return null;
 
-        var values = new Dictionary<string, object?>();
+        var values = new Dictionary<string, object?>(StringComparer.Ordinal);
         foreach (var prop in props)
         {
             var value = SafeGet(() => prop.GetValue(odds));
@@ -415,7 +415,7 @@ public static partial class McpMod
     {
         var runState = SafeGet(() => (object?)RunManager.Instance.DebugOnlyGetState()) as RunState;
         if (runState == null)
-            return new Dictionary<string, object?> { ["error"] = "No run in progress." };
+            return new Dictionary<string, object?>(StringComparer.Ordinal) { ["error"] = "No run in progress." };
 
         var players = new List<Dictionary<string, object?>>();
         foreach (var player in runState.Players)
@@ -423,7 +423,7 @@ public static partial class McpMod
             var bag = BuildRelicGrabBag(player);
             if (bag == null)
                 continue;
-            var entry = new Dictionary<string, object?>
+            var entry = new Dictionary<string, object?>(StringComparer.Ordinal)
             {
                 ["net_id"] = SafeGet(() => (object?)player.NetId),
                 ["slot_index"] = SafeGet(() => (object?)runState.GetPlayerSlotIndex(player)),
@@ -433,7 +433,7 @@ public static partial class McpMod
             players.Add(entry);
         }
 
-        return new Dictionary<string, object?>
+        return new Dictionary<string, object?>(StringComparer.Ordinal)
         {
             ["relic_bag_generation"] = RelicBagGeneration,
             ["players"] = players,
@@ -472,7 +472,7 @@ public static partial class McpMod
             if (bag == null || !bag.IsPopulated)
                 return null;
 
-            var result = new Dictionary<string, object?>();
+            var result = new Dictionary<string, object?>(StringComparer.Ordinal);
 
             // ToSerializable is the game's own public view of the deques and
             // keeps their order, so this cannot drift from what the save holds.

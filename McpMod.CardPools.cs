@@ -53,7 +53,7 @@ public static partial class McpMod
     {
         var unlockState = ResolveCardPoolUnlockState(out var constraint, out var source);
         if (unlockState == null)
-            return new Dictionary<string, object?> { ["error"] = "No profile or run data available." };
+            return new Dictionary<string, object?>(StringComparer.Ordinal) { ["error"] = "No profile or run data available." };
 
         lock (_cardPoolsCacheLock)
         {
@@ -67,7 +67,7 @@ public static partial class McpMod
             }
         }
 
-        var pools = new Dictionary<string, object?>();
+        var pools = new Dictionary<string, object?>(StringComparer.Ordinal);
         foreach (var pool in ModelDb.AllCardPools)
         {
             var title = pool.Title;
@@ -86,14 +86,14 @@ public static partial class McpMod
                 continue;
             }
 
-            pools[title] = new Dictionary<string, object?>
+            pools[title] = new Dictionary<string, object?>(StringComparer.Ordinal)
             {
                 ["is_colorless"] = pool.IsColorless,
                 ["cards"] = cards.Select(BuildCardPoolEntry).ToList()
             };
         }
 
-        var characters = new Dictionary<string, object?>();
+        var characters = new Dictionary<string, object?>(StringComparer.Ordinal);
         var characterPoolOrder = new List<string>();
         foreach (var character in ModelDb.AllCharacters)
         {
@@ -126,7 +126,7 @@ public static partial class McpMod
             unlockedCharacterPoolOrder = null;
         }
 
-        var result = new Dictionary<string, object?>
+        var result = new Dictionary<string, object?>(StringComparer.Ordinal)
         {
             ["source"] = source,
             ["multiplayer_constraint"] = constraint.ToString(),
@@ -147,7 +147,7 @@ public static partial class McpMod
 
     private static Dictionary<string, object?> BuildCardPoolEntry(CardModel card)
     {
-        return new Dictionary<string, object?>
+        return new Dictionary<string, object?>(StringComparer.Ordinal)
         {
             ["id"] = card.Id.Entry,
             ["name"] = SafeGetText(() => card.Title) ?? card.Id.Entry,

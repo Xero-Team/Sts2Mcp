@@ -217,12 +217,12 @@ public static partial class McpMod
         }
 
         // Keyword glossary - collect all unique keyword definitions
-        var glossary = new Dictionary<string, string>();
+        var glossary = new Dictionary<string, string>(StringComparer.Ordinal);
         CollectKeywordsFromState(state, glossary);
         if (glossary.Count > 0)
         {
             sb.AppendLine("## Keyword Glossary");
-            foreach (var (name, description) in glossary.OrderBy(kv => kv.Key))
+            foreach (var (name, description) in glossary.OrderBy(kv => kv.Key, StringComparer.Ordinal))
                 sb.AppendLine($"- **{name}**: {description}");
             sb.AppendLine();
         }
@@ -606,7 +606,7 @@ public static partial class McpMod
 
         // Group key has to include the upgrade state: an upgraded Strike is a different card
         // to reason about, and merging it with its base version would misreport the deck.
-        var seen = new Dictionary<string, int>();
+        var seen = new Dictionary<string, int>(StringComparer.Ordinal);
         var order = new List<(Dictionary<string, object?> Card, string Key)>();
         foreach (var card in deck)
         {
@@ -931,7 +931,7 @@ public static partial class McpMod
         }
 
         // Build node lookup for path traversal
-        var nodeLookup = new Dictionary<string, Dictionary<string, object?>>();
+        var nodeLookup = new Dictionary<string, Dictionary<string, object?>>(StringComparer.Ordinal);
         if (map.TryGetValue("nodes", out var nodesObj) && nodesObj is List<Dictionary<string, object?>> nodes)
         {
             foreach (var node in nodes)
@@ -994,7 +994,7 @@ public static partial class McpMod
                 .OrderBy(n => ToInt(n.GetValueOrDefault("col")))
                 .Select(n =>
                 {
-                    var childKeys = GetChildKeys(n).OrderBy(k => k).ToList();
+                    var childKeys = GetChildKeys(n).OrderBy(k => k, StringComparer.Ordinal).ToList();
                     string children = childKeys.Count > 0 ? string.Join("/", childKeys) : "-";
                     string marked = n.TryGetValue("marked_by", out var mb) && mb is List<string> mbl && mbl.Count > 0
                         ? "*" : "";
@@ -1051,9 +1051,9 @@ public static partial class McpMod
         {
             // Collect node info for this level
             var levelNodes = new List<(string type, int col, int row)>();
-            var nextKeys = new HashSet<string>();
+            var nextKeys = new HashSet<string>(StringComparer.Ordinal);
 
-            foreach (var key in currentKeys.OrderBy(k => k))
+            foreach (var key in currentKeys.OrderBy(k => k, StringComparer.Ordinal))
             {
                 if (nodeLookup.TryGetValue(key, out var node))
                 {
@@ -1081,7 +1081,7 @@ public static partial class McpMod
 
     private static HashSet<string> GetChildKeys(Dictionary<string, object?> node)
     {
-        var keys = new HashSet<string>();
+        var keys = new HashSet<string>(StringComparer.Ordinal);
         if (node.TryGetValue("children", out var childrenObj) && childrenObj is System.Collections.IList childList)
         {
             foreach (var child in childList)

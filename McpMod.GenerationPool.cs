@@ -21,7 +21,7 @@ public static partial class McpMod
 
     private static Dictionary<string, object?> BuildGenerationPool(Player player)
     {
-        var result = new Dictionary<string, object?>
+        var result = new Dictionary<string, object?>(StringComparer.Ordinal)
         {
             ["known"] = false,
             ["cards"] = new List<Dictionary<string, object?>>(),
@@ -46,7 +46,7 @@ public static partial class McpMod
             var cards = CardFactory.FilterForCombat(unlocked.Where(c => c.MultiplayerConstraint != excluded))
                 .Where(c => c.Type is CardType.Attack or CardType.Skill or CardType.Power)
                 .OrderBy(c => c.Id.Entry, StringComparer.Ordinal)
-                .Select(c => new Dictionary<string, object?> { ["id"] = c.Id.Entry, ["type"] = c.Type.ToString() })
+                .Select(c => new Dictionary<string, object?>(StringComparer.Ordinal) { ["id"] = c.Id.Entry, ["type"] = c.Type.ToString() })
                 .ToList();
             // 抽選・CreateCard・RNGには触らない。列挙完了後だけknownを立てる。
             result["cards"] = cards;

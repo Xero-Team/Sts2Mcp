@@ -1,4 +1,5 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json;
 using Godot;
@@ -320,7 +321,7 @@ public static partial class McpMod
         RunManager.Instance.ActionQueueSynchronizer.RequestEnqueue(
             Recorder.CombatRecorder.TagApiAction(new PlayCardAction(card, target)));
 
-        return new Dictionary<string, object?>
+        return new Dictionary<string, object?>(StringComparer.Ordinal)
         {
             ["status"] = "ok",
             ["message"] = $"Playing '{card.Title}'" + (target != null ? $" targeting {DescribeCreature(target)}" : "")
@@ -351,7 +352,7 @@ public static partial class McpMod
         RunManager.Instance.ActionQueueSynchronizer.RequestEnqueue(
             Recorder.CombatRecorder.TagApiAction(new EndPlayerTurnAction(player, turnNumber)));
 
-        return new Dictionary<string, object?>
+        return new Dictionary<string, object?>(StringComparer.Ordinal)
         {
             ["status"] = "ok",
             ["message"] = "Ending turn"
@@ -521,7 +522,7 @@ public static partial class McpMod
             _ => ""
         };
 
-        return new Dictionary<string, object?>
+        return new Dictionary<string, object?>(StringComparer.Ordinal)
         {
             ["status"] = "ok",
             ["message"] = $"Using potion '{SafeGetText(() => potion.Title)}' from slot {slot}{targetMsg}"
@@ -672,7 +673,7 @@ public static partial class McpMod
             Recorder.CombatRecorder.TagApiAction(
                 new DiscardPotionGameAction(player, (uint)slot, CombatManager.Instance.IsInProgress)));
 
-        return new Dictionary<string, object?>
+        return new Dictionary<string, object?>(StringComparer.Ordinal)
         {
             ["status"] = "ok",
             ["message"] = $"Discarded potion '{potionName}' from slot {slot}"
@@ -723,7 +724,7 @@ public static partial class McpMod
 
         button.ForceClick();
 
-        return new Dictionary<string, object?>
+        return new Dictionary<string, object?>(StringComparer.Ordinal)
         {
             ["status"] = "ok",
             ["message"] = $"Choosing event option: {title}"
@@ -746,7 +747,7 @@ public static partial class McpMod
 
         hitbox.ForceClick();
 
-        return new Dictionary<string, object?>
+        return new Dictionary<string, object?>(StringComparer.Ordinal)
         {
             ["status"] = "ok",
             ["message"] = "Advancing dialogue"
@@ -820,7 +821,7 @@ public static partial class McpMod
 
         button.ForceClick();
 
-        return new Dictionary<string, object?>
+        return new Dictionary<string, object?>(StringComparer.Ordinal)
         {
             ["status"] = "ok",
             ["message"] = $"Selecting rest site option: {optionName}",
@@ -873,14 +874,14 @@ public static partial class McpMod
             if (merchantRoom?.Inventory == null)
                 return Error("Shop inventory UI is not ready yet; wait a moment and retry");
             if (merchantRoom.Inventory.IsOpen)
-                return new Dictionary<string, object?>
+                return new Dictionary<string, object?>(StringComparer.Ordinal)
                 {
                     ["status"] = "ok",
                     ["message"] = "Shop inventory is already open"
                 };
 
             merchantRoom.OpenInventory();
-            return new Dictionary<string, object?>
+            return new Dictionary<string, object?>(StringComparer.Ordinal)
             {
                 ["status"] = "ok",
                 ["message"] = "Opening shop inventory"
@@ -900,7 +901,7 @@ public static partial class McpMod
             if (fakeMerchantNode == null || inventoryUi == null)
                 return Error("Fake merchant inventory UI is not ready yet; wait a moment and retry");
             if (inventoryUi.IsOpen)
-                return new Dictionary<string, object?>
+                return new Dictionary<string, object?>(StringComparer.Ordinal)
                 {
                     ["status"] = "ok",
                     ["message"] = "Fake merchant inventory is already open"
@@ -911,7 +912,7 @@ public static partial class McpMod
                 return Error("Fake merchant inventory cannot be opened right now");
 
             button.ForceClick();
-            return new Dictionary<string, object?>
+            return new Dictionary<string, object?>(StringComparer.Ordinal)
             {
                 ["status"] = "ok",
                 ["message"] = "Opening fake merchant inventory"
@@ -968,7 +969,7 @@ public static partial class McpMod
         // Fire-and-forget purchase (same path as AutoSlay)
         _ = entry.OnTryPurchaseWrapper(inventory);
 
-        return new Dictionary<string, object?>
+        return new Dictionary<string, object?>(StringComparer.Ordinal)
         {
             ["status"] = "ok",
             ["message"] = $"Purchasing item for {entry.Cost} gold"
@@ -1034,7 +1035,7 @@ public static partial class McpMod
         var pt = target.Point!;
         mapScreen.OnMapPointSelectedLocally(target);
 
-        return new Dictionary<string, object?>
+        return new Dictionary<string, object?>(StringComparer.Ordinal)
         {
             ["status"] = "ok",
             ["message"] = $"Traveling to {pt.PointType} at ({pt.coord.col},{pt.coord.row})"
@@ -1088,7 +1089,7 @@ public static partial class McpMod
 
         button.ForceClick();
 
-        return new Dictionary<string, object?>
+        return new Dictionary<string, object?>(StringComparer.Ordinal)
         {
             ["status"] = "ok",
             ["message"] = $"Claiming reward: {rewardDesc}",
@@ -1118,7 +1119,7 @@ public static partial class McpMod
         var parent = GetCardRewardParent(cardScreen);
         holder.EmitSignal(NCardHolder.SignalName.Pressed, holder);
 
-        return new Dictionary<string, object?>
+        return new Dictionary<string, object?>(StringComparer.Ordinal)
         {
             ["status"] = "ok",
             ["parent_reward_id"] = parent?.Id,
@@ -1212,7 +1213,7 @@ public static partial class McpMod
             : null;
         button.ForceClick();
 
-        return new Dictionary<string, object?>
+        return new Dictionary<string, object?>(StringComparer.Ordinal)
         {
             ["status"] = "ok",
             ["parent_reward_id"] = parent?.Id,
@@ -1236,7 +1237,7 @@ public static partial class McpMod
             if (btn != null && IsControlVisibleOrActionable(btn))
             {
                 btn.ForceClick();
-                return new Dictionary<string, object?> { ["status"] = "ok", ["message"] = "Proceeding from rewards" };
+                return new Dictionary<string, object?>(StringComparer.Ordinal) { ["status"] = "ok", ["message"] = "Proceeding from rewards" };
             }
         }
 
@@ -1244,7 +1245,7 @@ public static partial class McpMod
         if (NRestSiteRoom.Instance is { } restRoom && IsControlVisibleOrActionable(restRoom.ProceedButton))
         {
             restRoom.ProceedButton.ForceClick();
-            return new Dictionary<string, object?> { ["status"] = "ok", ["message"] = "Proceeding from rest site" };
+            return new Dictionary<string, object?>(StringComparer.Ordinal) { ["status"] = "ok", ["message"] = "Proceeding from rest site" };
         }
 
         // Try merchant - close inventory first if open, then proceed
@@ -1254,7 +1255,7 @@ public static partial class McpMod
             {
                 if (!TryCloseMerchantInventory(merchRoom.Inventory))
                     return Error("Shop inventory is open but could not be closed");
-                return new Dictionary<string, object?>
+                return new Dictionary<string, object?>(StringComparer.Ordinal)
                 {
                     ["status"] = "ok",
                     ["message"] = "Closing shop inventory; call proceed again to leave the shop room"
@@ -1263,7 +1264,7 @@ public static partial class McpMod
             if (IsControlVisibleOrActionable(merchRoom.ProceedButton))
             {
                 merchRoom.ProceedButton.ForceClick();
-                return new Dictionary<string, object?> { ["status"] = "ok", ["message"] = "Proceeding from shop" };
+                return new Dictionary<string, object?>(StringComparer.Ordinal) { ["status"] = "ok", ["message"] = "Proceeding from shop" };
             }
         }
 
@@ -1278,7 +1279,7 @@ public static partial class McpMod
                 {
                     if (!TryCloseMerchantInventory(fmInventory))
                         return Error("Fake merchant inventory is open but could not be closed");
-                    return new Dictionary<string, object?>
+                    return new Dictionary<string, object?>(StringComparer.Ordinal)
                     {
                         ["status"] = "ok",
                         ["message"] = "Closing fake merchant inventory; call proceed again to leave the event"
@@ -1288,7 +1289,7 @@ public static partial class McpMod
                 if (proceedBtn != null && IsControlVisibleOrActionable(proceedBtn))
                 {
                     proceedBtn.ForceClick();
-                    return new Dictionary<string, object?> { ["status"] = "ok", ["message"] = "Proceeding from fake merchant" };
+                    return new Dictionary<string, object?>(StringComparer.Ordinal) { ["status"] = "ok", ["message"] = "Proceeding from fake merchant" };
                 }
             }
         }
@@ -1299,7 +1300,7 @@ public static partial class McpMod
         if (treasureUI != null && IsControlVisibleOrActionable(treasureUI.ProceedButton))
         {
             treasureUI.ProceedButton.ForceClick();
-            return new Dictionary<string, object?> { ["status"] = "ok", ["message"] = "Proceeding from treasure room" };
+            return new Dictionary<string, object?>(StringComparer.Ordinal) { ["status"] = "ok", ["message"] = "Proceeding from treasure room" };
         }
 
         return Error("No proceed button available or enabled");
@@ -1409,7 +1410,7 @@ public static partial class McpMod
             // with RequireManualConfirmation off), leaving nothing to read back.
             if (!IsCardSelectScreenStillOpen(gridScreen))
             {
-                return new Dictionary<string, object?>
+                return new Dictionary<string, object?>(StringComparer.Ordinal)
                 {
                     ["status"] = "ok",
                     ["message"] = $"Selected {cardName} - selection complete, screen closed"
@@ -1418,7 +1419,7 @@ public static partial class McpMod
 
             if (selection == null || cardModel == null)
             {
-                return new Dictionary<string, object?>
+                return new Dictionary<string, object?>(StringComparer.Ordinal)
                 {
                     ["status"] = "ok",
                     ["message"] = $"Toggling card selection: {cardName}"
@@ -1438,7 +1439,7 @@ public static partial class McpMod
                         : $"{cardName} was not selected - the screen did not accept the press");
             }
 
-            var toggled = new Dictionary<string, object?>
+            var toggled = new Dictionary<string, object?>(StringComparer.Ordinal)
             {
                 ["status"] = "ok",
                 ["message"] = $"{(isSelected ? "Selected" : "Deselected")} {cardName}",
@@ -1488,7 +1489,7 @@ public static partial class McpMod
             string cardName = SafeGetText(() => holder.CardModel?.Title) ?? "unknown";
             holder.EmitSignal(NCardHolder.SignalName.Pressed, holder);
 
-            return new Dictionary<string, object?>
+            return new Dictionary<string, object?>(StringComparer.Ordinal)
             {
                 ["status"] = "ok",
                 ["message"] = $"Choosing card: {cardName}"
@@ -1542,7 +1543,7 @@ public static partial class McpMod
 
             }
 
-            return new Dictionary<string, object?>
+            return new Dictionary<string, object?>(StringComparer.Ordinal)
             {
                 ["status"] = "ok",
                 ["message"] = "Confirming selection from preview"
@@ -1583,7 +1584,7 @@ public static partial class McpMod
         if (!IsCardSelectScreenStillOpen(screen))
 
         {
-            return new Dictionary<string, object?>
+            return new Dictionary<string, object?>(StringComparer.Ordinal)
             {
                 ["status"] = "ok",
                 ["message"] = "Confirming selection"
@@ -1594,7 +1595,7 @@ public static partial class McpMod
         // press that only opened the preview.
         if (FindVisibleCardSelectPreview(screen) != null)
         {
-            return new Dictionary<string, object?>
+            return new Dictionary<string, object?>(StringComparer.Ordinal)
             {
                 ["status"] = "ok",
                 ["message"] = selectedCount.HasValue
@@ -1623,7 +1624,7 @@ public static partial class McpMod
             if (IsControlVisibleOrActionable(skipButton))
             {
                 skipButton.ForceClick();
-                return new Dictionary<string, object?>
+                return new Dictionary<string, object?>(StringComparer.Ordinal)
                 {
                     ["status"] = "ok",
                     ["message"] = "Skipping card choice"
@@ -1645,7 +1646,7 @@ public static partial class McpMod
             if (cancelBtn is { IsEnabled: true })
             {
                 cancelBtn.ForceClick();
-                return new Dictionary<string, object?>
+                return new Dictionary<string, object?>(StringComparer.Ordinal)
                 {
                     ["status"] = "ok",
                     ["message"] = "Cancelling preview - returning to card selection (selection cleared)"
@@ -1658,7 +1659,7 @@ public static partial class McpMod
         if (IsControlVisibleOrActionable(closeButton))
         {
             closeButton.ForceClick();
-            return new Dictionary<string, object?>
+            return new Dictionary<string, object?>(StringComparer.Ordinal)
             {
                 ["status"] = "ok",
                 ["message"] = "Closing card selection screen"
@@ -1691,7 +1692,7 @@ public static partial class McpMod
             return Error($"Bundle index {index} out of range ({bundles.Count} bundles available)");
 
         bundles[index].Hitbox.ForceClick();
-        return new Dictionary<string, object?>
+        return new Dictionary<string, object?>(StringComparer.Ordinal)
         {
             ["status"] = "ok",
             ["message"] = $"Selecting bundle {index}"
@@ -1709,7 +1710,7 @@ public static partial class McpMod
             return Error("Bundle confirm button is not enabled");
 
         confirmButton.ForceClick();
-        return new Dictionary<string, object?>
+        return new Dictionary<string, object?>(StringComparer.Ordinal)
         {
             ["status"] = "ok",
             ["message"] = "Confirming bundle selection"
@@ -1727,7 +1728,7 @@ public static partial class McpMod
             return Error("Bundle cancel button is not enabled");
 
         cancelButton.ForceClick();
-        return new Dictionary<string, object?>
+        return new Dictionary<string, object?>(StringComparer.Ordinal)
         {
             ["status"] = "ok",
             ["message"] = "Cancelling bundle selection"
@@ -1758,7 +1759,7 @@ public static partial class McpMod
         // Emit the Pressed signal - same path the game UI uses
         holder.EmitSignal(NCardHolder.SignalName.Pressed, holder);
 
-        return new Dictionary<string, object?>
+        return new Dictionary<string, object?>(StringComparer.Ordinal)
         {
             ["status"] = "ok",
             ["message"] = $"Selecting card from hand: {cardName}"
@@ -1777,7 +1778,7 @@ public static partial class McpMod
 
         confirmBtn.ForceClick();
 
-        return new Dictionary<string, object?>
+        return new Dictionary<string, object?>(StringComparer.Ordinal)
         {
             ["status"] = "ok",
             ["message"] = "Confirming combat card selection"
@@ -1803,7 +1804,7 @@ public static partial class McpMod
         string relicName = SafeGetText(() => holder.Relic?.Model?.Title) ?? "unknown";
         holder.ForceClick();
 
-        return new Dictionary<string, object?>
+        return new Dictionary<string, object?>(StringComparer.Ordinal)
         {
             ["status"] = "ok",
             ["message"] = $"Selecting relic: {relicName}"
@@ -1822,7 +1823,7 @@ public static partial class McpMod
 
         skipButton.ForceClick();
 
-        return new Dictionary<string, object?>
+        return new Dictionary<string, object?>(StringComparer.Ordinal)
         {
             ["status"] = "ok",
             ["message"] = "Skipping relic selection"
@@ -1854,7 +1855,7 @@ public static partial class McpMod
         string relicName = SafeGetText(() => holder.Relic?.Model?.Title) ?? "unknown";
         holder.ForceClick();
 
-        return new Dictionary<string, object?>
+        return new Dictionary<string, object?>(StringComparer.Ordinal)
         {
             ["status"] = "ok",
             ["message"] = $"Claiming treasure relic: {relicName}"
@@ -1884,7 +1885,7 @@ public static partial class McpMod
             return Error($"Crystal Sphere tool '{tool}' is not available");
 
         button.ForceClick();
-        return new Dictionary<string, object?>
+        return new Dictionary<string, object?>(StringComparer.Ordinal)
         {
             ["status"] = "ok",
             ["message"] = $"Setting Crystal Sphere tool to {tool}"
@@ -1913,7 +1914,7 @@ public static partial class McpMod
             return Error($"Crystal Sphere cell ({x}, {y}) is not clickable");
 
         cell.EmitSignal(NClickableControl.SignalName.Released, cell);
-        return new Dictionary<string, object?>
+        return new Dictionary<string, object?>(StringComparer.Ordinal)
         {
             ["status"] = "ok",
             ["message"] = $"Clicking Crystal Sphere cell ({x}, {y})"
@@ -1931,7 +1932,7 @@ public static partial class McpMod
             return Error("Crystal Sphere proceed button is not enabled");
 
         proceedButton.ForceClick();
-        return new Dictionary<string, object?>
+        return new Dictionary<string, object?>(StringComparer.Ordinal)
         {
             ["status"] = "ok",
             ["message"] = "Proceeding from Crystal Sphere"
@@ -2039,7 +2040,7 @@ public static partial class McpMod
         if (!timelineVisible)
         {
             if (pending.Count == 0)
-                return new Dictionary<string, object?>
+                return new Dictionary<string, object?>(StringComparer.Ordinal)
                 {
                     ["status"] = "ok",
                     ["message"] = "No epochs pending reveal",
@@ -2104,7 +2105,7 @@ public static partial class McpMod
             .FirstOrDefault(s => s.State == EpochSlotState.Obtained);
 
         if (slot == null)
-            return new Dictionary<string, object?>
+            return new Dictionary<string, object?>(StringComparer.Ordinal)
             {
                 ["status"] = "ok",
                 ["message"] = IsTimelineScreenBusy(timelineScreen)
@@ -2142,7 +2143,7 @@ public static partial class McpMod
             return Error($"Failed to reveal epoch '{epochId}': {ex.InnerException?.Message ?? ex.Message}");
         }
 
-        return new Dictionary<string, object?>
+        return new Dictionary<string, object?>(StringComparer.Ordinal)
         {
             ["status"] = "ok",
             ["message"] = $"Revealing epoch {epochId}",
@@ -2189,7 +2190,7 @@ public static partial class McpMod
             if (returnMethod != null)
             {
                 returnMethod.Invoke(gameOver, null);
-                return new Dictionary<string, object?> { ["status"] = "ok", ["message"] = "Returning to main menu" };
+                return new Dictionary<string, object?>(StringComparer.Ordinal) { ["status"] = "ok", ["message"] = "Returning to main menu" };
             }
 
             return Error("Game-over main_menu option is not available");
@@ -2215,7 +2216,7 @@ public static partial class McpMod
                     IsPopupButtonActionable(clickable))
                 {
                     clickable.ForceClick();
-                    return new Dictionary<string, object?> { ["status"] = "ok", ["message"] = $"Tutorials: {(isYes ? "enabled" : "disabled")}" };
+                    return new Dictionary<string, object?>(StringComparer.Ordinal) { ["status"] = "ok", ["message"] = $"Tutorials: {(isYes ? "enabled" : "disabled")}" };
                 }
             }
             return Error("Tutorial popup visible but buttons not accessible");
@@ -2235,7 +2236,7 @@ public static partial class McpMod
             if (ftueClickable != null)
             {
                 ftueClickable.ForceClick();
-                return new Dictionary<string, object?> { ["status"] = "ok", ["message"] = "Dismissed tutorial popup" };
+                return new Dictionary<string, object?>(StringComparer.Ordinal) { ["status"] = "ok", ["message"] = "Dismissed tutorial popup" };
             }
 
             return Error("Tutorial popup visible but no actionable advance/proceed control is available; retry after the next state poll");
@@ -2287,7 +2288,7 @@ public static partial class McpMod
                         IsNodeVisible(ackClickable))
                     {
                         ackClickable.ForceClick();
-                        return new Dictionary<string, object?> { ["status"] = "ok", ["message"] = "Clicked tutorial proceed button" };
+                        return new Dictionary<string, object?>(StringComparer.Ordinal) { ["status"] = "ok", ["message"] = "Clicked tutorial proceed button" };
                     }
                 }
 
@@ -2296,7 +2297,7 @@ public static partial class McpMod
                 if (confirmBtn != null && IsNodeVisible(confirmBtn) && confirmBtn.IsEnabled)
                 {
                     confirmBtn.ForceClick();
-                    return new Dictionary<string, object?> { ["status"] = "ok", ["message"] = "Clicked confirm button" };
+                    return new Dictionary<string, object?>(StringComparer.Ordinal) { ["status"] = "ok", ["message"] = "Clicked confirm button" };
                 }
 
                 // Check for any clickable proceed button
@@ -2304,7 +2305,7 @@ public static partial class McpMod
                 if (proceedBtn != null && IsNodeVisible(proceedBtn) && proceedBtn.IsEnabled)
                 {
                     proceedBtn.ForceClick();
-                    return new Dictionary<string, object?> { ["status"] = "ok", ["message"] = "Clicked proceed button" };
+                    return new Dictionary<string, object?>(StringComparer.Ordinal) { ["status"] = "ok", ["message"] = "Clicked proceed button" };
                 }
 
                 // Check for inspect screen (epoch detail view) - close it.
@@ -2317,10 +2318,10 @@ public static partial class McpMod
                         IsNodeVisible(closeClickable))
                     {
                         closeClickable.ForceClick();
-                        return new Dictionary<string, object?> { ["status"] = "ok", ["message"] = "Closed epoch inspect screen" };
+                        return new Dictionary<string, object?>(StringComparer.Ordinal) { ["status"] = "ok", ["message"] = "Closed epoch inspect screen" };
                     }
                     inspectScreen.Close();
-                    return new Dictionary<string, object?> { ["status"] = "ok", ["message"] = "Closed epoch inspect screen" };
+                    return new Dictionary<string, object?>(StringComparer.Ordinal) { ["status"] = "ok", ["message"] = "Closed epoch inspect screen" };
                 }
 
                 // An unlock screen that is already open ("<character> is now playable",
@@ -2339,7 +2340,7 @@ public static partial class McpMod
                 if (revealResult != null)
                     return revealResult;
 
-                return new Dictionary<string, object?> { ["status"] = "ok", ["message"] = "No more epochs to advance", ["done"] = true };
+                return new Dictionary<string, object?>(StringComparer.Ordinal) { ["status"] = "ok", ["message"] = "No more epochs to advance", ["done"] = true };
             }
             else if (string.Equals(option, "back", System.StringComparison.OrdinalIgnoreCase))
             {
@@ -2350,7 +2351,7 @@ public static partial class McpMod
                     if (backClickable.IsEnabled)
                     {
                         backClickable.ForceClick();
-                        return new Dictionary<string, object?> { ["status"] = "ok", ["message"] = "Going back from timeline" };
+                        return new Dictionary<string, object?>(StringComparer.Ordinal) { ["status"] = "ok", ["message"] = "Going back from timeline" };
                     }
                 }
                 // Try the submenu stack
@@ -2359,7 +2360,7 @@ public static partial class McpMod
                 {
                     var popMethod = stack.GetType().GetMethod("Pop");
                     popMethod?.Invoke(stack, null);
-                    return new Dictionary<string, object?> { ["status"] = "ok", ["message"] = "Popped timeline from stack" };
+                    return new Dictionary<string, object?>(StringComparer.Ordinal) { ["status"] = "ok", ["message"] = "Popped timeline from stack" };
                 }
                 return Error("Back button not available on timeline");
             }
@@ -2499,7 +2500,7 @@ public static partial class McpMod
 
     private static Dictionary<string, object?> TimelineUnlocksNeedManualRevealFromOpenTimeline(List<string> unrevealedEpochs)
     {
-        return new Dictionary<string, object?>
+        return new Dictionary<string, object?>(StringComparer.Ordinal)
         {
             ["status"] = "ok",
             ["message"] = "Timeline has obtained epochs without visible slots; no revealable epoch slot is available through automation",
@@ -2522,7 +2523,7 @@ public static partial class McpMod
                 return Error($"Popup option '{candidate.Name}' is disabled");
 
             candidate.Button.ForceClick();
-            return new Dictionary<string, object?>
+            return new Dictionary<string, object?>(StringComparer.Ordinal)
             {
                 ["status"] = "ok",
                 ["message"] = $"Selected popup option: {candidate.Name}"
@@ -2545,7 +2546,7 @@ public static partial class McpMod
                 IsNodeVisible(backClickable))
             {
                 backClickable.ForceClick();
-                return new Dictionary<string, object?> { ["status"] = "ok", ["message"] = "Going back from profile select" };
+                return new Dictionary<string, object?>(StringComparer.Ordinal) { ["status"] = "ok", ["message"] = "Going back from profile select" };
             }
             return Error("Back button not available on profile select");
         }
@@ -2581,7 +2582,7 @@ public static partial class McpMod
         if (backButton != null && backButton.IsEnabled && IsNodeVisible(backButton))
         {
             backButton.ForceClick();
-            return new Dictionary<string, object?> { ["status"] = "ok", ["message"] = $"Left the {screen} screen" };
+            return new Dictionary<string, object?>(StringComparer.Ordinal) { ["status"] = "ok", ["message"] = $"Left the {screen} screen" };
         }
 
         // The back button is hidden or disabled while the submenu stack animates, which
@@ -2594,7 +2595,7 @@ public static partial class McpMod
             if (stack != null && popMethod != null)
             {
                 popMethod.Invoke(stack, null);
-                return new Dictionary<string, object?>
+                return new Dictionary<string, object?>(StringComparer.Ordinal)
                 {
                     ["status"] = "ok",
                     ["message"] = $"Left the {screen} screen (popped the submenu stack)"
@@ -2668,7 +2669,7 @@ public static partial class McpMod
         var open = GetOpenRunSubmenu(tree?.Root);
         if (open is NPauseMenu)
         {
-            return new Dictionary<string, object?>
+            return new Dictionary<string, object?>(StringComparer.Ordinal)
             {
                 ["status"] = "ok",
                 ["already_open"] = true,
@@ -2728,7 +2729,7 @@ public static partial class McpMod
     }
 
     private static Dictionary<string, object?> OpenedPauseMenuResult()
-        => new()
+        => new(StringComparer.Ordinal)
         {
             ["status"] = "ok",
             ["already_open"] = false,
@@ -2790,7 +2791,7 @@ public static partial class McpMod
             if (refreshBtn != null && refreshBtn.IsEnabled && IsNodeVisible(refreshBtn))
             {
                 refreshBtn.ForceClick();
-                return new Dictionary<string, object?> { ["status"] = "ok", ["message"] = "Refreshing friend list" };
+                return new Dictionary<string, object?>(StringComparer.Ordinal) { ["status"] = "ok", ["message"] = "Refreshing friend list" };
             }
             return Error("Refresh button not available");
         }
@@ -2822,7 +2823,7 @@ public static partial class McpMod
                 if (!friendButtons[idx].IsEnabled)
                     return Error($"Friend at index {idx} is not joinable right now");
                 friendButtons[idx].ForceClick();
-                return new Dictionary<string, object?>
+                return new Dictionary<string, object?>(StringComparer.Ordinal)
                 {
                     ["status"] = "ok",
                     ["message"] = $"Joining friend at index {idx}"
@@ -2838,7 +2839,7 @@ public static partial class McpMod
                 if (!match.IsEnabled)
                     return Error($"Friend {playerId} is not joinable right now");
                 match.ForceClick();
-                return new Dictionary<string, object?>
+                return new Dictionary<string, object?>(StringComparer.Ordinal)
                 {
                     ["status"] = "ok",
                     ["message"] = $"Joining friend {playerId}"
@@ -2863,7 +2864,7 @@ public static partial class McpMod
             if (confirmBtn != null && confirmBtn.IsEnabled && IsNodeVisible(confirmBtn))
             {
                 confirmBtn.ForceClick();
-                return new Dictionary<string, object?> { ["status"] = "ok", ["message"] = "Readied up to load saved MP run" };
+                return new Dictionary<string, object?>(StringComparer.Ordinal) { ["status"] = "ok", ["message"] = "Readied up to load saved MP run" };
             }
             return Error("Confirm button not available — already ready, or lobby not yet initialized");
         }
@@ -2874,7 +2875,7 @@ public static partial class McpMod
             if (unreadyBtn != null && unreadyBtn.IsEnabled && IsNodeVisible(unreadyBtn))
             {
                 unreadyBtn.ForceClick();
-                return new Dictionary<string, object?> { ["status"] = "ok", ["message"] = "Retracted ready vote" };
+                return new Dictionary<string, object?>(StringComparer.Ordinal) { ["status"] = "ok", ["message"] = "Retracted ready vote" };
             }
             return Error("Unready button not available — you have not confirmed yet");
         }
@@ -2913,7 +2914,7 @@ public static partial class McpMod
         if (applied != ascension)
             return Error($"Ascension did not take: asked for {ascension}, panel reports {applied}");
 
-        return new Dictionary<string, object?>
+        return new Dictionary<string, object?>(StringComparer.Ordinal)
         {
             ["status"] = "ok",
             ["message"] = $"Ascension set to {applied}",
@@ -2996,13 +2997,13 @@ public static partial class McpMod
             if (backBtn != null && backBtn.IsEnabled && IsControlVisibleOrActionable(backBtn))
             {
                 backBtn.ForceClick();
-                return new Dictionary<string, object?> { ["status"] = "ok", ["message"] = "Going back" };
+                return new Dictionary<string, object?>(StringComparer.Ordinal) { ["status"] = "ok", ["message"] = "Going back" };
             }
             var unreadyFallback = GetInstanceFieldValue(screen, "_unreadyButton") as NClickableControl;
             if (unreadyFallback != null && unreadyFallback.IsEnabled && IsControlVisibleOrActionable(unreadyFallback))
             {
                 unreadyFallback.ForceClick();
-                return new Dictionary<string, object?> { ["status"] = "ok", ["message"] = "Retracted ready vote (back fell through to unready)" };
+                return new Dictionary<string, object?>(StringComparer.Ordinal) { ["status"] = "ok", ["message"] = "Retracted ready vote (back fell through to unready)" };
             }
             return Error("Back button not available");
         }
@@ -3013,7 +3014,7 @@ public static partial class McpMod
             if (unreadyBtn != null && unreadyBtn.IsEnabled && IsControlVisibleOrActionable(unreadyBtn))
             {
                 unreadyBtn.ForceClick();
-                return new Dictionary<string, object?> { ["status"] = "ok", ["message"] = "Retracted ready vote" };
+                return new Dictionary<string, object?>(StringComparer.Ordinal) { ["status"] = "ok", ["message"] = "Retracted ready vote" };
             }
             return Error("Unready button not available — you have not confirmed yet");
         }
@@ -3053,7 +3054,7 @@ public static partial class McpMod
                     msg += $" at ascension {startingAscension}";
 
                 confirmClickable.ForceClick();
-                return new Dictionary<string, object?>
+                return new Dictionary<string, object?>(StringComparer.Ordinal)
                 {
                     ["status"] = "ok",
                     ["message"] = msg,
@@ -3097,7 +3098,7 @@ public static partial class McpMod
                 // -> lobby.SetLocalCharacter, which is what embark reads).
                 btn.Deselect();
                 btn.Select();
-                return new Dictionary<string, object?> { ["status"] = "ok", ["message"] = $"Selected {SafeGetText(() => btn.Character.Title)}. Use 'confirm' to embark." };
+                return new Dictionary<string, object?>(StringComparer.Ordinal) { ["status"] = "ok", ["message"] = $"Selected {SafeGetText(() => btn.Character.Title)}. Use 'confirm' to embark." };
             }
         }
         return Error($"Character '{option}' not found. Available: {string.Join(", ", buttons.Where(b => !b.IsLocked).Select(b => b.Character?.Id.Entry))}");
@@ -3128,7 +3129,7 @@ public static partial class McpMod
         if (scale is < 0.25 or > 10.0)
             return Error($"'scale' {scale} out of range (0.25 - 10.0)");
         Godot.Engine.TimeScale = scale;
-        return new Dictionary<string, object?>
+        return new Dictionary<string, object?>(StringComparer.Ordinal)
         {
             ["status"] = "ok",
             ["message"] = $"Engine time scale set to {scale:0.##}x",
@@ -3168,7 +3169,7 @@ public static partial class McpMod
                 "character). Select the character first; the cap is per-character.");
 
         panel.SetAscensionLevel(level);
-        return new Dictionary<string, object?>
+        return new Dictionary<string, object?>(StringComparer.Ordinal)
         {
             ["status"] = "ok",
             ["message"] = $"Ascension set to {level} (max unlocked: {maxAscension})",
@@ -3195,7 +3196,7 @@ public static partial class McpMod
         }
 
         arrow.ForceClick();
-        return new Dictionary<string, object?>
+        return new Dictionary<string, object?>(StringComparer.Ordinal)
         {
             ["status"] = "ok",
             ["message"] = $"Ascension set to {panel.Ascension}",
@@ -3260,7 +3261,7 @@ public static partial class McpMod
         if (alsoUnticked.Count > 0)
             message += $". Mutually exclusive, so also disabled: {string.Join(", ", alsoUnticked)}";
 
-        return new Dictionary<string, object?>
+        return new Dictionary<string, object?>(StringComparer.Ordinal)
         {
             ["status"] = "ok",
             ["message"] = message,
@@ -3287,7 +3288,7 @@ public static partial class McpMod
             ?? (NClickableControl?)FindFirst<NAcknowledgeButton>(screen);
 
         if (confirm == null || !confirm.IsEnabled || !IsControlVisibleOrActionable(confirm))
-            return new Dictionary<string, object?>
+            return new Dictionary<string, object?>(StringComparer.Ordinal)
             {
                 ["status"] = "ok",
                 ["message"] = $"{screen.GetType().Name} is open but its confirm button is not actionable yet; retry after the next state poll",
@@ -3296,7 +3297,7 @@ public static partial class McpMod
             };
 
         confirm.ForceClick();
-        return new Dictionary<string, object?>
+        return new Dictionary<string, object?>(StringComparer.Ordinal)
         {
             ["status"] = "ok",
             ["message"] = $"Confirmed {screen.GetType().Name}",
@@ -3314,7 +3315,7 @@ public static partial class McpMod
         }
         catch (System.ObjectDisposedException)
         {
-            return new Dictionary<string, object?>
+            return new Dictionary<string, object?>(StringComparer.Ordinal)
             {
                 ["status"] = "ok",
                 ["message"] = "Timeline changed while checking queued unlocks; retry after the next state poll",
@@ -3330,18 +3331,18 @@ public static partial class McpMod
         var queuedEpochIds = GetQueuedTimelineEpochIds(queuedScreen);
         var alreadyRevealed = queuedEpochIds
             .Where(id => string.Equals(GetProgressEpochState(id), "Revealed", System.StringComparison.OrdinalIgnoreCase))
-            .Distinct(System.StringComparer.OrdinalIgnoreCase)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
 
         if (alreadyRevealed.Count > 0)
         {
-            var alreadyRevealedSet = new HashSet<string>(alreadyRevealed, System.StringComparer.OrdinalIgnoreCase);
+            var alreadyRevealedSet = new HashSet<string>(alreadyRevealed, StringComparer.OrdinalIgnoreCase);
             var pendingEpochIds = queuedEpochIds
                 .Where(id => !alreadyRevealedSet.Contains(id))
-                .Distinct(System.StringComparer.OrdinalIgnoreCase)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
                 .ToList();
 
-            return new Dictionary<string, object?>
+            return new Dictionary<string, object?>(StringComparer.Ordinal)
             {
                 ["status"] = "ok",
                 ["message"] = "Queued timeline unlock references already revealed epochs; not opening it to avoid an invalid unlock path",
@@ -3356,7 +3357,7 @@ public static partial class McpMod
         if (string.Equals(queuedType, "NUnlockTimelineScreen", System.StringComparison.Ordinal) &&
             IsTimelineScreenBusy(timelineScreen))
         {
-            return new Dictionary<string, object?>
+            return new Dictionary<string, object?>(StringComparer.Ordinal)
             {
                 ["status"] = "ok",
                 ["message"] = "Timeline expansion is queued, but the timeline is still animating; retry after the next state poll",
@@ -3369,7 +3370,7 @@ public static partial class McpMod
         try
         {
             timelineScreen.OpenQueuedScreen();
-            return new Dictionary<string, object?>
+            return new Dictionary<string, object?>(StringComparer.Ordinal)
             {
                 ["status"] = "ok",
                 ["message"] = $"Opening queued {queuedType}",
@@ -3379,7 +3380,7 @@ public static partial class McpMod
         }
         catch (System.ObjectDisposedException)
         {
-            return new Dictionary<string, object?>
+            return new Dictionary<string, object?>(StringComparer.Ordinal)
             {
                 ["status"] = "ok",
                 ["message"] = "Timeline changed before the queued unlock could open; retry after the next state poll",
@@ -3389,7 +3390,7 @@ public static partial class McpMod
         }
         catch (System.Exception ex)
         {
-            return new Dictionary<string, object?>
+            return new Dictionary<string, object?>(StringComparer.Ordinal)
             {
                 ["status"] = "ok",
                 ["message"] = $"Skipped queued {queuedType}: {ex.Message}",
@@ -3449,7 +3450,7 @@ public static partial class McpMod
         AddEpochIdsFromObject(GetInstanceFieldValue(queuedScreen, "_unlockedEpochs"), ids);
         AddEpochIdsFromObject(GetInstanceFieldValue(queuedScreen, "_erasToUnlock"), ids);
 
-        return ids.Distinct(System.StringComparer.OrdinalIgnoreCase).ToList();
+        return ids.Distinct(StringComparer.OrdinalIgnoreCase).ToList();
     }
 
     private static void AddEpochIdsFromObject(object? value, List<string> ids)
@@ -3494,7 +3495,7 @@ public static partial class McpMod
 
     private static List<string> GetProgressEpochIdsByState(params string[] states)
     {
-        var stateSet = new HashSet<string>(states, System.StringComparer.OrdinalIgnoreCase);
+        var stateSet = new HashSet<string>(states, StringComparer.OrdinalIgnoreCase);
         try
         {
             var progress = MegaCrit.Sts2.Core.Saves.SaveManager.Instance?.Progress;
@@ -3528,7 +3529,7 @@ public static partial class McpMod
                 return Error(disabledMessage ?? $"Option '{fieldName}' is not available");
 
             clickable.ForceClick();
-            return new Dictionary<string, object?> { ["status"] = "ok", ["message"] = successMessage };
+            return new Dictionary<string, object?>(StringComparer.Ordinal) { ["status"] = "ok", ["message"] = successMessage };
         }
 
         return Error($"Could not find button '{fieldName}'");

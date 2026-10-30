@@ -46,7 +46,7 @@ public static partial class McpMod
     {
         private static IEnumerable<MethodBase> TargetMethods()
         {
-            var names = new HashSet<string>
+            var names = new HashSet<string>(StringComparer.Ordinal)
             {
                 nameof(RelicGrabBag.Populate),
                 nameof(RelicGrabBag.Remove),
@@ -68,7 +68,7 @@ public static partial class McpMod
     {
         private static IEnumerable<MethodBase> TargetMethods()
         {
-            var names = new HashSet<string>
+            var names = new HashSet<string>(StringComparer.Ordinal)
             {
                 nameof(RelicGrabBag.PullFromFront),
                 nameof(RelicGrabBag.PullFromBack),
@@ -78,7 +78,7 @@ public static partial class McpMod
             // the generation once.
             return AccessTools.GetDeclaredMethods(typeof(RelicGrabBag))
                 .Where(method => names.Contains(method.Name))
-                .GroupBy(method => method.Name)
+                .GroupBy(method => method.Name, StringComparer.Ordinal)
                 .Select(group => group.OrderByDescending(method => method.GetParameters().Length).First());
         }
 

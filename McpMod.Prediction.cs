@@ -96,7 +96,7 @@ public static partial class McpMod
             foreach (var logged in machine.StateLog)
                 stateLog.Add(logged.Id);
 
-            var result = new Dictionary<string, object?>
+            var result = new Dictionary<string, object?>(StringComparer.Ordinal)
             {
                 ["initial_state"] = initial.Id,
                 ["current_state"] = current.Id,
@@ -113,7 +113,7 @@ public static partial class McpMod
             };
             if (monster.GetType().Name == "TwoTailedRat")
             {
-                result["dynamic_weight_state"] = new Dictionary<string, object?>
+                result["dynamic_weight_state"] = new Dictionary<string, object?>(StringComparer.Ordinal)
                 {
                     ["turns_until_summonable"] = ReadMonsterInt(monster, "TurnsUntilSummonable"),
                     ["call_for_backup_count"] = ReadMonsterInt(monster, "CallForBackupCount"),
@@ -138,7 +138,7 @@ public static partial class McpMod
         Creature creature,
         MoveState move)
     {
-        var state = new Dictionary<string, object?>
+        var state = new Dictionary<string, object?>(StringComparer.Ordinal)
         {
             ["id"] = move.Id,
             ["kind"] = "move",
@@ -164,21 +164,21 @@ public static partial class McpMod
             // A supported live rule is re-evaluated by the consumer. Any other
             // dynamic lambda remains an explicit snapshot.
             hasSnapshots |= IsDynamicWeight(branch.weightLambda) && dynamicRule == null;
-            branches.Add(new Dictionary<string, object?>
+            branches.Add(new Dictionary<string, object?>(StringComparer.Ordinal)
             {
                 ["state"] = branch.stateId,
                 ["weight"] = weight,
                 ["repeat"] = branch.repeatType.ToString(),
                 ["max_repeats"] = branch.maxTimes,
                 ["cooldown"] = branch.cooldown,
-                ["weight_rule"] = dynamicRule == null ? null : new Dictionary<string, object?>
+                ["weight_rule"] = dynamicRule == null ? null : new Dictionary<string, object?>(StringComparer.Ordinal)
                 {
                     ["kind"] = dynamicRule,
                     ["summon_branch"] = branch.stateId == "CALL_FOR_BACKUP_MOVE",
                 },
             });
         }
-        return new Dictionary<string, object?>
+        return new Dictionary<string, object?>(StringComparer.Ordinal)
         {
             ["id"] = random.Id,
             ["kind"] = "random",
@@ -208,7 +208,7 @@ public static partial class McpMod
                     .GetValue(value) as Delegate;
                 var condition = BuildCondition(lambda, branches.Count, enabled, out bool isSnapshot);
                 hasSnapshots |= isSnapshot;
-                branches.Add(new Dictionary<string, object?>
+                branches.Add(new Dictionary<string, object?>(StringComparer.Ordinal)
                 {
                     ["state"] = id,
                     ["enabled"] = enabled,
@@ -216,7 +216,7 @@ public static partial class McpMod
                 });
             }
         }
-        return new Dictionary<string, object?>
+        return new Dictionary<string, object?>(StringComparer.Ordinal)
         {
             ["id"] = conditional.Id,
             ["kind"] = "conditional",

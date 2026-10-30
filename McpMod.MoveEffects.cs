@@ -98,7 +98,7 @@ public static partial class McpMod
                 // The command scan is reusable, but descriptors such as the
                 // curse index and Wither level read mutable monster state.
                 // Copy before refreshing so older observations stay intact.
-                var current = new Dictionary<string, object?>(cached);
+                var current = new Dictionary<string, object?>(cached, StringComparer.Ordinal);
                 AddStatefulMoveSemantics(monster, move, current);
                 return current;
             }
@@ -411,7 +411,7 @@ public static partial class McpMod
         foreach (var body in bodies)
             WalkForEffects(body, monster, scan);
 
-        var fx = new Dictionary<string, object?>();
+        var fx = new Dictionary<string, object?>(StringComparer.Ordinal);
         if (scan.Applies.Count > 0) fx["applies"] = scan.Applies;
         // Powers the move takes back. A consumer that predates this key simply
         // keeps a power the move removes, which is what every build did before.
@@ -490,19 +490,19 @@ public static partial class McpMod
         {
             fx["removes"] = new[]
             {
-                new Dictionary<string, object?> { ["power"] = "IMBALANCED_STUN", ["target"] = "self" },
+                new Dictionary<string, object?>(StringComparer.Ordinal) { ["power"] = "IMBALANCED_STUN", ["target"] = "self" },
             };
         }
         switch ((monsterName, move.Id))
         {
             case ("Aeonglass", "INCREASING_INTENSITY_MOVE"):
-                fx["upgrade_status"] = new Dictionary<string, object?>
+                fx["upgrade_status"] = new Dictionary<string, object?>(StringComparer.Ordinal)
                 {
                     ["card"] = "Wither",
                     ["damage_per_level"] = 3,
                     ["current_level"] = ReadMonsterInt(monster, "WitherUpgradeCount"),
                 };
-                fx["repeat_power_growth"] = new Dictionary<string, object?>
+                fx["repeat_power_growth"] = new Dictionary<string, object?>(StringComparer.Ordinal)
                 {
                     ["power"] = "StrengthPower",
                     ["amount"] = 1,
@@ -537,7 +537,7 @@ public static partial class McpMod
                     {
                         fx["applies"] = new List<Dictionary<string, object?>>
                     {
-                        new()
+                        new(StringComparer.Ordinal)
                         {
                             ["power"] = "StrengthPower",
                             ["target"] = "self",
@@ -553,19 +553,19 @@ public static partial class McpMod
                 // live Personal Hive amount, so discard those unconditional
                 // entries and export the branch itself.
                 fx.Remove("applies");
-                fx["conditional_applies"] = new Dictionary<string, object?>
+                fx["conditional_applies"] = new Dictionary<string, object?>(StringComparer.Ordinal)
                 {
                     ["power"] = "PersonalHivePower",
                     ["cmp"] = "lt",
                     ["value"] = 3,
                     ["then"] = new[]
                     {
-                        new Dictionary<string, object?> { ["power"] = "PersonalHivePower", ["amount"] = 1 },
-                        new Dictionary<string, object?> { ["power"] = "StrengthPower", ["amount"] = 1 },
+                        new Dictionary<string, object?>(StringComparer.Ordinal) { ["power"] = "PersonalHivePower", ["amount"] = 1 },
+                        new Dictionary<string, object?>(StringComparer.Ordinal) { ["power"] = "StrengthPower", ["amount"] = 1 },
                     },
                     ["else"] = new[]
                     {
-                        new Dictionary<string, object?> { ["power"] = "StrengthPower", ["amount"] = 2 },
+                        new Dictionary<string, object?>(StringComparer.Ordinal) { ["power"] = "StrengthPower", ["amount"] = 2 },
                     },
                 };
                 break;
@@ -585,7 +585,7 @@ public static partial class McpMod
             case ("Queen", "BURN_BRIGHT_FOR_ME_MOVE"):
                 fx["applies"] = new[]
                 {
-                    new Dictionary<string, object?>
+                    new Dictionary<string, object?>(StringComparer.Ordinal)
                     {
                         ["power"] = "StrengthPower",
                         ["target"] = "ally",
@@ -604,12 +604,12 @@ public static partial class McpMod
                 fx["status_card"] = "Frantic Escape";
                 fx["status"] = new[]
                 {
-                    new Dictionary<string, object?>
+                    new Dictionary<string, object?>(StringComparer.Ordinal)
                     {
                         ["card"] = "Frantic Escape", ["pile"] = "Draw", ["count"] = 3,
                         ["position"] = "Random",
                     },
-                    new Dictionary<string, object?>
+                    new Dictionary<string, object?>(StringComparer.Ordinal)
                     {
                         ["card"] = "Frantic Escape", ["pile"] = "Discard", ["count"] = 3,
                         ["position"] = "Random",
@@ -618,7 +618,7 @@ public static partial class McpMod
                 break;
 
             case ("ToughEgg", "HATCH_MOVE"):
-                fx["hatch"] = new Dictionary<string, object?>
+                fx["hatch"] = new Dictionary<string, object?>(StringComparer.Ordinal)
                 {
                     ["min_hp"] = ReadMonsterInt(monster, "HatchlingMinHp"),
                     ["max_hp"] = ReadMonsterInt(monster, "HatchlingMaxHp"),
@@ -1154,7 +1154,7 @@ public static partial class McpMod
                     ? (scan.TargetWasOwnSide ? "allies" : "player")
                     : (scan.TargetWasSelf ? "self" : scan.TargetWasTarget ? "player"
                         : scan.TargetWasAlly ? "ally" : null);
-                scan.Applies.Add(new Dictionary<string, object?>
+                scan.Applies.Add(new Dictionary<string, object?>(StringComparer.Ordinal)
                 {
                     ["power"] = powerName,
                     ["target"] = side ?? "unknown",
@@ -1178,7 +1178,7 @@ public static partial class McpMod
                     scan.TakeAmount();
                     return;
                 }
-                scan.Applies.Add(new Dictionary<string, object?>
+                scan.Applies.Add(new Dictionary<string, object?>(StringComparer.Ordinal)
                 {
                     ["power"] = powerName,
                     ["target"] = playerSide ? "player" : "self",
@@ -1195,7 +1195,7 @@ public static partial class McpMod
             // carries no amount to sample at. The non-generic `Remove(power)`
             // overload takes a runtime instance and stays unreadable, which is
             // silence rather than a guess.
-            scan.Removes.Add(new Dictionary<string, object?>
+            scan.Removes.Add(new Dictionary<string, object?>(StringComparer.Ordinal)
             {
                 ["power"] = removeMi.GetGenericArguments().FirstOrDefault()?.Name,
                 ["target"] = creatureWasSelf ? "self" : creatureWasTarget ? "player"
@@ -1208,7 +1208,7 @@ public static partial class McpMod
             // A literal slot is the whole answer (the game does no occupancy
             // check on one); a null slot means the caller computed it, and the
             // consumer replays `GetNextSlot` for itself.
-            scan.Summons.Add(new Dictionary<string, object?>
+            scan.Summons.Add(new Dictionary<string, object?>(StringComparer.Ordinal)
             {
                 ["monster"] = addMi.GetGenericArguments().FirstOrDefault()?.Name,
                 ["slot"] = literalSlot,
@@ -1240,7 +1240,7 @@ public static partial class McpMod
                 }
                 else
                 {
-                    scan.AllyBlock.Add(new Dictionary<string, object?>
+                    scan.AllyBlock.Add(new Dictionary<string, object?>(StringComparer.Ordinal)
                     {
                         ["amount"] = amount,
                         ["monster"] = scan.PendingRecipient,
@@ -1290,7 +1290,7 @@ public static partial class McpMod
     private static Dictionary<string, object?> BuildStatusCard(
         string? cardName, MethodInfo cardMi, List<int?> intArgs, int? fixedCount)
     {
-        var card = new Dictionary<string, object?>
+        var card = new Dictionary<string, object?>(StringComparer.Ordinal)
         {
             ["card"] = cardName,
             ["pile"] = null,
