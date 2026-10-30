@@ -562,7 +562,7 @@ public static partial class McpMod
             result["state_type"] = "rewards";
             result["rewards"] = BuildRewardsState(rewardsScreen);
         }
-        else if (topOverlay is NGameOverScreen gameOverScreen)
+        else if (topOverlay is NGameOverScreen)
         {
             result["state_type"] = "game_over";
             result["game_over"] = new Dictionary<string, object?>(StringComparer.Ordinal)
@@ -618,7 +618,7 @@ public static partial class McpMod
             result["state_type"] = "event";
             result["event"] = BuildEventState(pendingEvent);
         }
-        else if (currentRoom is TreasureRoom pendingTreasure
+        else if (currentRoom is TreasureRoom
                  && TreasureHasPendingAction())
         {
             // Same lingering-map masking as the rest/event branches above: after
@@ -797,7 +797,7 @@ public static partial class McpMod
                 result["rest_site"] = BuildRestSiteState(restSiteRoom);
             }
         }
-        else if (currentRoom is TreasureRoom treasureRoom)
+        else if (currentRoom is TreasureRoom)
         {
             if (IsMapScreenOpenOrVisible())
             {
@@ -1791,7 +1791,6 @@ public static partial class McpMod
         var lobby = GetInstanceFieldValue(loadLobby, "_runLobby") as LoadRunLobby;
         if (lobby != null)
         {
-            var connectedPlayers = GetLoadLobbyPlayers(lobby);
             var info = new Dictionary<string, object?>(StringComparer.Ordinal)
             {
                 ["type"] = lobby.NetService.Type switch

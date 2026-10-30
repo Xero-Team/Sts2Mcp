@@ -246,7 +246,7 @@ public static partial class McpMod
                 result["rest_site"] = BuildRestSiteState(restSiteRoom);
             }
         }
-        else if (currentRoom is TreasureRoom treasureRoom)
+        else if (currentRoom is TreasureRoom)
         {
             if (IsMapScreenOpenOrVisible())
             {
@@ -265,7 +265,7 @@ public static partial class McpMod
             result["room_type"] = currentRoom?.GetType().Name;
         }
 
-        if (currentRoom is CombatRoom overlayCombat
+        if (currentRoom is CombatRoom
             && CombatManager.Instance.IsInProgress
             && result.TryGetValue("state_type", out var overlayStateType)
             && overlayStateType is string overlayType

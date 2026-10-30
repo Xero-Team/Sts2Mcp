@@ -334,7 +334,6 @@ public static partial class McpMod
             return 0;
 
         var queryCompact = CompactSearchText(queryNormalized);
-        var candidateCompact = CompactSearchText(candidateNormalized);
         var nameCompact = CompactSearchText(candidate.Name);
         var idCompact = CompactSearchText(candidate.Id);
 
