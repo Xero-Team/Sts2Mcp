@@ -613,7 +613,7 @@ public static partial class McpMod
 
     private static string? GetActiveSteamId()
     {
-        try
+        return TryRead(() =>
         {
             if (!SteamInitializer.Initialized)
                 return null;
@@ -625,11 +625,7 @@ public static partial class McpMod
                 return null;
 
             return steamId;
-        }
-        catch
-        {
-            return null;
-        }
+        });
     }
 
     private static MethodInfo? _progressPathForProfile;
@@ -644,7 +640,7 @@ public static partial class McpMod
     /// </summary>
     private static string? GetProfileProgressPath(int profileId)
     {
-        try
+        return TryRead(() =>
         {
             var method = _progressPathForProfile ??= typeof(ProgressSaveManager).GetMethod(
                 "GetProgressPathForProfile",
@@ -656,8 +652,7 @@ public static partial class McpMod
                 ? new object?[] { profileId }
                 : new object?[] { profileId, null };
             return method.Invoke(null, args) as string;
-        }
-        catch { return null; }
+        });
     }
 
     private static string? ResolveProfileProgressPath(int profileId)

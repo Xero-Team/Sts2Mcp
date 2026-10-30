@@ -561,14 +561,13 @@ public static partial class McpMod
 
     private static bool IsInMerchantRoom(Player player)
     {
-        try
+        return TryRead<bool?>(() =>
         {
             if (player.RunState.CurrentRoom is MerchantRoom)
                 return true;
             return player.RunState.CurrentRoom is EventRoom eventRoom
                    && eventRoom.CanonicalEvent is FakeMerchant;
-        }
-        catch { return false; }
+        }) ?? false;
     }
 
     /// <summary>
@@ -578,7 +577,7 @@ public static partial class McpMod
     /// </summary>
     internal static bool CanSellPotionToMerchant(Player player, PotionModel potion)
     {
-        try
+        return TryRead<bool?>(() =>
         {
             if (!IsInMerchantRoom(player))
                 return false;
@@ -588,8 +587,7 @@ public static partial class McpMod
                 return HasMerchantInteraction(player, potion);
             TryCloseMerchantInventory(player);
             return potion.PassesCustomUsabilityCheck && HasMerchantInteraction(player, potion);
-        }
-        catch { return false; }
+        }) ?? false;
     }
 
     /// <summary>
@@ -599,7 +597,7 @@ public static partial class McpMod
     /// </summary>
     private static bool HasMerchantInteraction(Player player, PotionModel potion)
     {
-        try
+        return TryRead<bool?>(() =>
         {
             var method = potion.GetType().GetMethods(
                     System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static)
@@ -613,8 +611,7 @@ public static partial class McpMod
 
             var item1 = result.GetType().GetField("Item1")?.GetValue(result);
             return item1 != null;
-        }
-        catch { return false; }
+        }) ?? false;
     }
 
     /// <summary>Closes the merchant inventory panel if it is open. Returns true if a shop was found.</summary>
@@ -1309,7 +1306,7 @@ public static partial class McpMod
 
     private static bool TryCloseMerchantInventory(NMerchantInventory inventory)
     {
-        try
+        return TryRead<bool?>(() =>
         {
             var closeMethod = inventory.GetType().GetMethod(
                 "Close",
@@ -1321,11 +1318,7 @@ public static partial class McpMod
 
             closeMethod.Invoke(inventory, null);
             return true;
-        }
-        catch
-        {
-            return false;
-        }
+        }) ?? false;
     }
 
     private static Dictionary<string, object?> ExecuteSelectCard(Dictionary<string, JsonElement> data)
@@ -3096,16 +3089,12 @@ public static partial class McpMod
 
     internal static bool IsCharacterSelectionBusy()
     {
-        try
+        return TryRead<bool?>(() =>
         {
             var progress = MegaCrit.Sts2.Core.Saves.SaveManager.Instance?.Progress;
             return progress != null &&
                    progress.PendingCharacterUnlock != MegaCrit.Sts2.Core.Models.ModelId.none;
-        }
-        catch
-        {
-            return false;
-        }
+        }) ?? false;
     }
 
     /// <summary>Set the Godot engine time scale (animation/game speed). Valid any time.</summary>
@@ -3392,7 +3381,7 @@ public static partial class McpMod
 
     private static object? TryPeekQueuedTimelineScreen(NTimelineScreen timelineScreen)
     {
-        try
+        return TryRead(() =>
         {
             var queue = GetInstanceFieldValue(timelineScreen, "_unlockScreens");
             if (queue == null)
@@ -3403,11 +3392,7 @@ public static partial class McpMod
                 return null;
 
             return queue.GetType().GetMethod("Peek")?.Invoke(queue, null);
-        }
-        catch
-        {
-            return null;
-        }
+        });
     }
 
     private static bool IsTimelineScreenBusy(NTimelineScreen timelineScreen)
@@ -3469,18 +3454,14 @@ public static partial class McpMod
 
     private static string? GetProgressEpochState(string epochId)
     {
-        try
+        return TryRead(() =>
         {
             var progress = MegaCrit.Sts2.Core.Saves.SaveManager.Instance?.Progress;
             return progress?.Epochs
                 .FirstOrDefault(epoch => string.Equals(epoch.Id, epochId, StringComparison.OrdinalIgnoreCase))
                 ?.State
                 .ToString();
-        }
-        catch
-        {
-            return null;
-        }
+        });
     }
 
     private static List<string> GetProgressEpochIdsByState(params string[] states)

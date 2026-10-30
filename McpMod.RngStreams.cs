@@ -67,7 +67,7 @@ public static partial class McpMod
     /// </summary>
     private static Dictionary<string, object?>? BuildRngStreams(RunState runState)
     {
-        try
+        return TryRead(() =>
         {
             var rngSet = runState.Rng;
             if (rngSet == null)
@@ -94,11 +94,7 @@ public static partial class McpMod
                 streams["odds"] = odds;
 
             return streams.Count > 0 ? streams : null;
-        }
-        catch
-        {
-            return null;
-        }
+        });
     }
 
     /// <summary>
@@ -113,7 +109,7 @@ public static partial class McpMod
     /// </remarks>
     private static Dictionary<string, object?>? BuildPlayerRngStreams(Player player)
     {
-        try
+        return TryRead(() =>
         {
             var rngSet = player.PlayerRng;
             if (rngSet == null)
@@ -137,11 +133,7 @@ public static partial class McpMod
                 streams["odds"] = odds;
 
             return streams.Count > 0 ? streams : null;
-        }
-        catch
-        {
-            return null;
-        }
+        });
     }
 
     /// <summary>
@@ -152,17 +144,13 @@ public static partial class McpMod
     /// </summary>
     private static Dictionary<string, object?>? BuildMonsterRng(Creature creature)
     {
-        try
+        return TryRead(() =>
         {
             var monster = creature.Monster;
             if (monster == null || !monster.IsMutable)
                 return null;
             return RngCoords(monster.Rng);
-        }
-        catch
-        {
-            return null;
-        }
+        });
     }
 
     /// <summary>
@@ -464,7 +452,7 @@ public static partial class McpMod
     /// </remarks>
     private static Dictionary<string, object?>? BuildRelicGrabBag(Player player)
     {
-        try
+        return TryRead(() =>
         {
             var bag = player.RelicGrabBag;
             if (bag == null || !bag.IsPopulated)
@@ -489,11 +477,7 @@ public static partial class McpMod
             result["mp_fallback"] = fallback;
 
             return result.Count > 0 ? result : null;
-        }
-        catch
-        {
-            return null;
-        }
+        });
     }
 
     /// <summary>
@@ -501,7 +485,7 @@ public static partial class McpMod
     /// </summary>
     private static List<string>? ReadMpFallback(object bag)
     {
-        try
+        return TryRead(() =>
         {
             var field = bag.GetType().GetField(
                 "_mpFallbackDequeue", BindingFlags.NonPublic | BindingFlags.Instance);
@@ -518,10 +502,6 @@ public static partial class McpMod
                     ids.Add(entry);
             }
             return ids;
-        }
-        catch
-        {
-            return null;
-        }
+        });
     }
 }

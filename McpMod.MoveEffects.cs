@@ -1032,17 +1032,13 @@ public static partial class McpMod
 
     private static bool IsDecimalIntCtor(Module module, int token)
     {
-        try
+        return TryRead<bool?>(() =>
         {
             var ctor = module.ResolveMethod(token);
             var pars = ctor?.GetParameters();
             return ctor?.DeclaringType == typeof(decimal)
                 && pars?.Length == 1 && pars[0].ParameterType == typeof(int);
-        }
-        catch
-        {
-            return false;
-        }
+        }) ?? false;
     }
 
     private static void HandleCall(MethodBase mm, MonsterModel monster, MoveFxScan scan)
@@ -1338,7 +1334,7 @@ public static partial class McpMod
 
     private static int? ReadIntField(Module module, int token, MonsterModel monster)
     {
-        try
+        return TryRead(() =>
         {
             var field = module.ResolveField(token);
             if (field == null || field.FieldType != typeof(int))
@@ -1346,11 +1342,7 @@ public static partial class McpMod
             if (!field.DeclaringType!.IsInstanceOfType(monster))
                 return null;
             return field.GetValue(monster) as int?;
-        }
-        catch
-        {
-            return null;
-        }
+        });
     }
 
     /// <summary>

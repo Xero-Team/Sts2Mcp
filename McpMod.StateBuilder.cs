@@ -1206,7 +1206,7 @@ public static partial class McpMod
     /// run screen, which build their button rows from the same scene.</summary>
     private static Dictionary<string, object?>? BuildCharacterButtonEntry(NCharacterSelectButton btn)
     {
-        try
+        return TryRead(() =>
         {
             if (btn.Character is not { } cm || !IsNodeVisible(btn))
                 return null;
@@ -1265,11 +1265,7 @@ public static partial class McpMod
             catch { }
 
             return charData;
-        }
-        catch
-        {
-            return null;
-        }
+        });
     }
 
     private static void AddCharacterSelectMenuState(
@@ -2031,13 +2027,12 @@ public static partial class McpMod
     /// </remarks>
     private static bool PlayerIsResolvingEffect(Player player)
     {
-        try
+        return TryRead<bool?>(() =>
         {
             if (CombatManager.Instance.IsExecutingCardOrPotionEffect(player))
                 return true;
             return player.PlayerCombatState?.PlayPile.Cards.Count > 0;
-        }
-        catch { return false; }
+        }) ?? false;
     }
 
     private static readonly FieldInfo NextCreatureIdField = typeof(CombatState)
@@ -3874,7 +3869,7 @@ public static partial class McpMod
     /// </summary>
     private static string? UnpoweredAttackLabel(AttackIntent attack)
     {
-        try
+        return TryRead(() =>
         {
             var calc = attack.DamageCalc;
             if (calc == null || _intentLabelFormat == null)
@@ -3885,8 +3880,7 @@ public static partial class McpMod
             format.Add("Damage", Math.Max(0, (int)calc()));
             format.Add("Repeat", attack.Repeats);
             return format.GetFormattedText();
-        }
-        catch { return null; }
+        });
     }
 
     private static List<Dictionary<string, object?>> BuildIntentList(
@@ -4910,7 +4904,7 @@ public static partial class McpMod
     /// </remarks>
     private static bool RewardsSetIsOutstanding(NRewardsScreen screen)
     {
-        try
+        return TryRead<bool?>(() =>
         {
             _rewardsIsTerminalField ??= typeof(NRewardsScreen)
                 .GetField("_isTerminal", BindingFlags.NonPublic | BindingFlags.Instance);
@@ -4922,11 +4916,7 @@ public static partial class McpMod
             if (_rewardsSetField?.GetValue(screen) is not RewardsSet set)
                 return false;
             return !RunManager.Instance.RewardsSetSynchronizer.IsRewardsSetCompleted(set);
-        }
-        catch
-        {
-            return false;
-        }
+        }) ?? false;
     }
 
     /// <summary>
@@ -4989,7 +4979,7 @@ public static partial class McpMod
     /// </remarks>
     private static bool CrystalSphereIsOutstanding(NCrystalSphereScreen screen)
     {
-        try
+        return TryRead<bool?>(() =>
         {
             _crystalSphereEntityField ??= typeof(NCrystalSphereScreen)
                 .GetField("_entity", BindingFlags.NonPublic | BindingFlags.Instance);
@@ -5001,11 +4991,7 @@ public static partial class McpMod
             if (_crystalSphereCompletionField?.GetValue(minigame) is not TaskCompletionSource completion)
                 return false;
             return !completion.Task.IsCompleted;
-        }
-        catch
-        {
-            return false;
-        }
+        }) ?? false;
     }
 
     /// <summary>
@@ -5023,18 +5009,14 @@ public static partial class McpMod
     /// </remarks>
     private static bool CardRewardIsOutstanding(NCardRewardSelectionScreen screen)
     {
-        try
+        return TryRead<bool?>(() =>
         {
             _cardRewardCompletionField ??= typeof(NCardRewardSelectionScreen)
                 .GetField("_completionSource", BindingFlags.NonPublic | BindingFlags.Instance);
             if (_cardRewardCompletionField?.GetValue(screen) is not TaskCompletionSource<int?> completion)
                 return false;
             return !completion.Task.IsCompleted;
-        }
-        catch
-        {
-            return false;
-        }
+        }) ?? false;
     }
 
     private static readonly FieldInfo? SpecialRewardCardField = typeof(SpecialCardReward).GetField("_card", BindingFlags.NonPublic | BindingFlags.Instance);
@@ -5447,19 +5429,13 @@ public static partial class McpMod
     /// </remarks>
     private static HashSet<CardModel>? SelectedCardModels(object screen)
     {
-        try
+        return TryRead(() =>
         {
             var field = screen.GetType().GetField(
                 "_selectedCards",
                 BindingFlags.NonPublic | BindingFlags.Instance);
             return field?.GetValue(screen) as HashSet<CardModel>;
-        }
-        catch (Exception)
-        {
-            // Reflection into game internals is best-effort: a renamed or
-            // retyped field must degrade to "unknown", never break the state.
-            return null;
-        }
+        });
     }
 
     private static Dictionary<string, object?> BuildChooseCardState(NChooseACardSelectionScreen screen)
@@ -5523,16 +5499,12 @@ public static partial class McpMod
     /// </remarks>
     private static bool ChooseCardScreenAcceptsInput(NChooseACardSelectionScreen screen)
     {
-        try
+        return TryRead<bool?>(() =>
         {
             if (GetInstanceFieldValue(screen, "_openedTicks") is not ulong openedTicks)
                 return true;
             return Godot.Time.GetTicksMsec() - openedTicks > ChooseCardScreenInputDeadzoneMsec;
-        }
-        catch (Exception)
-        {
-            return true;
-        }
+        }) ?? true;
     }
 
     /// <summary>`NChooseACardSelectionScreen._noSelectionTimeMsec`.</summary>
