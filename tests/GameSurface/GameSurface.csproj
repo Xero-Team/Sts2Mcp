@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Resolves every game member the mod reaches by name against the installed
+    sts2.dll, using System.Reflection.Metadata only: the DLL is read, never loaded,
+    so no Godot native library and no static initialiser runs.
+
+    Run with the data directory (or a path to sts2.dll) as the first argument.
+    With no path and no STS2_GAME_DATA_DIR / STS2_GAME_DIR it prints one SKIP line
+    and exits 0. A missing member exits 1 with file:line context.
+  -->
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net9.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="Program.cs" />
+    <None Include="game-surface.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+</Project>

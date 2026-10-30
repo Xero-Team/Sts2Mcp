@@ -63,11 +63,15 @@ debug: CONFIGURATION := Debug
 debug: OUT_DIR := out/Sts2Mcp-debug
 debug: build ## Build Debug into out/Sts2Mcp-debug/.
 
-test: ## Run every headless harness under tests/ (no game install needed).
-	@set -e; for project in $(TESTS); do \
+test: ## Run every headless harness under tests/ plus the source/manifest check.
+	@data="$$($(DOTNET) msbuild $(PROJECT) -nologo -getProperty:STS2GameDataDir 2>/dev/null)"; \
+	export STS2_GAME_DATA_DIR="$$data"; \
+	set -e; for project in $(TESTS); do \
 		printf '\n== %s\n' "$$project"; \
 		$(DOTNET) run --project "$$project" -c $(CONFIGURATION); \
 	done
+	@printf '\n== scripts/test_game_surface_manifest.py\n'
+	@$(PYTHON) scripts/test_game_surface_manifest.py
 
 format: ## Apply dotnet format (whitespace, imports, style) to the mod project.
 	$(DOTNET) format $(PROJECT)

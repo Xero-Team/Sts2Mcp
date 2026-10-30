@@ -1,0 +1,1920 @@
+{
+  "schema": 1,
+  "assembly": "sts2.dll",
+  "note": "Derived from source by scripts/test_game_surface_manifest.py --write. Each entry is a literal member name the mod reaches by reflection, or a string/nameof Harmony target. `scope: type` names the owning type when the source states it; `scope: assembly` records that the owning type is only known at runtime, so the member must still be declared somewhere in sts2.dll.",
+  "entries": [
+    {
+      "file": "McpMod.Actions.cs",
+      "line": 702,
+      "api": "GetField",
+      "member": "Item1",
+      "kind": "field",
+      "scope": "assembly",
+      "type": null,
+      "required": true,
+      "external": "bcl"
+    },
+    {
+      "file": "McpMod.Actions.cs",
+      "line": 1325,
+      "api": "GetInstanceFieldValue",
+      "member": "_extraOptions",
+      "kind": "field",
+      "scope": "assembly",
+      "type": null,
+      "required": true
+    },
+    {
+      "file": "McpMod.Actions.cs",
+      "line": 1429,
+      "api": "GetMethod",
+      "member": "Close",
+      "kind": "method",
+      "scope": "assembly",
+      "type": null,
+      "required": true
+    },
+    {
+      "file": "McpMod.Actions.cs",
+      "line": 2245,
+      "api": "ClickMenuButtonField",
+      "member": "_timelineButton",
+      "kind": "field",
+      "scope": "assembly",
+      "type": null,
+      "required": true
+    },
+    {
+      "file": "McpMod.Actions.cs",
+      "line": 2315,
+      "api": "GetMethod",
+      "member": "RevealEpoch",
+      "kind": "method",
+      "scope": "type",
+      "type": "NEpochSlot",
+      "required": true
+    },
+    {
+      "file": "McpMod.Actions.cs",
+      "line": 2406,
+      "api": "ClickMenuButtonField",
+      "member": "_mainMenuButton",
+      "kind": "field",
+      "scope": "assembly",
+      "type": null,
+      "required": true
+    },
+    {
+      "file": "McpMod.Actions.cs",
+      "line": 2410,
+      "api": "GetMethod",
+      "member": "ReturnToMainMenu",
+      "kind": "method",
+      "scope": "assembly",
+      "type": null,
+      "required": true
+    },
+    {
+      "file": "McpMod.Actions.cs",
+      "line": 2439,
+      "api": "GetField",
+      "member": "_verticalPopup",
+      "kind": "field",
+      "scope": "assembly",
+      "type": null,
+      "required": true
+    },
+    {
+      "file": "McpMod.Actions.cs",
+      "line": 2568,
+      "api": "GetField",
+      "member": "_acknowledgeButton",
+      "kind": "field",
+      "scope": "assembly",
+      "type": null,
+      "required": true
+    },
+    {
+      "file": "McpMod.Actions.cs",
+      "line": 2605,
+      "api": "GetField",
+      "member": "_closeButton",
+      "kind": "field",
+      "scope": "assembly",
+      "type": null,
+      "required": true
+    },
+    {
+      "file": "McpMod.Actions.cs",
+      "line": 2620,
+      "api": "GetField",
+      "member": "_backButton",
+      "kind": "field",
+      "scope": "assembly",
+      "type": null,
+      "required": true
+    },
+    {
+      "file": "McpMod.Actions.cs",
+      "line": 2628,
+      "api": "GetField",
+      "member": "_stack",
+      "kind": "field",
+      "scope": "assembly",
+      "type": null,
+      "required": true
+    },
+    {
+      "file": "McpMod.Actions.cs",
+      "line": 2631,
+      "api": "GetMethod",
+      "member": "Pop",
+      "kind": "method",
+      "scope": "assembly",
+      "type": null,
+      "required": true,
+      "external": "bcl"
+    },
+    {
+      "file": "McpMod.Actions.cs",
+      "line": 2714,
+      "api": "ClickMenuButtonField",
+      "member": "_backButton",
+      "kind": "field",
+      "scope": "assembly",
+      "type": null,
+      "required": true
+    },
+    {
+      "file": "McpMod.Actions.cs",
+      "line": 2778,
+      "api": "GetInstanceFieldValue",
+      "member": "_backButton",
+      "kind": "field",
+      "scope": "assembly",
+      "type": null,
+      "required": true
+    },
+    {
+      "file": "McpMod.Actions.cs",
+      "line": 2829,
+      "api": "GetInstanceFieldValue",
+      "member": "_stack",
+      "kind": "field",
+      "scope": "assembly",
+      "type": null,
+      "required": true
+    },
+    {
+      "file": "McpMod.Actions.cs",
+      "line": 3025,
+      "api": "GetInstanceFieldValue",
+      "member": "_refreshButton",
+      "kind": "field",
+      "scope": "assembly",
+      "type": null,
+      "required": true
+    },
+    {
+      "file": "McpMod.Actions.cs",
+      "line": 3034,
+      "api": "GetInstanceFieldValue",
+      "member": "_buttonContainer",
+      "kind": "field",
+      "scope": "assembly",
+      "type": null,
+      "required": true
+    },
+    {
+      "file": "McpMod.Actions.cs",
+      "line": 3083,
+      "api": "GetInstanceFieldValue",
+      "member": "_confirmButton",
+      "kind": "field",
+      "scope": "assembly",
+      "type": null,
+      "required": true
+    },
+    {
+      "file": "McpMod.Actions.cs",
+      "line": 3094,
+      "api": "GetInstanceFieldValue",
+      "member": "_unreadyButton",
+      "kind": "field",
+      "scope": "assembly",
+      "type": null,
+      "required": true
+    },
+    {
+      "file": "McpMod.Actions.cs",
+      "line": 3119,
+      "api": "GetInstanceFieldValue",
+      "member": "_ascensionPanel",
+      "kind": "field",
+      "scope": "assembly",
+      "type": null,
+      "required": true
+    },
+    {
+      "file": "McpMod.Actions.cs",
+      "line": 3123,
+      "api": "GetInstanceFieldValue",
+      "member": "_maxAscension",
+      "kind": "field",
+      "scope": "assembly",
+      "type": null,
+      "required": true
+    },
+    {
+      "file": "McpMod.Actions.cs",
+      "line": 3289,
+      "api": "GetInstanceFieldValue",
+      "member": "_lobby",
+      "kind": "field",
+      "scope": "assembly",
+      "type": null,
+      "required": true
+    },
+    {
+      "file": "McpMod.Actions.cs",
+      "line": 3523,
+      "api": "GetInstanceFieldValue",
+      "member": "_unlockConfirmButton",
+      "kind": "field",
+      "scope": "assembly",
+      "type": null,
+      "required": true
+    },
+    {
+      "file": "McpMod.Actions.cs",
+      "line": 3655,
+      "api": "GetInstanceFieldValue",
+      "member": "_unlockScreens",
+      "kind": "field",
+      "scope": "assembly",
+      "type": null,
+      "required": true
+    },
+    {
+      "file": "McpMod.Actions.cs",
+      "line": 3659,
+      "api": "GetProperty",
+      "member": "Count",
+      "kind": "property",
+      "scope": "assembly",
+      "type": null,
+      "required": true,
+      "external": "bcl"
+    },
+    {
+      "file": "McpMod.Actions.cs",
+      "line": 3663,
+      "api": "GetMethod",
+      "member": "Peek",
+      "kind": "method",
+      "scope": "assembly",
+      "type": null,
+      "required": true,
+      "external": "bcl"
+    },
+    {
+      "file": "McpMod.Actions.cs",
+      "line": 3671,
+      "api": "GetInstanceFieldValue",
+      "member": "_isUiVisible",
+      "kind": "field",
+      "scope": "assembly",
+      "type": null,
+      "required": true
+    },
+    {
+      "file": "McpMod.Actions.cs",
+      "line": 3675,
+      "api": "GetInstanceFieldValue",
+      "member": "_inputBlocker",
+      "kind": "field",
+      "scope": "assembly",
+      "type": null,
+      "required": true
+    },
+    {
+      "file": "McpMod.Actions.cs",
+      "line": 3693,
+      "api": "GetInstanceFieldValue",
+      "member": "_epoch",
+      "kind": "field",
+      "scope": "assembly",
+      "type": null,
+      "required": true
+    },
+    {
+      "file": "McpMod.Actions.cs",
+      "line": 3694,
+      "api": "GetInstanceFieldValue",
+      "member": "_unlockedEpochs",
+      "kind": "field",
+      "scope": "assembly",
+      "type": null,
+      "required": true
+    },
+    {
+      "file": "McpMod.Actions.cs",
+      "line": 3695,
+      "api": "GetInstanceFieldValue",
+      "member": "_erasToUnlock",
+      "kind": "field",
+      "scope": "assembly",
+      "type": null,
+      "required": true
+    },
+    {
+      "file": "McpMod.Actions.cs",
+      "line": 3718,
+      "api": "GetProperty",
+      "member": "Model",
+      "kind": "property",
+      "scope": "assembly",
+      "type": null,
+      "required": true
+    },
+    {
+      "file": "McpMod.Actions.cs",
+      "line": 3719,
+      "api": "GetProperty",
+      "member": "Id",
+      "kind": "property",
+      "scope": "assembly",
+      "type": null,
+      "required": true
+    },
+    {
+      "file": "McpMod.CardSelectionContext.cs",
+      "line": 165,
+      "api": "method-prefix",
+      "member": "From",
+      "kind": "method-prefix",
+      "scope": "type",
+      "type": "CardSelectCmd",
+      "required": true
+    },
+    {
+      "file": "McpMod.CombatDamageHistory.cs",
+      "line": 12,
+      "api": "GetField",
+      "member": "_playerTurnNumbers",
+      "kind": "field",
+      "scope": "type",
+      "type": "CombatHistoryEntry",
+      "required": true
+    },
+    {
+      "file": "McpMod.Compendium.cs",
+      "line": 584,
+      "api": "Assembly.GetType",
+      "member": "MegaCrit.Sts2.Core.Platform.Steam.SteamUtil",
+      "kind": "type",
+      "scope": "assembly",
+      "type": null,
+      "required": true,
+      "broken": "Steam changed type or namespace (v0.111.0: Multiplayer.Transport.Steam.SteamUtil has no GetSteamID64)"
+    },
+    {
+      "file": "McpMod.Compendium.cs",
+      "line": 585,
+      "api": "GetMethod",
+      "member": "GetSteamID64",
+      "kind": "method",
+      "scope": "assembly",
+      "type": null,
+      "required": true,
+      "broken": "owner lookup targets a type that is not in this build (see the Assembly.GetType entry)"
+    },
+    {
+      "file": "McpMod.Compendium.cs",
+      "line": 606,
+      "api": "GetMethod",
+      "member": "GetProgressPathForProfile",
+      "kind": "method",
+      "scope": "type",
+      "type": "ProgressSaveManager",
+      "required": true
+    },
+    {
+      "file": "McpMod.Compendium.cs",
+      "line": 678,
+      "api": "GetProperty",
+      "member": "Entry",
+      "kind": "property",
+      "scope": "assembly",
+      "type": null,
+      "required": true
+    },
+    {
+      "file": "McpMod.CrystalSphere.cs",
+      "line": 41,
+      "api": "AccessTools.TypeByName",
+      "member": "MegaCrit.Sts2.Core.Events.Custom.CrystalSphereEvent+CrystalSphereMinigame",
+      "kind": "type",
+      "scope": "assembly",
+      "type": null,
+      "required": true
+    },
+    {
+      "file": "McpMod.CrystalSphere.cs",
+      "line": 80,
+      "api": "AccessTools.DeclaredMethod",
+      "member": "CellClicked",
+      "kind": "method",
+      "scope": "assembly",
+      "type": null,
+      "required": true
+    },
+    {
+      "file": "McpMod.CrystalSphere.cs",
+      "line": 98,
+      "api": "GetInstanceMemberValue",
+      "member": "CrystalSphereTool",
+      "kind": "property-or-field",
+      "scope": "assembly",
+      "type": null,
+      "required": true
+    },
+    {
+      "file": "McpMod.CrystalSphere.cs",
+      "line": 102,
+      "api": "GetInstanceMemberValue",
+      "member": "X",
+      "kind": "property-or-field",
+      "scope": "assembly",
+      "type": null,
+      "required": true
+    },
+    {
+      "file": "McpMod.CrystalSphere.cs",
+      "line": 103,
+      "api": "GetInstanceMemberValue",
+      "member": "Y",
+      "kind": "property-or-field",
+      "scope": "assembly",
+      "type": null,
+      "required": true
+    },
+    {
+      "file": "McpMod.CrystalSphere.cs",
+      "line": 147,
+      "api": "GetField",
+      "member": "_entity",
+      "kind": "field",
+      "scope": "type",
+      "type": "NCrystalSphereScreen",
+      "required": true
+    },
+    {
+      "file": "McpMod.CrystalSphere.cs",
+      "line": 152,
+      "api": "GetInstanceMemberValue",
+      "member": "DivinationCount",
+      "kind": "property-or-field",
+      "scope": "assembly",
+      "type": null,
+      "required": true
+    },
+    {
+      "file": "McpMod.ForkEndpoints.cs",
+      "line": 513,
+      "api": "GetProperty",
+      "member": "MinInitialHp",
+      "kind": "property",
+      "scope": "assembly",
+      "type": null,
+      "required": true
+    },
+    {
+      "file": "McpMod.ForkEndpoints.cs",
+      "line": 514,
+      "api": "GetProperty",
+      "member": "MaxInitialHp",
+      "kind": "property",
+      "scope": "assembly",
+      "type": null,
+      "required": true
+    },
+    {
+      "file": "McpMod.ForkEndpoints.cs",
+      "line": 554,
+      "api": "GetProperty",
+      "member": "RoomType",
+      "kind": "property",
+      "scope": "assembly",
+      "type": null,
+      "required": true
+    },
+    {
+      "file": "McpMod.ForkEndpoints.cs",
+      "line": 555,
+      "api": "GetProperty",
+      "member": "IsWeak",
+      "kind": "property",
+      "scope": "assembly",
+      "type": null,
+      "required": true
+    },
+    {
+      "file": "McpMod.ForkEndpoints.cs",
+      "line": 556,
+      "api": "GetProperty",
+      "member": "MinGoldReward",
+      "kind": "property",
+      "scope": "assembly",
+      "type": null,
+      "required": true
+    },
+    {
+      "file": "McpMod.ForkEndpoints.cs",
+      "line": 557,
+      "api": "GetProperty",
+      "member": "MaxGoldReward",
+      "kind": "property",
+      "scope": "assembly",
+      "type": null,
+      "required": true
+    },
+    {
+      "file": "McpMod.Helpers.cs",
+      "line": 538,
+      "api": "GetProperty",
+      "member": "IsPlayPhase",
+      "kind": "property",
+      "scope": "assembly",
+      "type": null,
+      "required": false,
+      "optional_reason": "version-gated or candidate-name read with a fallback"
+    },
+    {
+      "file": "McpMod.Helpers.cs",
+      "line": 690,
+      "api": "GetProperty",
+      "member": "IsEnabled",
+      "kind": "property",
+      "scope": "assembly",
+      "type": null,
+      "required": true
+    },
+    {
+      "file": "McpMod.Helpers.cs",
+      "line": 768,
+      "api": "GetInstanceFieldValue",
+      "member": "_selectedCards",
+      "kind": "field",
+      "scope": "assembly",
+      "type": null,
+      "required": true
+    },
+    {
+      "file": "McpMod.Helpers.cs",
+      "line": 777,
+      "api": "GetInstanceFieldValue",
+      "member": "_prefs",
+      "kind": "field",
+      "scope": "assembly",
+      "type": null,
+      "required": true
+    },
+    {
+      "file": "McpMod.Helpers.cs",
+      "line": 831,
+      "api": "candidate-name",
+      "member": "Description",
+      "kind": "property",
+      "scope": "assembly",
+      "type": null,
+      "required": true
+    },
+    {
+      "file": "McpMod.Helpers.cs",
+      "line": 831,
+      "api": "candidate-name",
+      "member": "DynamicDescription",
+      "kind": "property",
+      "scope": "assembly",
+      "type": null,
+      "required": true
+    },
+    {
+      "file": "McpMod.Helpers.cs",
+      "line": 831,
+      "api": "candidate-name",
+      "member": "SmartDescription",
+      "kind": "property",
+      "scope": "assembly",
+      "type": null,
+      "required": true
+    },
+    {
+      "file": "McpMod.Helpers.cs",
+      "line": 1177,
+      "api": "GetInstanceFieldValue",
+      "member": "_confirmButton",
+      "kind": "field",
+      "scope": "assembly",
+      "type": null,
+      "required": true
+    },
+    {
+      "file": "McpMod.Helpers.cs",
+      "line": 1246,
+      "api": "GetVerticalPopupText",
+      "member": "TitleLabel",
+      "kind": "property",
+      "scope": "assembly",
+      "type": null,
+      "required": true
+    },
+    {
+      "file": "McpMod.Helpers.cs",
+      "line": 1247,
+      "api": "GetVerticalPopupText",
+      "member": "BodyLabel",
+      "kind": "property",
+      "scope": "assembly",
+      "type": null,
+      "required": true
+    },
+    {
+      "file": "McpMod.Helpers.cs",
+      "line": 1373,
+      "api": "GetInstanceFieldValue",
+      "member": "_label",
+      "kind": "field",
+      "scope": "assembly",
+      "type": null,
+      "required": true
+    },
+    {
+      "file": "McpMod.Helpers.cs",
+      "line": 1379,
+      "api": "candidate-name",
+      "member": "_buttonLabel",
+      "kind": "field",
+      "scope": "assembly",
+      "type": null,
+      "required": false,
+      "optional_reason": "version-gated or candidate-name read with a fallback"
+    },
+    {
+      "file": "McpMod.Helpers.cs",
+      "line": 1379,
+      "api": "candidate-name",
+      "member": "_label",
+      "kind": "field",
+      "scope": "assembly",
+      "type": null,
+      "required": true
+    },
+    {
+      "file": "McpMod.Helpers.cs",
+      "line": 1379,
+      "api": "candidate-name",
+      "member": "_textLabel",
+      "kind": "field",
+      "scope": "assembly",
+      "type": null,
+      "required": false,
+      "optional_reason": "version-gated or candidate-name read with a fallback"
+    },
+    {
+      "file": "McpMod.Helpers.cs",
+      "line": 1379,
+      "api": "candidate-name",
+      "member": "_title",
+      "kind": "field",
+      "scope": "assembly",
+      "type": null,
+      "required": true
+    },
+    {
+      "file": "McpMod.Helpers.cs",
+      "line": 1386,
+      "api": "candidate-name",
+      "member": "Label",
+      "kind": "property",
+      "scope": "assembly",
+      "type": null,
+      "required": false,
+      "optional_reason": "version-gated or candidate-name read with a fallback"
+    },
+    {
+      "file": "McpMod.Helpers.cs",
+      "line": 1386,
+      "api": "candidate-name",
+      "member": "Text",
+      "kind": "property",
+      "scope": "assembly",
+      "type": null,
+      "required": true
+    },
+    {
+      "file": "McpMod.Helpers.cs",
+      "line": 1386,
+      "api": "candidate-name",
+      "member": "Title",
+      "kind": "property",
+      "scope": "assembly",
+      "type": null,
+      "required": true
+    },
+    {
+      "file": "McpMod.Helpers.cs",
+      "line": 1440,
+      "api": "candidate-name",
+      "member": "BbcodeText",
+      "kind": "property",
+      "scope": "assembly",
+      "type": null,
+      "required": false,
+      "optional_reason": "version-gated or candidate-name read with a fallback"
+    },
+    {
+      "file": "McpMod.LoadingDiagnostics.cs",
+      "line": 148,
+      "api": "HarmonyPatch.ctor",
+      "member": ".ctor",
+      "kind": "constructor",
+      "scope": "type",
+      "type": "NetLoadingHandle",
+      "arity": 1,
+      "required": true
+    },
+    {
+      "file": "McpMod.MoveEffects.cs",
+      "line": 63,
+      "api": "GetField",
+      "member": "_onPerform",
+      "kind": "field",
+      "scope": "type",
+      "type": "MoveState",
+      "required": true
+    },
+    {
+      "file": "McpMod.MoveEffects.cs",
+      "line": 395,
+      "api": "GetMethod",
+      "member": "MoveNext",
+      "kind": "method",
+      "scope": "assembly",
+      "type": null,
+      "required": true
+    },
+    {
+      "file": "McpMod.MultiplayerState.cs",
+      "line": 36,
+      "api": "GetProperty",
+      "member": "RoundNumber",
+      "kind": "property",
+      "scope": "type",
+      "type": "CombatHistoryEntry",
+      "required": true
+    },
+    {
+      "file": "McpMod.MultiplayerState.cs",
+      "line": 46,
+      "api": "GetField",
+      "member": "_playerTurnNumbers",
+      "kind": "field",
+      "scope": "type",
+      "type": "CombatHistoryEntry",
+      "required": true
+    },
+    {
+      "file": "McpMod.Prediction.cs",
+      "line": 31,
+      "api": "GetField",
+      "member": "_currentState",
+      "kind": "field",
+      "scope": "type",
+      "type": "MonsterMoveStateMachine",
+      "required": true
+    },
+    {
+      "file": "McpMod.Prediction.cs",
+      "line": 33,
+      "api": "GetField",
+      "member": "_initialState",
+      "kind": "field",
+      "scope": "type",
+      "type": "MonsterMoveStateMachine",
+      "required": true
+    },
+    {
+      "file": "McpMod.Prediction.cs",
+      "line": 35,
+      "api": "GetField",
+      "member": "_performedFirstMove",
+      "kind": "field",
+      "scope": "type",
+      "type": "MonsterMoveStateMachine",
+      "required": true
+    },
+    {
+      "file": "McpMod.Prediction.cs",
+      "line": 37,
+      "api": "GetProperty",
+      "member": "States",
+      "kind": "property",
+      "scope": "type",
+      "type": "ConditionalBranchState",
+      "required": true
+    },
+    {
+      "file": "McpMod.Prediction.cs",
+      "line": 227,
+      "api": "GetField",
+      "member": "id",
+      "kind": "field",
+      "scope": "assembly",
+      "type": null,
+      "required": true
+    },
+    {
+      "file": "McpMod.Prediction.cs",
+      "line": 228,
+      "api": "GetMethod",
+      "member": "Evaluate",
+      "kind": "method",
+      "scope": "assembly",
+      "type": null,
+      "required": true
+    },
+    {
+      "file": "McpMod.Prediction.cs",
+      "line": 235,
+      "api": "GetField",
+      "member": "_conditionalLambda",
+      "kind": "field",
+      "scope": "assembly",
+      "type": null,
+      "required": true
+    },
+    {
+      "file": "McpMod.Profile.cs",
+      "line": 205,
+      "api": "GetInstanceFieldValue",
+      "member": "_profileButtons",
+      "kind": "field",
+      "scope": "assembly",
+      "type": null,
+      "required": true
+    },
+    {
+      "file": "McpMod.Profile.cs",
+      "line": 211,
+      "api": "GetInstanceFieldValue",
+      "member": "_profileId",
+      "kind": "field",
+      "scope": "assembly",
+      "type": null,
+      "required": true
+    },
+    {
+      "file": "McpMod.Profile.cs",
+      "line": 215,
+      "api": "GetMethod",
+      "member": "SwitchToThisProfile",
+      "kind": "method",
+      "scope": "assembly",
+      "type": null,
+      "required": true
+    },
+    {
+      "file": "McpMod.PunchOff.cs",
+      "line": 55,
+      "api": "AccessTools.DeclaredMethod",
+      "member": "PunchEachOther",
+      "kind": "method",
+      "scope": "type",
+      "type": "PunchOff",
+      "required": true
+    },
+    {
+      "file": "McpMod.RelicBagGeneration.cs",
+      "line": 23,
+      "api": "GetField",
+      "member": "_deques",
+      "kind": "field",
+      "scope": "type",
+      "type": "RelicGrabBag",
+      "required": true
+    },
+    {
+      "file": "McpMod.RelicBagGeneration.cs",
+      "line": 25,
+      "api": "GetField",
+      "member": "_mpFallbackDequeue",
+      "kind": "field",
+      "scope": "type",
+      "type": "RelicGrabBag",
+      "required": true
+    },
+    {
+      "file": "McpMod.RelicBagGeneration.cs",
+      "line": 98,
+      "api": "HarmonyPatch",
+      "member": "RemoveDisallowedRelicsFromDeques",
+      "kind": "method",
+      "scope": "type",
+      "type": "RelicGrabBag",
+      "required": true
+    },
+    {
+      "file": "McpMod.RelicBagGeneration.cs",
+      "line": 117,
+      "api": "HarmonyPatch",
+      "member": "RefreshRarity",
+      "kind": "method",
+      "scope": "type",
+      "type": "RelicGrabBag",
+      "required": true
+    },
+    {
+      "file": "McpMod.Rewards.cs",
+      "line": 59,
+      "api": "GetInstanceFieldValue",
+      "member": "_currentlyShownScreen",
+      "kind": "field",
+      "scope": "assembly",
+      "type": null,
+      "required": true
+    },
+    {
+      "file": "McpMod.Rewards.cs",
+      "line": 216,
+      "api": "GetInstanceFieldValue",
+      "member": "_options",
+      "kind": "field",
+      "scope": "assembly",
+      "type": null,
+      "required": true
+    },
+    {
+      "file": "McpMod.Rewards.cs",
+      "line": 218,
+      "api": "GetInstanceFieldValue",
+      "member": "_extraOptions",
+      "kind": "field",
+      "scope": "assembly",
+      "type": null,
+      "required": true
+    },
+    {
+      "file": "McpMod.RngStreams.cs",
+      "line": 88,
+      "api": "GetInstanceMemberValue",
+      "member": "Seed",
+      "kind": "property-or-field",
+      "scope": "assembly",
+      "type": null,
+      "required": true
+    },
+    {
+      "file": "McpMod.RngStreams.cs",
+      "line": 125,
+      "api": "GetProperty",
+      "member": "Seed",
+      "kind": "property",
+      "scope": "assembly",
+      "type": null,
+      "required": true
+    },
+    {
+      "file": "McpMod.RngStreams.cs",
+      "line": 239,
+      "api": "GetInstanceMemberValue",
+      "member": "Counter",
+      "kind": "property-or-field",
+      "scope": "assembly",
+      "type": null,
+      "required": true
+    },
+    {
+      "file": "McpMod.RngStreams.cs",
+      "line": 253,
+      "api": "GetMethod",
+      "member": "ToSerializable",
+      "kind": "method",
+      "scope": "assembly",
+      "type": null,
+      "required": true
+    },
+    {
+      "file": "McpMod.RngStreams.cs",
+      "line": 258,
+      "api": "GetInstanceMemberValue",
+      "member": "counter",
+      "kind": "property-or-field",
+      "scope": "assembly",
+      "type": null,
+      "required": true
+    },
+    {
+      "file": "McpMod.RngStreams.cs",
+      "line": 480,
+      "api": "GetField",
+      "member": "_mpFallbackDequeue",
+      "kind": "field",
+      "scope": "assembly",
+      "type": null,
+      "required": true
+    },
+    {
+      "file": "McpMod.RngStreams.cs",
+      "line": 488,
+      "api": "GetProperty",
+      "member": "Id",
+      "kind": "property",
+      "scope": "assembly",
+      "type": null,
+      "required": true
+    },
+    {
+      "file": "McpMod.RngStreams.cs",
+      "line": 490,
+      "api": "GetProperty",
+      "member": "Entry",
+      "kind": "property",
+      "scope": "assembly",
+      "type": null,
+      "required": true
+    },
+    {
+      "file": "McpMod.SettingsUI.cs",
+      "line": 199,
+      "api": "HarmonyPatch",
+      "member": "_Ready",
+      "kind": "method",
+      "scope": "type",
+      "type": "NSettingsScreen",
+      "required": true
+    },
+    {
+      "file": "McpMod.SettingsUI.cs",
+      "line": 236,
+      "api": "HarmonyPatch",
+      "member": "OnTick",
+      "kind": "method",
+      "scope": "type",
+      "type": "NFastModeTickbox",
+      "required": true
+    },
+    {
+      "file": "McpMod.SettingsUI.cs",
+      "line": 257,
+      "api": "HarmonyPatch",
+      "member": "OnUntick",
+      "kind": "method",
+      "scope": "type",
+      "type": "NFastModeTickbox",
+      "required": true
+    },
+    {
+      "file": "McpMod.SettingsUI.cs",
+      "line": 289,
+      "api": "HarmonyPatch",
+      "member": "_Ready",
+      "kind": "method",
+      "scope": "type",
+      "type": "NFastModeHoverTip",
+      "required": true
+    },
+    {
+      "file": "McpMod.SettingsUI.cs",
+      "line": 301,
+      "api": "GetProperty",
+      "member": "Id",
+      "kind": "property",
+      "scope": "assembly",
+      "type": null,
+      "required": true
+    },
+    {
+      "file": "McpMod.SettingsUI.cs",
+      "line": 302,
+      "api": "GetProperty",
+      "member": "Title",
+      "kind": "property",
+      "scope": "assembly",
+      "type": null,
+      "required": true
+    },
+    {
+      "file": "McpMod.SettingsUI.cs",
+      "line": 304,
+      "api": "GetProperty",
+      "member": "Description",
+      "kind": "property",
+      "scope": "assembly",
+      "type": null,
+      "required": true
+    },
+    {
+      "file": "McpMod.SettingsUI.cs",
+      "line": 314,
+      "api": "GetField",
+      "member": "_hoverTip",
+      "kind": "field",
+      "scope": "type",
+      "type": "NFastModeHoverTip",
+      "required": true
+    },
+    {
+      "file": "McpMod.StateBuilder.cs",
+      "line": 99,
+      "api": "GetField",
+      "member": "_nextCreatureId",
+      "kind": "field",
+      "scope": "type",
+      "type": "CombatState",
+      "required": true
+    },
+    {
+      "file": "McpMod.StateBuilder.cs",
+      "line": 103,
+      "api": "GetField",
+      "member": "_cardOrPotionEffectDepth",
+      "kind": "field",
+      "scope": "type",
+      "type": "CombatManager",
+      "required": true
+    },
+    {
+      "file": "McpMod.StateBuilder.cs",
+      "line": 122,
+      "api": "GetField",
+      "member": "_localModifiers",
+      "kind": "field",
+      "scope": "type",
+      "type": "CardEnergyCost",
+      "required": true
+    },
+    {
+      "file": "McpMod.StateBuilder.cs",
+      "line": 126,
+      "api": "GetField",
+      "member": "_temporaryStarCosts",
+      "kind": "field",
+      "scope": "type",
+      "type": "CardModel",
+      "required": true
+    },
+    {
+      "file": "McpMod.StateBuilder.cs",
+      "line": 129,
+      "api": "GetField",
+      "member": "_passiveVal",
+      "kind": "field",
+      "scope": "type",
+      "type": "GlassOrb",
+      "required": true
+    },
+    {
+      "file": "McpMod.StateBuilder.cs",
+      "line": 134,
+      "api": "GetField",
+      "member": "_hasSingleTurnRetain",
+      "kind": "field",
+      "scope": "type",
+      "type": "CardModel",
+      "required": true
+    },
+    {
+      "file": "McpMod.StateBuilder.cs",
+      "line": 138,
+      "api": "GetField",
+      "member": "_hasSingleTurnSly",
+      "kind": "field",
+      "scope": "type",
+      "type": "CardModel",
+      "required": true
+    },
+    {
+      "file": "McpMod.StateBuilder.cs",
+      "line": 196,
+      "api": "GetProperty",
+      "member": "IntentLabelFormat",
+      "kind": "property",
+      "scope": "type",
+      "type": "AbstractIntent",
+      "required": true
+    },
+    {
+      "file": "McpMod.StateBuilder.cs",
+      "line": 215,
+      "api": "GetField",
+      "member": "_card",
+      "kind": "field",
+      "scope": "type",
+      "type": "SpecialCardReward",
+      "required": true
+    },
+    {
+      "file": "McpMod.StateBuilder.cs",
+      "line": 949,
+      "api": "AddMenuOptionIfVisible",
+      "member": "_backButton",
+      "kind": "field",
+      "scope": "assembly",
+      "type": null,
+      "required": true
+    },
+    {
+      "file": "McpMod.StateBuilder.cs",
+      "line": 966,
+      "api": "GetProperty",
+      "member": "IsEnabled",
+      "kind": "property",
+      "scope": "assembly",
+      "type": null,
+      "required": true
+    },
+    {
+      "file": "McpMod.StateBuilder.cs",
+      "line": 1095,
+      "api": "GetInstanceFieldValue",
+      "member": "_profileButtons",
+      "kind": "field",
+      "scope": "assembly",
+      "type": null,
+      "required": true
+    },
+    {
+      "file": "McpMod.StateBuilder.cs",
+      "line": 1100,
+      "api": "GetInstanceFieldValue",
+      "member": "_profileId",
+      "kind": "field",
+      "scope": "assembly",
+      "type": null,
+      "required": true
+    },
+    {
+      "file": "McpMod.StateBuilder.cs",
+      "line": 1113,
+      "api": "GetInstanceFieldValue",
+      "member": "_backButton",
+      "kind": "field",
+      "scope": "assembly",
+      "type": null,
+      "required": true
+    },
+    {
+      "file": "McpMod.StateBuilder.cs",
+      "line": 1139,
+      "api": "candidate-name",
+      "member": "_abandonRunButton",
+      "kind": "field",
+      "scope": "assembly",
+      "type": null,
+      "required": true
+    },
+    {
+      "file": "McpMod.StateBuilder.cs",
+      "line": 1139,
+      "api": "candidate-name",
+      "member": "_compendiumButton",
+      "kind": "field",
+      "scope": "assembly",
+      "type": null,
+      "required": true
+    },
+    {
+      "file": "McpMod.StateBuilder.cs",
+      "line": 1139,
+      "api": "candidate-name",
+      "member": "_continueButton",
+      "kind": "field",
+      "scope": "assembly",
+      "type": null,
+      "required": true
+    },
+    {
+      "file": "McpMod.StateBuilder.cs",
+      "line": 1139,
+      "api": "candidate-name",
+      "member": "_multiplayerButton",
+      "kind": "field",
+      "scope": "assembly",
+      "type": null,
+      "required": true
+    },
+    {
+      "file": "McpMod.StateBuilder.cs",
+      "line": 1139,
+      "api": "candidate-name",
+      "member": "_quitButton",
+      "kind": "field",
+      "scope": "assembly",
+      "type": null,
+      "required": true
+    },
+    {
+      "file": "McpMod.StateBuilder.cs",
+      "line": 1139,
+      "api": "candidate-name",
+      "member": "_settingsButton",
+      "kind": "field",
+      "scope": "assembly",
+      "type": null,
+      "required": true
+    },
+    {
+      "file": "McpMod.StateBuilder.cs",
+      "line": 1139,
+      "api": "candidate-name",
+      "member": "_singleplayerButton",
+      "kind": "field",
+      "scope": "assembly",
+      "type": null,
+      "required": true
+    },
+    {
+      "file": "McpMod.StateBuilder.cs",
+      "line": 1139,
+      "api": "candidate-name",
+      "member": "_timelineButton",
+      "kind": "field",
+      "scope": "assembly",
+      "type": null,
+      "required": true
+    },
+    {
+      "file": "McpMod.StateBuilder.cs",
+      "line": 1193,
+      "api": "GetInstanceFieldValue",
+      "member": "_actionQueueSet",
+      "kind": "field",
+      "scope": "assembly",
+      "type": null,
+      "required": true
+    },
+    {
+      "file": "McpMod.StateBuilder.cs",
+      "line": 1194,
+      "api": "GetPropertyValue",
+      "member": "IsEmpty",
+      "kind": "property",
+      "scope": "assembly",
+      "type": null,
+      "required": true
+    },
+    {
+      "file": "McpMod.StateBuilder.cs",
+      "line": 1308,
+      "api": "GetInstanceFieldValue",
+      "member": "_actionsWaitingForResumption",
+      "kind": "field",
+      "scope": "assembly",
+      "type": null,
+      "required": true
+    },
+    {
+      "file": "McpMod.StateBuilder.cs",
+      "line": 1636,
+      "api": "GetInstanceFieldValue",
+      "member": "_lobby",
+      "kind": "field",
+      "scope": "assembly",
+      "type": null,
+      "required": true
+    },
+    {
+      "file": "McpMod.StateBuilder.cs",
+      "line": 1668,
+      "api": "GetInstanceFieldValue",
+      "member": "_seedInput",
+      "kind": "field",
+      "scope": "assembly",
+      "type": null,
+      "required": true
+    },
+    {
+      "file": "McpMod.StateBuilder.cs",
+      "line": 1729,
+      "api": "GetInstanceFieldValue",
+      "member": "_ascensionPanel",
+      "kind": "field",
+      "scope": "assembly",
+      "type": null,
+      "required": true
+    },
+    {
+      "file": "McpMod.StateBuilder.cs",
+      "line": 1738,
+      "api": "GetInstanceFieldValue",
+      "member": "_maxAscension",
+      "kind": "field",
+      "scope": "assembly",
+      "type": null,
+      "required": true
+    },
+    {
+      "file": "McpMod.StateBuilder.cs",
+      "line": 1809,
+      "api": "GetInstanceFieldValue",
+      "member": "_unreadyButton",
+      "kind": "field",
+      "scope": "assembly",
+      "type": null,
+      "required": true
+    },
+    {
+      "file": "McpMod.StateBuilder.cs",
+      "line": 1884,
+      "api": "GetField",
+      "member": "_maxPlayers",
+      "kind": "field",
+      "scope": "type",
+      "type": "StartRunLobby",
+      "required": true
+    },
+    {
+      "file": "McpMod.StateBuilder.cs",
+      "line": 1983,
+      "api": "GetInstanceMemberValue",
+      "member": "Players",
+      "kind": "property-or-field",
+      "scope": "assembly",
+      "type": null,
+      "required": true
+    },
+    {
+      "file": "McpMod.StateBuilder.cs",
+      "line": 2004,
+      "api": "GetInstanceMemberValue",
+      "member": "LocalPlayer",
+      "kind": "property-or-field",
+      "scope": "assembly",
+      "type": null,
+      "required": true
+    },
+    {
+      "file": "McpMod.StateBuilder.cs",
+      "line": 2023,
+      "api": "GetInstanceMemberValue",
+      "member": "id",
+      "kind": "property-or-field",
+      "scope": "assembly",
+      "type": null,
+      "required": true
+    },
+    {
+      "file": "McpMod.StateBuilder.cs",
+      "line": 2029,
+      "api": "GetInstanceMemberValue",
+      "member": "character",
+      "kind": "property-or-field",
+      "scope": "assembly",
+      "type": null,
+      "required": true
+    },
+    {
+      "file": "McpMod.StateBuilder.cs",
+      "line": 2030,
+      "api": "GetInstanceMemberValue",
+      "member": "isReady",
+      "kind": "property-or-field",
+      "scope": "assembly",
+      "type": null,
+      "required": true
+    },
+    {
+      "file": "McpMod.StateBuilder.cs",
+      "line": 2031,
+      "api": "GetInstanceMemberValue",
+      "member": "slotId",
+      "kind": "property-or-field",
+      "scope": "assembly",
+      "type": null,
+      "required": true
+    },
+    {
+      "file": "McpMod.StateBuilder.cs",
+      "line": 2061,
+      "api": "GetInstanceFieldValue",
+      "member": "_loadingFriendsIndicator",
+      "kind": "field",
+      "scope": "assembly",
+      "type": null,
+      "required": true
+    },
+    {
+      "file": "McpMod.StateBuilder.cs",
+      "line": 2062,
+      "api": "GetInstanceFieldValue",
+      "member": "_loadingOverlay",
+      "kind": "field",
+      "scope": "assembly",
+      "type": null,
+      "required": true
+    },
+    {
+      "file": "McpMod.StateBuilder.cs",
+      "line": 2067,
+      "api": "GetInstanceFieldValue",
+      "member": "_noFriendsLabel",
+      "kind": "field",
+      "scope": "assembly",
+      "type": null,
+      "required": true
+    },
+    {
+      "file": "McpMod.StateBuilder.cs",
+      "line": 2074,
+      "api": "GetInstanceFieldValue",
+      "member": "_refreshButton",
+      "kind": "field",
+      "scope": "assembly",
+      "type": null,
+      "required": true
+    },
+    {
+      "file": "McpMod.StateBuilder.cs",
+      "line": 2095,
+      "api": "GetInstanceFieldValue",
+      "member": "_buttonContainer",
+      "kind": "field",
+      "scope": "assembly",
+      "type": null,
+      "required": true
+    },
+    {
+      "file": "McpMod.StateBuilder.cs",
+      "line": 2149,
+      "api": "GetInstanceFieldValue",
+      "member": "_runLobby",
+      "kind": "field",
+      "scope": "assembly",
+      "type": null,
+      "required": true
+    },
+    {
+      "file": "McpMod.StateBuilder.cs",
+      "line": 2752,
+      "api": "GetField",
+      "member": "_rooms",
+      "kind": "field",
+      "scope": "type",
+      "type": "ActModel",
+      "required": true
+    },
+    {
+      "file": "McpMod.StateBuilder.cs",
+      "line": 2799,
+      "api": "GetProperty",
+      "member": "Id",
+      "kind": "property",
+      "scope": "assembly",
+      "type": null,
+      "required": true
+    },
+    {
+      "file": "McpMod.StateBuilder.cs",
+      "line": 2800,
+      "api": "GetProperty",
+      "member": "Entry",
+      "kind": "property",
+      "scope": "assembly",
+      "type": null,
+      "required": true
+    },
+    {
+      "file": "McpMod.StateBuilder.cs",
+      "line": 3857,
+      "api": "GetMemberValue",
+      "member": "Deck",
+      "kind": "property-or-field",
+      "scope": "assembly",
+      "type": null,
+      "required": true
+    },
+    {
+      "file": "McpMod.StateBuilder.cs",
+      "line": 3861,
+      "api": "GetMemberValue",
+      "member": "Cards",
+      "kind": "property-or-field",
+      "scope": "assembly",
+      "type": null,
+      "required": true
+    },
+    {
+      "file": "McpMod.StateBuilder.cs",
+      "line": 3896,
+      "api": "GetBoolMemberValue",
+      "member": "IsSelected",
+      "kind": "property-or-field",
+      "scope": "assembly",
+      "type": null,
+      "required": true
+    },
+    {
+      "file": "McpMod.StateBuilder.cs",
+      "line": 3897,
+      "api": "GetBoolMemberValue",
+      "member": "_isSelected",
+      "kind": "property-or-field",
+      "scope": "assembly",
+      "type": null,
+      "required": true
+    },
+    {
+      "file": "McpMod.StateBuilder.cs",
+      "line": 3906,
+      "api": "GetBoolMemberValue",
+      "member": "IsEnabled",
+      "kind": "property-or-field",
+      "scope": "assembly",
+      "type": null,
+      "required": true
+    },
+    {
+      "file": "McpMod.StateBuilder.cs",
+      "line": 5158,
+      "api": "GetInstanceFieldValue",
+      "member": "_rooms",
+      "kind": "field",
+      "scope": "assembly",
+      "type": null,
+      "required": true
+    },
+    {
+      "file": "McpMod.StateBuilder.cs",
+      "line": 5159,
+      "api": "GetInstanceFieldValue",
+      "member": "eliteEncountersVisited",
+      "kind": "field",
+      "scope": "assembly",
+      "type": null,
+      "required": true
+    },
+    {
+      "file": "McpMod.StateBuilder.cs",
+      "line": 5269,
+      "api": "GetMethod",
+      "member": "GetMarkedCoords",
+      "kind": "method",
+      "scope": "assembly",
+      "type": null,
+      "required": true
+    },
+    {
+      "file": "McpMod.StateBuilder.cs",
+      "line": 5274,
+      "api": "GetProperty",
+      "member": "FurCoatActIndex",
+      "kind": "property",
+      "scope": "assembly",
+      "type": null,
+      "required": true
+    },
+    {
+      "file": "McpMod.StateBuilder.cs",
+      "line": 5275,
+      "api": "GetProperty",
+      "member": "MarkedActIndex",
+      "kind": "property",
+      "scope": "assembly",
+      "type": null,
+      "required": false,
+      "optional_reason": "version-gated or candidate-name read with a fallback"
+    },
+    {
+      "file": "McpMod.StateBuilder.cs",
+      "line": 5329,
+      "api": "GetField",
+      "member": "_isTerminal",
+      "kind": "field",
+      "scope": "type",
+      "type": "NRewardsScreen",
+      "required": true
+    },
+    {
+      "file": "McpMod.StateBuilder.cs",
+      "line": 5334,
+      "api": "GetField",
+      "member": "_rewardsSet",
+      "kind": "field",
+      "scope": "type",
+      "type": "NRewardsScreen",
+      "required": true
+    },
+    {
+      "file": "McpMod.StateBuilder.cs",
+      "line": 5401,
+      "api": "GetField",
+      "member": "_entity",
+      "kind": "field",
+      "scope": "type",
+      "type": "NCrystalSphereScreen",
+      "required": true
+    },
+    {
+      "file": "McpMod.StateBuilder.cs",
+      "line": 5407,
+      "api": "GetField",
+      "member": "_completionSource",
+      "kind": "field",
+      "scope": "assembly",
+      "type": null,
+      "required": true
+    },
+    {
+      "file": "McpMod.StateBuilder.cs",
+      "line": 5431,
+      "api": "GetField",
+      "member": "_completionSource",
+      "kind": "field",
+      "scope": "type",
+      "type": "NCardRewardSelectionScreen",
+      "required": true
+    },
+    {
+      "file": "McpMod.StateBuilder.cs",
+      "line": 5660,
+      "api": "GetInstanceFieldValue",
+      "member": "_extraOptions",
+      "kind": "field",
+      "scope": "assembly",
+      "type": null,
+      "required": true
+    },
+    {
+      "file": "McpMod.StateBuilder.cs",
+      "line": 5664,
+      "api": "GetPropertyValue",
+      "member": "OptionId",
+      "kind": "property",
+      "scope": "assembly",
+      "type": null,
+      "required": true
+    },
+    {
+      "file": "McpMod.StateBuilder.cs",
+      "line": 5673,
+      "api": "GetInstanceFieldValue",
+      "member": "_optionName",
+      "kind": "field",
+      "scope": "assembly",
+      "type": null,
+      "required": true
+    },
+    {
+      "file": "McpMod.StateBuilder.cs",
+      "line": 5962,
+      "api": "GetField",
+      "member": "_selectedCards",
+      "kind": "field",
+      "scope": "assembly",
+      "type": null,
+      "required": true
+    },
+    {
+      "file": "McpMod.StateBuilder.cs",
+      "line": 6033,
+      "api": "GetInstanceFieldValue",
+      "member": "_openedTicks",
+      "kind": "field",
+      "scope": "assembly",
+      "type": null,
+      "required": true
+    },
+    {
+      "file": "McpMod.StateBuilder.cs",
+      "line": 6205,
+      "api": "GetInstanceFieldValue",
+      "member": "_selectedCards",
+      "kind": "field",
+      "scope": "assembly",
+      "type": null,
+      "required": true
+    },
+    {
+      "file": "McpMod.StateBuilder.cs",
+      "line": 6622,
+      "api": "GetField",
+      "member": "_internalData",
+      "kind": "field",
+      "scope": "type",
+      "type": "PowerModel",
+      "required": true
+    },
+    {
+      "file": "Recorder/RecordObserve.cs",
+      "line": 34,
+      "api": "GetField",
+      "member": "_counter",
+      "kind": "field",
+      "scope": "type",
+      "type": "MegaCrit.Sts2.Core.Random.Rng",
+      "required": true
+    },
+    {
+      "file": "Recorder/RecorderPatches.cs",
+      "line": 32,
+      "api": "AccessTools.FieldRefAccess",
+      "member": "_replay",
+      "kind": "field",
+      "scope": "type",
+      "type": "CombatReplayWriter",
+      "required": true
+    },
+    {
+      "file": "Recorder/RecorderPatches.cs",
+      "line": 34,
+      "api": "AccessTools.FieldRefAccess",
+      "member": "_startTime",
+      "kind": "field",
+      "scope": "type",
+      "type": "RunManager",
+      "required": true
+    },
+    {
+      "file": "Recorder/RecorderPatches.cs",
+      "line": 37,
+      "api": "AccessTools.Field",
+      "member": "_commands",
+      "kind": "field",
+      "scope": "type",
+      "type": "MegaCrit.Sts2.Core.DevConsole.DevConsole",
+      "required": true
+    },
+    {
+      "file": "Recorder/RecorderPatches.cs",
+      "line": 37,
+      "api": "AccessTools.Field",
+      "member": "_commands",
+      "kind": "field",
+      "scope": "type",
+      "type": "DevConsole",
+      "required": true
+    },
+    {
+      "file": "Recorder/RecorderPatches.cs",
+      "line": 40,
+      "api": "AccessTools.Field",
+      "member": "_actionQueues",
+      "kind": "field",
+      "scope": "type",
+      "type": "ActionQueueSet",
+      "required": true
+    },
+    {
+      "file": "Recorder/RecorderPatches.cs",
+      "line": 52,
+      "api": "RecorderPatches.Patch",
+      "member": "RecordGameAction",
+      "kind": "method",
+      "scope": "type",
+      "type": "CombatReplayWriter",
+      "required": true
+    },
+    {
+      "file": "Recorder/RecorderPatches.cs",
+      "line": 53,
+      "api": "RecorderPatches.Patch",
+      "member": "RecordActionResume",
+      "kind": "method",
+      "scope": "type",
+      "type": "CombatReplayWriter",
+      "required": true
+    },
+    {
+      "file": "Recorder/RecorderPatches.cs",
+      "line": 54,
+      "api": "RecorderPatches.Patch",
+      "member": "RecordPlayerChoice",
+      "kind": "method",
+      "scope": "type",
+      "type": "CombatReplayWriter",
+      "required": true
+    },
+    {
+      "file": "Recorder/RecorderPatches.cs",
+      "line": 55,
+      "api": "RecorderPatches.Patch",
+      "member": "RecordChecksum",
+      "kind": "method",
+      "scope": "type",
+      "type": "CombatReplayWriter",
+      "required": true
+    },
+    {
+      "file": "Recorder/RecorderPatches.cs",
+      "line": 73,
+      "api": "RecorderPatches.Patch",
+      "member": "AfterActionFinished",
+      "kind": "method",
+      "scope": "type",
+      "type": "ActionExecutor",
+      "required": true
+    }
+  ]
+}
