@@ -121,20 +121,7 @@ public static partial class McpMod
 
         var runState = RunManager.Instance.DebugOnlyGetState();
         if (runState == null)
-        {
-            if (tree?.Root != null)
-            {
-                var activeCharSelect = FindFirst<NCharacterSelectScreen>(tree.Root);
-                if (activeCharSelect != null && IsNodeVisible(activeCharSelect))
-                {
-                    AddCharacterSelectMenuState(result, activeCharSelect);
-                    return result;
-                }
-            }
-
-            result["state_type"] = "unknown";
-            return result;
-        }
+            return BuildUnresolvedRunState(result, tree);
 
         // Overlays can appear on top of any room (events, rest sites, combat).
         // Rewards/card-reward overlays defer to the map - they may linger on the
@@ -142,6 +129,58 @@ public static partial class McpMod
         var topOverlay = NOverlayStack.Instance?.Peek();
         var currentRoom = runState.CurrentRoom;
         bool mapIsOpen = IsMapScreenOpenOrVisible();
+        AppendScreenState(result, tree, runState, currentRoom, topOverlay, mapIsOpen);
+
+        // Overlay-first detection must not hide the combat snapshot. The Rust
+        // planner needs the enemies, turn, history, and RNG streams both for a
+        // fresh selection search and to validate reuse of the subtree that
+        // opened the overlay.
+        if (currentRoom is CombatRoom overlayCombat
+            && CombatManager.Instance.IsInProgress
+            && result.TryGetValue("state_type", out var overlayStateType)
+            && overlayStateType is string overlayType
+            && overlayType is "card_select" or "bundle_select")
+        {
+            result["battle"] = BuildBattleState(runState, overlayCombat);
+        }
+
+        AppendCommonRunState(result, runState);
+        return result;
+    }
+
+    /// <summary>
+    /// A run is in progress but its state cannot be read yet. A character-select screen can
+    /// still be up in that window, so report it; otherwise the state is unknown.
+    /// </summary>
+    private static Dictionary<string, object?> BuildUnresolvedRunState(
+        Dictionary<string, object?> result, SceneTree? tree)
+    {
+        if (tree?.Root != null)
+        {
+            var activeCharSelect = FindFirst<NCharacterSelectScreen>(tree.Root);
+            if (activeCharSelect != null && IsNodeVisible(activeCharSelect))
+            {
+                AddCharacterSelectMenuState(result, activeCharSelect);
+                return result;
+            }
+        }
+
+        result["state_type"] = "unknown";
+        return result;
+    }
+
+    /// <summary>
+    /// Decides what the player is looking at: a pushed menu (settings/pause), an overlay, or
+    /// the room underneath.
+    /// </summary>
+    private static void AppendScreenState(
+        Dictionary<string, object?> result,
+        SceneTree? tree,
+        RunState runState,
+        AbstractRoom? currentRoom,
+        IOverlayScreen? topOverlay,
+        bool mapIsOpen)
+    {
         // The settings screen is pushed on the run's submenu stack, over everything below.
         // It is checked first so the room underneath is not reported as the live screen.
         var settingsState = TryBuildSettingsMenuState(tree?.Root, inRun: true);
@@ -152,81 +191,129 @@ public static partial class McpMod
         {
             foreach (var entry in settingsState)
                 result[entry.Key] = entry.Value;
+            return;
         }
-        else if (pauseState != null)
+        if (pauseState != null)
         {
             foreach (var entry in pauseState)
                 result[entry.Key] = entry.Value;
+            return;
         }
-        else if (topOverlay is NCardGridSelectionScreen cardSelectScreen)
+
+        if (topOverlay != null && TryAppendOverlayState(result, topOverlay, mapIsOpen))
+            return;
+
+        AppendRoomState(result, tree, runState, currentRoom, topOverlay, mapIsOpen);
+    }
+
+    /// <summary>
+    /// The overlay ladder. Overlays that linger on the stack after being answered (rewards,
+    /// card reward, Crystal Sphere) must give way to the map, so each of those only wins
+    /// while the run is still waiting on it.
+    /// </summary>
+    private static bool TryAppendOverlayState(
+        Dictionary<string, object?> result, IOverlayScreen topOverlay, bool mapIsOpen)
+        => TryAppendSelectionOverlayState(result, topOverlay)
+           || TryAppendCrystalSphereOverlay(result, topOverlay, mapIsOpen)
+           || TryAppendCardRewardOverlay(result, topOverlay, mapIsOpen)
+           || TryAppendRewardsOverlay(result, topOverlay, mapIsOpen)
+           || TryAppendFallbackOverlayState(result, topOverlay);
+
+    private static bool TryAppendSelectionOverlayState(
+        Dictionary<string, object?> result, IOverlayScreen topOverlay)
+    {
+        switch (topOverlay)
         {
-            result["state_type"] = "card_select";
-            result["card_select"] = BuildCardSelectState(cardSelectScreen);
+            case NCardGridSelectionScreen cardSelectScreen:
+                result["state_type"] = "card_select";
+                result["card_select"] = BuildCardSelectState(cardSelectScreen);
+                return true;
+            case NChooseACardSelectionScreen chooseCardScreen:
+                result["state_type"] = "card_select";
+                result["card_select"] = BuildChooseCardState(chooseCardScreen);
+                return true;
+            case NChooseABundleSelectionScreen bundleScreen:
+                result["state_type"] = "bundle_select";
+                result["bundle_select"] = BuildBundleSelectState(bundleScreen);
+                return true;
+            case NChooseARelicSelection relicSelectScreen:
+                result["state_type"] = "relic_select";
+                result["relic_select"] = BuildRelicSelectState(relicSelectScreen);
+                return true;
+            default:
+                return false;
         }
-        else if (topOverlay is NChooseACardSelectionScreen chooseCardScreen)
-        {
-            result["state_type"] = "card_select";
-            result["card_select"] = BuildChooseCardState(chooseCardScreen);
-        }
-        else if (topOverlay is NChooseABundleSelectionScreen bundleScreen)
-        {
-            result["state_type"] = "bundle_select";
-            result["bundle_select"] = BuildBundleSelectState(bundleScreen);
-        }
-        else if (topOverlay is NChooseARelicSelection relicSelectScreen)
-        {
-            result["state_type"] = "relic_select";
-            result["relic_select"] = BuildRelicSelectState(relicSelectScreen);
-        }
-        else if (topOverlay is NCrystalSphereScreen crystalSphereScreen
-                 && (!mapIsOpen || CrystalSphereIsOutstanding(crystalSphereScreen)))
-        {
-            // Mirror the NRewardsScreen guard below: the Crystal Sphere overlay
-            // lingers on the stack after proceed is clicked (only ClearScreens
-            // on the next room transition pops it). Once the map opens on top,
-            // report "map" so state matches the screen the player can interact
-            // with. See issue #73.
-            //
-            // ...but only once it HAS been answered. `CrystalSphere.UncoverFuture`
-            // awaits `PlayMinigame()` before `SetEventFinished`, so a sphere still
-            // being played blocks its event room, and masking it reported an
-            // un-travellable map with nothing on it - the same deadlock Brain
-            // Leech's card reward and Tiny Mailbox's potions produced.
-            result["state_type"] = "crystal_sphere";
-            result["crystal_sphere"] = BuildCrystalSphereState(crystalSphereScreen);
-        }
-        else if (topOverlay is NCardRewardSelectionScreen cardRewardScreen
-                 && (!mapIsOpen || CardRewardIsOutstanding(cardRewardScreen)))
-        {
-            // The map deference here is only correct for a card reward that has
-            // already been answered - it lingers on the overlay stack while the
-            // map opens underneath. A pick the run is still WAITING on must win
-            // over the map, exactly as `RewardsSetIsOutstanding` makes it for a
-            // rewards set: Brain Leech's RIP awaits `RewardsCmd.OfferCustom`
-            // before `SetEventFinished`, so masking this screen reported an
-            // un-travellable "map" (`travel_enabled: false`, no `next_options`,
-            // because the room is unfinished) with nothing a client could act
-            // on. Observed live at act 1 floor 14: `[STALL] map unchanged` with
-            // "No map options" for the rest of the run.
-            result["state_type"] = "card_reward";
-            result["card_reward"] = BuildCardRewardState(cardRewardScreen);
-        }
-        else if (topOverlay is NRewardsScreen rewardsScreen
-                 && (!mapIsOpen || RewardsSetIsOutstanding(rewardsScreen)))
-        {
-            // The map deference above is only correct for a rewards screen that
-            // has already been answered - it lingers on the stack while the map
-            // opens underneath. A set the run is still WAITING on must win over
-            // the map: Tiny Mailbox offers two potions from inside the rest-site
-            // heal (RewardsCmd.OfferCustom), and that heal is awaited before the
-            // chosen option leaves the room's option list, so masking the
-            // overlay reported "rest_site" with its (still enabled) options and
-            // nothing a client could act on - the run cannot proceed until the
-            // potions are taken or skipped, so nothing ever changed again.
-            result["state_type"] = "rewards";
-            result["rewards"] = BuildRewardsState(rewardsScreen);
-        }
-        else if (topOverlay is NGameOverScreen)
+    }
+
+    private static bool TryAppendCrystalSphereOverlay(
+        Dictionary<string, object?> result, IOverlayScreen topOverlay, bool mapIsOpen)
+    {
+        if (topOverlay is not NCrystalSphereScreen crystalSphereScreen
+            || (mapIsOpen && !CrystalSphereIsOutstanding(crystalSphereScreen)))
+            return false;
+
+        // Mirror the NRewardsScreen guard: the Crystal Sphere overlay lingers on
+        // the stack after proceed is clicked (only ClearScreens on the next room
+        // transition pops it). Once the map opens on top, report "map" so state
+        // matches the screen the player can interact with. See issue #73.
+        //
+        // ...but only once it HAS been answered. `CrystalSphere.UncoverFuture`
+        // awaits `PlayMinigame()` before `SetEventFinished`, so a sphere still
+        // being played blocks its event room, and masking it reported an
+        // un-travellable map with nothing on it - the same deadlock Brain
+        // Leech's card reward and Tiny Mailbox's potions produced.
+        result["state_type"] = "crystal_sphere";
+        result["crystal_sphere"] = BuildCrystalSphereState(crystalSphereScreen);
+        return true;
+    }
+
+    private static bool TryAppendCardRewardOverlay(
+        Dictionary<string, object?> result, IOverlayScreen topOverlay, bool mapIsOpen)
+    {
+        if (topOverlay is not NCardRewardSelectionScreen cardRewardScreen
+            || (mapIsOpen && !CardRewardIsOutstanding(cardRewardScreen)))
+            return false;
+
+        // The map deference is only correct for a card reward that has already
+        // been answered - it lingers on the overlay stack while the map opens
+        // underneath. A pick the run is still WAITING on must win over the map,
+        // exactly as `RewardsSetIsOutstanding` makes it for a rewards set: Brain
+        // Leech's RIP awaits `RewardsCmd.OfferCustom` before `SetEventFinished`,
+        // so masking this screen reported an un-travellable "map"
+        // (`travel_enabled: false`, no `next_options`, because the room is
+        // unfinished) with nothing a client could act on. Observed live at act 1
+        // floor 14: `[STALL] map unchanged` with "No map options" for the rest
+        // of the run.
+        result["state_type"] = "card_reward";
+        result["card_reward"] = BuildCardRewardState(cardRewardScreen);
+        return true;
+    }
+
+    private static bool TryAppendRewardsOverlay(
+        Dictionary<string, object?> result, IOverlayScreen topOverlay, bool mapIsOpen)
+    {
+        if (topOverlay is not NRewardsScreen rewardsScreen
+            || (mapIsOpen && !RewardsSetIsOutstanding(rewardsScreen)))
+            return false;
+
+        // The map deference is only correct for a rewards screen that has already
+        // been answered - it lingers on the stack while the map opens underneath.
+        // A set the run is still WAITING on must win over the map: Tiny Mailbox
+        // offers two potions from inside the rest-site heal (RewardsCmd
+        // .OfferCustom), and that heal is awaited before the chosen option leaves
+        // the room's option list, so masking the overlay reported "rest_site"
+        // with its (still enabled) options and nothing a client could act on -
+        // the run cannot proceed until the potions are taken or skipped, so
+        // nothing ever changed again.
+        result["state_type"] = "rewards";
+        result["rewards"] = BuildRewardsState(rewardsScreen);
+        return true;
+    }
+
+    private static bool TryAppendFallbackOverlayState(
+        Dictionary<string, object?> result, IOverlayScreen topOverlay)
+    {
+        if (topOverlay is NGameOverScreen)
         {
             result["state_type"] = "game_over";
             result["game_over"] = new Dictionary<string, object?>(StringComparer.Ordinal)
@@ -234,177 +321,253 @@ public static partial class McpMod
                 ["message"] = "Run ended.",
                 ["options"] = new List<string> { "main_menu" }
             };
+            return true;
         }
-        else if (topOverlay is IOverlayScreen
-                 && topOverlay is not NRewardsScreen
-                 && topOverlay is not NCardRewardSelectionScreen
-                 && topOverlay is not NCrystalSphereScreen)
+
+        // Catch-all for unhandled overlays - prevents soft-locks. Overlays that
+        // linger on the stack while the map takes over (rewards, card reward,
+        // Crystal Sphere) are excluded so the fallback below reports "map" once
+        // mapIsOpen is true.
+        if (topOverlay is NRewardsScreen
+            or NCardRewardSelectionScreen
+            or NCrystalSphereScreen)
+            return false;
+
+        result["state_type"] = "overlay";
+        result["overlay"] = new Dictionary<string, object?>(StringComparer.Ordinal)
         {
-            // Catch-all for unhandled overlays - prevents soft-locks.
-            // Overlays that linger on the stack while the map takes over
-            // (rewards, card reward, Crystal Sphere) are excluded so the
-            // fallback below reports "map" once mapIsOpen is true.
-            result["state_type"] = "overlay";
-            result["overlay"] = new Dictionary<string, object?>(StringComparer.Ordinal)
-            {
-                ["screen_type"] = topOverlay.GetType().Name,
-                ["message"] = $"An overlay ({topOverlay.GetType().Name}) is active. It may require manual interaction in-game."
-            };
-        }
-        else if (currentRoom is RestSiteRoom pendingRest
-                 && pendingRest.Options != null
-                 && pendingRest.Options.Any(o => o.IsEnabled))
-        {
-            // Priority over the map fallback below: after choose_map_node travels
-            // onto a rest-site node, the game updates the map model but the map
-            // SCREEN can linger visible for a while, so IsMapScreenOpenOrVisible()
-            // stays true and we'd otherwise report "map" while the rest room is
-            // actually loaded underneath (NRestSiteRoom.Instance != null). That
-            // makes the bot travel straight past the rest into the boss. An
-            // unfinished rest site (still has an enabled option) is reported as
-            // rest_site regardless of the lingering map. Once the rest is used the
-            // options disable and we fall through to "map" so the next node can be
-            // chosen. See handle_rest_site / handle_map in the bot.
-            result["state_type"] = "rest_site";
-            result["rest_site"] = BuildRestSiteState(pendingRest);
-        }
-        else if (currentRoom is EventRoom pendingEvent
-                 && pendingEvent.CanonicalEvent is not FakeMerchant
-                 && EventHasPendingAction())
-        {
-            // Same lingering-map masking as the rest branch above: after travelling
-            // onto an "Unknown"/event node the map screen stays visible while the
-            // event room loads underneath (NEventRoom.Instance != null), so the
-            // mapIsOpen fallback would report "map" and the bot would travel past
-            // the event. Report "event" while the event still has an actionable
-            // choice or live dialogue; once it resolves (no pending action) we fall
-            // through to "map" so the next node can be chosen (no deadlock).
-            result["state_type"] = "event";
-            result["event"] = BuildEventState(pendingEvent);
-        }
-        else if (currentRoom is TreasureRoom
-                 && TreasureHasPendingAction())
-        {
-            // Same lingering-map masking as the rest/event branches above: after
-            // travelling onto a treasure node the map stays visible while the
-            // treasure room loads underneath, so the mapIsOpen fallback would
-            // report "map" and the bot would skip the chest. Report "treasure"
-            // while there is a chest still to open or a relic still to pick; once
-            // the room is finished (nothing pending) we fall through to "map".
-            result["state_type"] = "treasure";
-            result["treasure"] = BuildTreasureState();
-        }
-        else if (currentRoom is MerchantRoom pendingShop
-                 && NMerchantRoom.Instance != null
-                 && (!IsMapScreenDeliberatelyOpen() || IsRunTransitionInFlight()))
-        {
-            // Same lingering-map masking as the rest/event/treasure branches: after
-            // travelling onto a shop node the map SCREEN stays visible while the
-            // merchant room loads underneath, so a mapIsOpen fallback would report
-            // "map" and the bot would skip the shop entirely.
-            //
-            // Outside that the mask still has to come off, because the singleton
-            // is not a finished signal: NMerchantRoom.Instance is NRun's current
-            // room scene, and proceeding out only calls NMapScreen.Open() — the
-            // scene is replaced when the NEXT room is entered, which cannot happen
-            // until we travel. Meanwhile ActiveScreenContext hands the map the
-            // focus, so NMerchantRoom.OnActiveScreenUpdated disables the
-            // ProceedButton and NMerchantInventory.OnActiveScreenUpdated disables
-            // its BackButton: the whole merchant UI is inert and "proceed" can only
-            // ever answer "No proceed button available or enabled". A bot that
-            // trusted the mask sat there posting it forever.
-            //
-            // The signal for that is the map being DELIBERATELY open, not merely
-            // on screen. IsMapScreenOpenOrVisible() also answers true through
-            // Close()'s animate-out, which is exactly the arrival window — so
-            // gating on it unmasked the shop about 0.75s after arriving, as soon as
-            // IsRunTransitionInFlight() went false, and every merchant reported
-            // "map" for the rest of the visit. Measured over a full seeded run:
-            // three shops entered, "shop" reported for 0.75s each, three
-            // "[MAP] room never opened after travel" guard releases, 783 gold
-            // unspent at death. NMerchantRoom._Ready only calls SetTravelEnabled;
-            // the one merchant path to NMapScreen.Open() is HideScreen on the
-            // ProceedButton, so IsOpen means the shop is done and nothing else.
-            result["state_type"] = "shop";
-            var shopState = BuildShopState(pendingShop, runState);
-            // Still exported for a client that wants to leave by travelling rather
-            // than by proceeding — the map's next nodes stay travelable from a
-            // merchant node whether or not the map screen is up.
-            shopState["next_options"] = BuildMapNextOptions();
-            result["shop"] = shopState;
-        }
-        else if (currentRoom is CombatRoom loadingCombat
-                 && !CombatManager.Instance.IsInProgress
-                 && (CombatManager.Instance.IsStarting
-                     || IsMapTravelInFlight()
-                     || IsRunTransitionInFlight()))
-        {
-            // Last of the lingering-map guards, and the one whose absence was a
-            // real soft-lock. The combat room is entered but CombatManager has
-            // not flipped IsInProgress yet (asset preload, deck shuffle,
-            // spawn-ins, the combat-start banner). Without this branch a state
-            // read landing in that window either:
-            //   * hits the mapIsOpen fallback below and reports "map" - the map
-            //     SCREEN is still visible during the transition - so a client
-            //     travels a SECOND time, on top of the travel that is still
-            //     resolving, which wedges the run; or
-            //   * hits the CombatRoom branch below and is labelled "Combat
-            //     ended. Waiting for rewards...", the exact opposite of what is
-            //     happening, with no "battle" for the client to act on.
-            // The three signals overlap deliberately and leave no gap.
-            // EnterRoomInternal pushes the combat room onto the room stack
-            // BEFORE awaiting its Enter, so from that moment the room is current
-            // while SetUpCombat (and therefore IsStarting) is still several
-            // awaits away, behind the combat asset preload - that is the window
-            // an event "Fight" option lands in, where neither IsStarting nor the
-            // map's IsTraveling is set and only the run-transition handle is.
-            // It flips to a real battle in about a second, so clients only ever
-            // have to wait.
-            result["state_type"] = loadingCombat.RoomType.ToString().ToLowerInvariant();
-            result["combat_starting"] = true;
-            result["message"] = "Combat is starting. Wait for the battle state; do not send actions yet.";
-        }
-        else if (mapIsOpen)
+            ["screen_type"] = topOverlay.GetType().Name,
+            ["message"] = $"An overlay ({topOverlay.GetType().Name}) is active. It may require manual interaction in-game."
+        };
+        return true;
+    }
+
+    private static void AppendRoomState(
+        Dictionary<string, object?> result,
+        SceneTree? tree,
+        RunState runState,
+        AbstractRoom? currentRoom,
+        IOverlayScreen? topOverlay,
+        bool mapIsOpen)
+    {
+        if (TryAppendPendingRoomState(result, runState, currentRoom))
+            return;
+
+        if (mapIsOpen)
         {
             result["state_type"] = "map";
             result["map"] = BuildMapState(runState);
             AddBlockedMapDiagnostics(result, currentRoom, topOverlay);
+            return;
         }
-        else if (currentRoom is CombatRoom combatRoom)
+
+        if (TryAppendCombatRoomState(result, runState, currentRoom))
+            return;
+        if (TryAppendEventOrMapRoomState(result, runState, currentRoom))
+            return;
+        if (TryAppendSimpleRoomState(result, runState, currentRoom))
+            return;
+        AppendNoRoomState(result, tree, currentRoom);
+    }
+
+    /// <summary>
+    /// Rooms that are still being entered or finished, in priority order. Each of these
+    /// exists because the map screen can linger visible over the room it just travelled to;
+    /// reporting "map" there makes a client travel straight past the room.
+    /// </summary>
+    private static bool TryAppendPendingRoomState(
+        Dictionary<string, object?> result, RunState runState, AbstractRoom? currentRoom)
+        => TryAppendPendingRest(result, currentRoom)
+           || TryAppendPendingEvent(result, currentRoom)
+           || TryAppendPendingTreasure(result, currentRoom)
+           || TryAppendPendingShop(result, runState, currentRoom)
+           || TryAppendLoadingCombat(result, currentRoom);
+
+    private static bool TryAppendPendingRest(
+        Dictionary<string, object?> result, AbstractRoom? currentRoom)
+    {
+        if (currentRoom is not RestSiteRoom pendingRest
+            || pendingRest.Options == null
+            || !pendingRest.Options.Any(o => o.IsEnabled))
+            return false;
+
+        // Priority over the map fallback below: after choose_map_node travels
+        // onto a rest-site node, the game updates the map model but the map
+        // SCREEN can linger visible for a while, so IsMapScreenOpenOrVisible()
+        // stays true and we'd otherwise report "map" while the rest room is
+        // actually loaded underneath (NRestSiteRoom.Instance != null). That
+        // makes the bot travel straight past the rest into the boss. An
+        // unfinished rest site (still has an enabled option) is reported as
+        // rest_site regardless of the lingering map. Once the rest is used the
+        // options disable and we fall through to "map" so the next node can be
+        // chosen. See handle_rest_site / handle_map in the bot.
+        result["state_type"] = "rest_site";
+        result["rest_site"] = BuildRestSiteState(pendingRest);
+        return true;
+    }
+
+    private static bool TryAppendPendingEvent(
+        Dictionary<string, object?> result, AbstractRoom? currentRoom)
+    {
+        if (currentRoom is not EventRoom pendingEvent
+            || pendingEvent.CanonicalEvent is FakeMerchant
+            || !EventHasPendingAction())
+            return false;
+
+        // Same lingering-map masking as the rest branch above: after travelling
+        // onto an "Unknown"/event node the map screen stays visible while the
+        // event room loads underneath (NEventRoom.Instance != null), so the
+        // mapIsOpen fallback would report "map" and the bot would travel past
+        // the event. Report "event" while the event still has an actionable
+        // choice or live dialogue; once it resolves (no pending action) we fall
+        // through to "map" so the next node can be chosen (no deadlock).
+        result["state_type"] = "event";
+        result["event"] = BuildEventState(pendingEvent);
+        return true;
+    }
+
+    private static bool TryAppendPendingTreasure(
+        Dictionary<string, object?> result, AbstractRoom? currentRoom)
+    {
+        if (currentRoom is not TreasureRoom || !TreasureHasPendingAction())
+            return false;
+
+        // Same lingering-map masking as the rest/event branches above: after
+        // travelling onto a treasure node the map stays visible while the
+        // treasure room loads underneath, so the mapIsOpen fallback would
+        // report "map" and the bot would skip the chest. Report "treasure"
+        // while there is a chest still to open or a relic still to pick; once
+        // the room is finished (nothing pending) we fall through to "map".
+        result["state_type"] = "treasure";
+        result["treasure"] = BuildTreasureState();
+        return true;
+    }
+
+    private static bool TryAppendPendingShop(
+        Dictionary<string, object?> result, RunState runState, AbstractRoom? currentRoom)
+    {
+        if (currentRoom is not MerchantRoom pendingShop
+            || NMerchantRoom.Instance == null
+            || (IsMapScreenDeliberatelyOpen() && !IsRunTransitionInFlight()))
+            return false;
+
+        // Same lingering-map masking as the rest/event/treasure branches: after
+        // travelling onto a shop node the map SCREEN stays visible while the
+        // merchant room loads underneath, so a mapIsOpen fallback would report
+        // "map" and the bot would skip the shop entirely.
+        //
+        // Outside that the mask still has to come off, because the singleton
+        // is not a finished signal: NMerchantRoom.Instance is NRun's current
+        // room scene, and proceeding out only calls NMapScreen.Open() — the
+        // scene is replaced when the NEXT room is entered, which cannot happen
+        // until we travel. Meanwhile ActiveScreenContext hands the map the
+        // focus, so NMerchantRoom.OnActiveScreenUpdated disables the
+        // ProceedButton and NMerchantInventory.OnActiveScreenUpdated disables
+        // its BackButton: the whole merchant UI is inert and "proceed" can only
+        // ever answer "No proceed button available or enabled". A bot that
+        // trusted the mask sat there posting it forever.
+        //
+        // The signal for that is the map being DELIBERATELY open, not merely
+        // on screen. IsMapScreenOpenOrVisible() also answers true through
+        // Close()'s animate-out, which is exactly the arrival window — so
+        // gating on it unmasked the shop about 0.75s after arriving, as soon as
+        // IsRunTransitionInFlight() went false, and every merchant reported
+        // "map" for the rest of the visit. Measured over a full seeded run:
+        // three shops entered, "shop" reported for 0.75s each, three
+        // "[MAP] room never opened after travel" guard releases, 783 gold
+        // unspent at death. NMerchantRoom._Ready only calls SetTravelEnabled;
+        // the one merchant path to NMapScreen.Open() is HideScreen on the
+        // ProceedButton, so IsOpen means the shop is done and nothing else.
+        result["state_type"] = "shop";
+        var shopState = BuildShopState(pendingShop, runState);
+        // Still exported for a client that wants to leave by travelling rather
+        // than by proceeding — the map's next nodes stay travelable from a
+        // merchant node whether or not the map screen is up.
+        shopState["next_options"] = BuildMapNextOptions();
+        result["shop"] = shopState;
+        return true;
+    }
+
+    private static bool TryAppendLoadingCombat(
+        Dictionary<string, object?> result, AbstractRoom? currentRoom)
+    {
+        if (currentRoom is not CombatRoom loadingCombat
+            || CombatManager.Instance.IsInProgress
+            || (!CombatManager.Instance.IsStarting
+                && !IsMapTravelInFlight()
+                && !IsRunTransitionInFlight()))
+            return false;
+
+        // Last of the lingering-map guards, and the one whose absence was a
+        // real soft-lock. The combat room is entered but CombatManager has
+        // not flipped IsInProgress yet (asset preload, deck shuffle,
+        // spawn-ins, the combat-start banner). Without this branch a state
+        // read landing in that window either:
+        //   * hits the mapIsOpen fallback below and reports "map" - the map
+        //     SCREEN is still visible during the transition - so a client
+        //     travels a SECOND time, on top of the travel that is still
+        //     resolving, which wedges the run; or
+        //   * hits the CombatRoom branch below and is labelled "Combat
+        //     ended. Waiting for rewards...", the exact opposite of what is
+        //     happening, with no "battle" for the client to act on.
+        // The three signals overlap deliberately and leave no gap.
+        // EnterRoomInternal pushes the combat room onto the room stack
+        // BEFORE awaiting its Enter, so from that moment the room is current
+        // while SetUpCombat (and therefore IsStarting) is still several
+        // awaits away, behind the combat asset preload - that is the window
+        // an event "Fight" option lands in, where neither IsStarting nor the
+        // map's IsTraveling is set and only the run-transition handle is.
+        // It flips to a real battle in about a second, so clients only ever
+        // have to wait.
+        result["state_type"] = loadingCombat.RoomType.ToString().ToLowerInvariant();
+        result["combat_starting"] = true;
+        result["message"] = "Combat is starting. Wait for the battle state; do not send actions yet.";
+        return true;
+    }
+
+    private static bool TryAppendCombatRoomState(
+        Dictionary<string, object?> result, RunState runState, AbstractRoom? currentRoom)
+    {
+        if (currentRoom is not CombatRoom combatRoom)
+            return false;
+
+        if (CombatManager.Instance.IsInProgress)
         {
-            if (CombatManager.Instance.IsInProgress)
+            // Check for in-combat hand card selection (e.g., "Select a card to exhaust")
+            var playerHand = NPlayerHand.Instance;
+            if (playerHand != null && playerHand.IsInCardSelection)
             {
-                // Check for in-combat hand card selection (e.g., "Select a card to exhaust")
-                var playerHand = NPlayerHand.Instance;
-                if (playerHand != null && playerHand.IsInCardSelection)
-                {
-                    result["state_type"] = "hand_select";
-                    result["hand_select"] = BuildHandSelectState(playerHand);
-                    result["battle"] = BuildBattleState(runState, combatRoom);
-                }
-                else
-                {
-                    result["state_type"] = combatRoom.RoomType.ToString().ToLowerInvariant(); // monster, elite, boss
-                    result["battle"] = BuildBattleState(runState, combatRoom);
-                }
+                result["state_type"] = "hand_select";
+                result["hand_select"] = BuildHandSelectState(playerHand);
+                result["battle"] = BuildBattleState(runState, combatRoom);
             }
             else
             {
-                // After combat ends - reward/card overlays are caught by top-level checks above.
-                // Only handle map and the brief transition before rewards appear.
-                if (IsMapScreenOpenOrVisible())
-                {
-                    result["state_type"] = "map";
-                    result["map"] = BuildMapState(runState);
-                }
-                else
-                {
-                    result["state_type"] = combatRoom.RoomType.ToString().ToLowerInvariant();
-                    result["message"] = "Combat ended. Waiting for rewards...";
-                }
+                result["state_type"] = combatRoom.RoomType.ToString().ToLowerInvariant(); // monster, elite, boss
+                result["battle"] = BuildBattleState(runState, combatRoom);
             }
+            return true;
         }
-        else if (currentRoom is EventRoom eventRoom)
+
+        // After combat ends - reward/card overlays are caught by top-level checks above.
+        // Only handle map and the brief transition before rewards appear.
+        if (IsMapScreenOpenOrVisible())
+        {
+            result["state_type"] = "map";
+            result["map"] = BuildMapState(runState);
+        }
+        else
+        {
+            result["state_type"] = combatRoom.RoomType.ToString().ToLowerInvariant();
+            result["message"] = "Combat ended. Waiting for rewards...";
+        }
+        return true;
+    }
+
+    private static bool TryAppendEventOrMapRoomState(
+        Dictionary<string, object?> result, RunState runState, AbstractRoom? currentRoom)
+    {
+        if (currentRoom is EventRoom eventRoom)
         {
             if (IsMapScreenOpenOrVisible())
             {
@@ -421,13 +584,23 @@ public static partial class McpMod
                 result["state_type"] = "event";
                 result["event"] = BuildEventState(eventRoom);
             }
+            return true;
         }
-        else if (currentRoom is MapRoom)
+
+        if (currentRoom is MapRoom)
         {
             result["state_type"] = "map";
             result["map"] = BuildMapState(runState);
+            return true;
         }
-        else if (currentRoom is MerchantRoom merchantRoom)
+
+        return false;
+    }
+
+    private static bool TryAppendSimpleRoomState(
+        Dictionary<string, object?> result, RunState runState, AbstractRoom? currentRoom)
+    {
+        if (currentRoom is MerchantRoom merchantRoom)
         {
             if (IsMapScreenOpenOrVisible())
             {
@@ -447,8 +620,10 @@ public static partial class McpMod
                 result["state_type"] = "shop";
                 result["shop"] = BuildShopState(merchantRoom, runState);
             }
+            return true;
         }
-        else if (currentRoom is RestSiteRoom restSiteRoom)
+
+        if (currentRoom is RestSiteRoom restSiteRoom)
         {
             if (IsMapScreenOpenOrVisible())
             {
@@ -460,8 +635,10 @@ public static partial class McpMod
                 result["state_type"] = "rest_site";
                 result["rest_site"] = BuildRestSiteState(restSiteRoom);
             }
+            return true;
         }
-        else if (currentRoom is TreasureRoom)
+
+        if (currentRoom is TreasureRoom)
         {
             if (IsMapScreenOpenOrVisible())
             {
@@ -473,40 +650,42 @@ public static partial class McpMod
                 result["state_type"] = "treasure";
                 result["treasure"] = BuildTreasureState();
             }
+            return true;
         }
-        else if (currentRoom == null && tree?.Root != null)
+
+        return false;
+    }
+
+    private static void AppendNoRoomState(
+        Dictionary<string, object?> result, SceneTree? tree, AbstractRoom? currentRoom)
+    {
+        if (currentRoom == null && tree?.Root != null)
         {
             var activeCharSelect = FindFirst<NCharacterSelectScreen>(tree.Root);
             if (activeCharSelect != null && IsNodeVisible(activeCharSelect))
             {
                 AddCharacterSelectMenuState(result, activeCharSelect);
+                return;
             }
-            else
-            {
-                result["state_type"] = "unknown";
-                // This branch only runs when currentRoom is null.
-                result["room_type"] = null;
-            }
-        }
-        else
-        {
+
             result["state_type"] = "unknown";
-            result["room_type"] = currentRoom?.GetType().Name;
+            // This branch only runs when currentRoom is null.
+            result["room_type"] = null;
+            return;
         }
 
-        // Overlay-first detection must not hide the combat snapshot. The Rust
-        // planner needs the enemies, turn, history, and RNG streams both for a
-        // fresh selection search and to validate reuse of the subtree that
-        // opened the overlay.
-        if (currentRoom is CombatRoom overlayCombat
-            && CombatManager.Instance.IsInProgress
-            && result.TryGetValue("state_type", out var overlayStateType)
-            && overlayStateType is string overlayType
-            && overlayType is "card_select" or "bundle_select")
-        {
-            result["battle"] = BuildBattleState(runState, overlayCombat);
-        }
+        result["state_type"] = "unknown";
+        result["room_type"] = currentRoom?.GetType().Name;
+    }
 
+    /// <summary>
+    /// The blocks that ride along on every screen: run info and its RNG streams, the act's
+    /// pre-rolled queues, the profile counters, this run's save context, the local player and
+    /// the resolving flag.
+    /// </summary>
+    private static void AppendCommonRunState(
+        Dictionary<string, object?> result, RunState runState)
+    {
         // Common run info
         var runInfo = new Dictionary<string, object?>(StringComparer.Ordinal)
         {
@@ -551,15 +730,11 @@ public static partial class McpMod
         result["current_run"] = BuildActiveRunContext();
 
         // Always include full player data (relics, potions, deck, etc.) on every screen
-        var _player = LocalContext.GetMe(runState);
-        if (_player != null)
-        {
-            result["player"] = BuildPlayerState(_player);
-        }
+        var localPlayer = LocalContext.GetMe(runState);
+        if (localPlayer != null)
+            result["player"] = BuildPlayerState(localPlayer);
 
         AddResolvingState(result, result.GetValueOrDefault("state_type")?.ToString());
-
-        return result;
     }
 
     /// <summary>The state for a game with no run in progress: whichever menu screen is up.</summary>
