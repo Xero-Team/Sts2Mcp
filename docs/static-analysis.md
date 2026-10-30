@@ -8,7 +8,7 @@ nothing here changes the mod's runtime behaviour.
 
 | File | Holds |
 | --- | --- |
-| `Directory.Build.targets` | Analyzer packages, `AnalysisMode`/`AnalysisLevel`, the strict-mode switch, the banned-API list registration |
+| `Directory.Build.targets` | Analyzer packages, `AnalysisMode`/`AnalysisLevel`, the strict gate, the banned-API list registration |
 | `.editorconfig` | Formatting conventions the tree already follows, plus the handful of rules that cannot apply to this project |
 | `BannedSymbols.txt` | API allow/deny list enforced by `Microsoft.CodeAnalysis.BannedApiAnalyzers` (rule RS0030) |
 
@@ -48,13 +48,20 @@ an editor, so a CI build and a local build agree.
 
 ### Rules switched off, and why
 
-Only rules that cannot apply are silenced (see `.editorconfig`); a rule with many hits is a
+Only rules that cannot apply are silenced (see `.editorconfig` and the per-site
+`SuppressMessage` attributes on the handful of methods that need one); a rule with many hits is a
 backlog item, not a wrong rule.
 
 - Globalization (`CA1304/1305/1307/1308/1310/1311/...`): the mod emits JSON for an MCP client and
   log lines. Nothing formats values for a locale, and `CultureInfo` overloads would be dead API.
+- `CA1707` ("underscores in identifiers"): the assembly and namespace name `STS2_MCP` is the mod's
+  shipped identity (`mod_manifest.json`, the game's mod folder, every documented path).
 - `S3011` ("reflection should not be used to increase accessibility"): reading private game
   members through reflection is the mod's mechanism (`McpMod.Il.cs`).
+- `S1144` on Harmony patch methods: Harmony reaches `TargetMethods`/`Prefix`/`Postfix` through the
+  attributes on the patch class, not through a C# call, so they are live but look unused.
+- `CA2007`/`MA0004`/`VSTHRD003` on the reward-observation awaits: they must resume on the thread
+  that owns the reward session, so `ConfigureAwait(false)` would be wrong there.
 
 ## Building and running the gates on Linux
 
@@ -71,26 +78,22 @@ dotnet format STS2_MCP.csproj --verify-no-changes   # formatting gate
 `dotnet format` needs the same game path; because it has no `-p:` passthrough in this SDK, the
 `STS2GameDir` environment variable is the portable way to give it one.
 
-The build fails while the backlog below is non-empty. To keep working on something unrelated,
-relax the gate for one invocation instead of editing files:
-
-```sh
-dotnet build STS2_MCP.csproj -p:STS2StrictWarnings=false   # findings are warnings again
-```
+The gate is unconditional: there is no property that turns findings back into warnings. A
+contributor who hits a finding fixes the code or the rule, because a `#pragma` or a relaxed build
+committed to make one finding go away hides the next one too.
 
 ## Outstanding work
 
-The gate is on, so this list is a list of build breakers. Numbers are from the baseline commit and
-will move as the code does; re-measure with `-p:STS2StrictWarnings=false` and count warnings rather
-than trusting them.
+Nothing. The last measurement of the full design-rule set is zero findings, so `dotnet build` is
+green on a fresh checkout; the counts below are history.
 
-Cleared so far (measured at `9122b64`): `MA0002` (442), `MA0006` (352),
+The backlog was cleared in this order. First (measured at `9122b64`): `MA0002` (442), `MA0006` (352),
 `MA0011` (41), `S1144` (27, via the Harmony justification), `S1172` (12),
 `S1481` (7), `S6444` (3), `S8969` (18), `VSTHRD002` (12), `S3358` (28), `S3267`
 (20), the one-line findings `MA0004`/`MA0009`/`MA0074`/`S1125`/`S1862`/`S1905`/
 `S4136`/`S6610`/`CA1805`/`CA1820`/`CA1847`/`CA1865`/`CA2244`, and all formatting
-drift (419 whitespace, 6 import orders, 2 final newlines). 1538 warnings at the
-baseline commit are 361 now.
+drift (419 whitespace, 6 import orders, 2 final newlines) - 1538 warnings at the
+baseline commit down to 361.
 
 The transport handlers no longer carry their own catch pair: `RunHandler` and
 `RunActionHandler` own the 503/500 mapping, one call per handler. Reads whose
@@ -98,27 +101,13 @@ failure means "not there" rather than "broken" (a freed Godot node, a member thi
 game version does not have) go through `TryReadQuiet`, which states that once
 instead of at thirteen sites.
 
-| Bucket | Count | Note |
-| --- | --- | --- |
-| `CA1031` catch a more specific exception | 124 | The state builders (a renamed game member must not kill a state read) and the recorder's own fault channel. Route through `TryDo`/`TryRead`/`TryReadQuiet` in `docs/adr/0005-full-refactor-phases.md` |
-| `MA0051` method too long | 65 | Concentrated in `McpMod.StateBuilder.cs` and `McpMod.Actions.cs`; extract only where it buys clarity |
-| `ERP022` swallow exception without observing it | 64 | Same family as `CA1031` |
-| `EPC12` | 20 | Catch blocks that report `ex.Message` only |
-| `S108` / `S2486` | 12 / 12 | Same family as `CA1031` |
-| `CA1859`/`VSTHRD200`/`CA2007`/`VSTHRD003` | 8/5/4/3 | `CA2007` stays open on purpose (see the ADR) |
-| rest | 1-4 each | `CA1001`/`CA1032`/`CA1064`/`CA1508`/`CA1707`/`CA1812`/`S1066`/`S1199`/`S1450`/`S1905`/`S2094`/`S2223`/`S3871`/`S4487`/`MA0023`/`MA0048`/`MA0134`/`MA0169`/`EPC13`/`AsyncFixer01`, judged one at a time |
-
-Then delete this line from `Directory.Build.targets` once the list is empty, so the gate can no
-longer be relaxed by a property:
-
-```xml
-<TreatWarningsAsErrors Condition="'$(STS2StrictWarnings)' != 'false'">true</TreatWarningsAsErrors>
-<CodeAnalysisTreatWarningsAsErrors Condition="'$(STS2StrictWarnings)' != 'false'">true</CodeAnalysisTreatWarningsAsErrors>
-```
-
-replaced by the unconditional pair. Until then the opt-out exists on purpose: a contributor
-blocked by an unrelated backlog item should not have to choose between committing a `#pragma` and
-not committing at all.
+The rest of the backlog closed the same way, one named rule per call site instead of a blanket
+suppression: the defensive-catch family (`CA1031`/`ERP022`/`S108`/`S2486`/`EPC12`) went through
+`TryDo`/`TryRead`/`TryReadQuiet`, and the long methods (`MA0051`, 74 at the start) were split into
+private methods named after the step they perform - never into local functions, which the rule does
+not count but a reader cannot reuse. The rules that stay silenced are the ones listed under "Rules
+switched off, and why" above; `docs/adr/0005-full-refactor-phases.md` records why each is a
+property of this mod rather than a finding.
 
 ## Adding a ban
 

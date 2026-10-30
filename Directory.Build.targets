@@ -23,18 +23,13 @@
     <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
 
     <!--
-      Strict gate, ON by default: compiler warnings and analyzer findings are both build errors,
-      so a new warning cannot reach main. The backlog this exposes is listed in
-      docs/static-analysis.md and is being worked down; until it is empty, expect `dotnet build`
-      to fail on a fresh checkout.
-
-      Escape hatch for local work that is unrelated to a finding you did not introduce:
-        dotnet build -p:STS2StrictWarnings=false
-      or set STS2StrictWarnings=false in your machine-local Directory.Build.props. Do not commit
-      that relaxation, and do not add #pragma to get around a finding - fix it or fix the rule.
+      Strict gate, unconditional: compiler warnings and analyzer findings are both build errors, so
+      a new warning cannot reach main and `dotnet build` on a fresh checkout is green by itself.
+      docs/static-analysis.md records what the gate covers and the reasoning behind the rules that
+      are switched off; do not add #pragma to get around a finding - fix the code or fix the rule.
     -->
-    <TreatWarningsAsErrors Condition="'$(STS2StrictWarnings)' != 'false'">true</TreatWarningsAsErrors>
-    <CodeAnalysisTreatWarningsAsErrors Condition="'$(STS2StrictWarnings)' != 'false'">true</CodeAnalysisTreatWarningsAsErrors>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <CodeAnalysisTreatWarningsAsErrors>true</CodeAnalysisTreatWarningsAsErrors>
   </PropertyGroup>
 
   <ItemGroup Label="Analyzers">
