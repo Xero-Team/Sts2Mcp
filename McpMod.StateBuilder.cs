@@ -1538,7 +1538,32 @@ public static partial class McpMod
         // roster's own field names survived the rename.
         var roster = GetStartRunLobbyPlayers(lobby);
 
-        var lobbyState = new Dictionary<string, object?>(StringComparer.Ordinal)
+        var lobbyState = BuildLobbySummary(lobby, roster);
+
+        var local = GetStartRunLobbyLocalPlayer(lobby, roster);
+
+        // is_local_ready === local player has hit Embark in MP and is now waiting.
+        // Mirrors NCharacterSelectScreen._readyAndWaitingContainer.Visible.
+        if (local != null)
+        {
+            lobbyState["is_local_ready"] = local.IsReady;
+            lobbyState["local_player_id"] = local.Id.ToString();
+        }
+
+        ulong localId = local?.Id ?? 0;
+        ulong hostId = lobby.NetService.Type == NetGameType.Host ? localId : 0;
+        lobbyState["players"] = roster.Select(p => BuildLobbyPlayer(lobby, p, localId, hostId)).ToList();
+        lobbyState["player_count"] = roster.Count;
+
+        if (!string.IsNullOrEmpty(lobby.Seed))
+            lobbyState["seed"] = lobby.Seed;
+
+        return lobbyState;
+    }
+
+    private static Dictionary<string, object?> BuildLobbySummary(
+        StartRunLobby lobby, List<StartRunLobbySeat> roster)
+        => new(StringComparer.Ordinal)
         {
             ["type"] = lobby.NetService.Type switch
             {
@@ -1555,48 +1580,24 @@ public static partial class McpMod
             ["is_about_to_begin"] = SafeIsAboutToBeginGame(lobby)
         };
 
-        var local = GetStartRunLobbyLocalPlayer(lobby, roster);
-
-        // is_local_ready === local player has hit Embark in MP and is now waiting.
-        // Mirrors NCharacterSelectScreen._readyAndWaitingContainer.Visible.
-        if (local != null)
+    private static Dictionary<string, object?> BuildLobbyPlayer(
+        StartRunLobby lobby, StartRunLobbySeat p, ulong localId, ulong hostId)
+        => new(StringComparer.Ordinal)
         {
-            lobbyState["is_local_ready"] = local.IsReady;
-            lobbyState["local_player_id"] = local.Id.ToString();
-        }
-
-        var players = new List<Dictionary<string, object?>>();
-        ulong localId = local?.Id ?? 0;
-        ulong hostId = lobby.NetService.Type == NetGameType.Host ? localId : 0;
-
-        foreach (var p in roster)
-        {
-            var entry = new Dictionary<string, object?>(StringComparer.Ordinal)
-            {
-                ["id"] = p.Id.ToString(),
-                ["slot_id"] = p.SlotId,
-                ["is_local"] = p.Id == localId,
-                // We can only positively identify the host as "us" when we ARE the host;
-                // a client doesn't know which remote id is the host without inspecting
-                // the net service. Keep it simple and only flag is_host=true for self
-                // when hosting — clients can infer host-ness by player_id when needed.
-                ["is_host"] = p.Id == hostId && hostId != 0,
-                ["character"] = SafeGetText(() => p.Character?.Title)
-                                ?? p.Character?.Id.Entry,
-                ["character_id"] = p.Character?.Id.Entry,
-                ["is_ready"] = p.IsReady,
-                ["platform_name"] = SafeGetPlayerName(lobby.NetService.Platform, p.Id)
-            };
-            players.Add(entry);
-        }
-        lobbyState["players"] = players;
-        lobbyState["player_count"] = players.Count;
-
-        if (!string.IsNullOrEmpty(lobby.Seed))
-            lobbyState["seed"] = lobby.Seed;
-
-        return lobbyState;
-    }
+            ["id"] = p.Id.ToString(),
+            ["slot_id"] = p.SlotId,
+            ["is_local"] = p.Id == localId,
+            // We can only positively identify the host as "us" when we ARE the host;
+            // a client doesn't know which remote id is the host without inspecting
+            // the net service. Keep it simple and only flag is_host=true for self
+            // when hosting — clients can infer host-ness by player_id when needed.
+            ["is_host"] = p.Id == hostId && hostId != 0,
+            ["character"] = SafeGetText(() => p.Character?.Title)
+                            ?? p.Character?.Id.Entry,
+            ["character_id"] = p.Character?.Id.Entry,
+            ["is_ready"] = p.IsReady,
+            ["platform_name"] = SafeGetPlayerName(lobby.NetService.Platform, p.Id)
+        };
 
     /// <summary>
     /// One character-select lobby seat, read out of whichever struct this game
@@ -2320,62 +2321,13 @@ public static partial class McpMod
         if (rooms == null)
             return null;
 
-        List<string>? Ids(string field)
-        {
-            if (!_roomSetFields.TryGetValue(field, out var info))
-            {
-                info = rooms.GetType().GetField(
-                    field, BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public);
-                _roomSetFields[field] = info;
-            }
-            if (info?.GetValue(rooms) is not System.Collections.IEnumerable list)
-                return null;
-            var ids = new List<string>();
-            foreach (var item in list)
-            {
-                var id = item?.GetType().GetProperty("Id")?.GetValue(item);
-                var entry = id?.GetType().GetProperty("Entry")?.GetValue(id) as string;
-                if (entry != null)
-                    ids.Add(entry);
-            }
-            return ids;
-        }
-
-        int Visited(string field)
-        {
-            if (!_roomSetFields.TryGetValue(field, out var info))
-            {
-                info = rooms.GetType().GetField(
-                    field, BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public);
-                _roomSetFields[field] = info;
-            }
-            return info?.GetValue(rooms) is int value ? value : 0;
-        }
-
-        var normal = Ids("normalEncounters");
-        var elite = Ids("eliteEncounters");
-        var events = Ids("events");
+        var normal = ReadRoomSetIds(rooms, "normalEncounters");
+        var elite = ReadRoomSetIds(rooms, "eliteEncounters");
+        var events = ReadRoomSetIds(rooms, "events");
         if (normal == null || elite == null || events == null)
             return null;
 
-        var bossEncounter = TryReadQuiet(() => act.BossEncounter);
-        var secondBossEncounter = act.SecondBossEncounter;
-        var encounters = new Dictionary<string, object?>(StringComparer.Ordinal)
-        {
-            ["normal"] = normal,
-            ["normal_visited"] = Visited("normalEncountersVisited"),
-            ["elite"] = elite,
-            ["elite_visited"] = Visited("eliteEncountersVisited"),
-            ["events"] = events,
-            ["events_visited"] = Visited("eventsVisited"),
-            ["boss_visited"] = Visited("bossEncountersVisited")
-        };
-        var bossId = bossEncounter?.Id?.Entry;
-        var secondBossId = secondBossEncounter?.Id?.Entry;
-        if (!string.IsNullOrWhiteSpace(bossId))
-            encounters["boss"] = bossId;
-        if (!string.IsNullOrWhiteSpace(secondBossId))
-            encounters["second_boss"] = secondBossId;
+        var encounters = BuildActEncounters(act, rooms, normal, elite, events);
 
         bool isMultiplayer = runState.Players.Count > 1;
         return new Dictionary<string, object?>(StringComparer.Ordinal)
@@ -2386,6 +2338,67 @@ public static partial class McpMod
             ["floors_total"] = act.GetNumberOfFloors(isMultiplayer),
             ["encounters"] = encounters
         };
+    }
+
+    /// <summary>
+    /// Locates one of the private room-set fields on the act's room holder, remembering the
+    /// lookup because this runs once per act state read.
+    /// </summary>
+    private static FieldInfo? RoomSetField(object rooms, string field)
+    {
+        if (!_roomSetFields.TryGetValue(field, out var info))
+        {
+            info = rooms.GetType().GetField(
+                field, BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public);
+            _roomSetFields[field] = info;
+        }
+        return info;
+    }
+
+    private static List<string>? ReadRoomSetIds(object rooms, string field)
+    {
+        if (RoomSetField(rooms, field)?.GetValue(rooms) is not System.Collections.IEnumerable list)
+            return null;
+        var ids = new List<string>();
+        foreach (var item in list)
+        {
+            var id = item?.GetType().GetProperty("Id")?.GetValue(item);
+            var entry = id?.GetType().GetProperty("Entry")?.GetValue(id) as string;
+            if (entry != null)
+                ids.Add(entry);
+        }
+        return ids;
+    }
+
+    private static int ReadRoomSetVisited(object rooms, string field)
+        => RoomSetField(rooms, field)?.GetValue(rooms) is int value ? value : 0;
+
+    private static Dictionary<string, object?> BuildActEncounters(
+        ActModel act,
+        object rooms,
+        List<string> normal,
+        List<string> elite,
+        List<string> events)
+    {
+        var encounters = new Dictionary<string, object?>(StringComparer.Ordinal)
+        {
+            ["normal"] = normal,
+            ["normal_visited"] = ReadRoomSetVisited(rooms, "normalEncountersVisited"),
+            ["elite"] = elite,
+            ["elite_visited"] = ReadRoomSetVisited(rooms, "eliteEncountersVisited"),
+            ["events"] = events,
+            ["events_visited"] = ReadRoomSetVisited(rooms, "eventsVisited"),
+            ["boss_visited"] = ReadRoomSetVisited(rooms, "bossEncountersVisited")
+        };
+        var bossEncounter = TryReadQuiet(() => act.BossEncounter);
+        var secondBossEncounter = act.SecondBossEncounter;
+        var bossId = bossEncounter?.Id?.Entry;
+        var secondBossId = secondBossEncounter?.Id?.Entry;
+        if (!string.IsNullOrWhiteSpace(bossId))
+            encounters["boss"] = bossId;
+        if (!string.IsNullOrWhiteSpace(secondBossId))
+            encounters["second_boss"] = secondBossId;
+        return encounters;
     }
 
     /// <summary>Per map point visited this act: what it was, and which rooms and
@@ -3114,49 +3127,7 @@ public static partial class McpMod
             {
                 if (!enemy.IsAlive) continue;
 
-                TryDo("card.vs_targets", () =>
-                {
-                    card.UpdateDynamicVarPreview(CardPreviewMode.Normal, enemy, card.DynamicVars);
-
-                    var preview = new Dictionary<string, object?>(StringComparer.Ordinal)
-                    {
-                        ["target"] = GetStableEntityId(enemy),
-                        ["combat_id"] = enemy.CombatId
-                    };
-
-                    // Var names differ per card (Damage, CalculatedDamage, ExtraDamage...),
-                    // and the typed accessors throw when a card has no var of that name,
-                    // so read whatever the card actually carries.
-                    var values = ReadDynamicVarValues(card);
-                    int? damage = PickDynamicVar(values, "CalculatedDamage", "Damage");
-                    if (damage != null)
-                        preview["damage"] = damage;
-
-                    int? hits = PickDynamicVar(values, "Repeat");
-                    if (hits != null && hits > 1)
-                    {
-                        preview["hits"] = hits;
-                        if (damage != null)
-                            preview["total_damage"] = damage * hits;
-                    }
-
-                    int? block = PickDynamicVar(values, "CalculatedBlock", "Block");
-                    if (block != null)
-                        preview["block"] = block;
-
-                    if (damage != null)
-                    {
-                        var cap = BuildDamageCap(enemy, damage.Value, hits ?? 1);
-                        if (cap != null)
-                            preview["damage_cap"] = cap;
-                    }
-
-                    if (values.Count > 0)
-                        preview["values"] = values;
-
-                    preview["description"] = SafeGetTargetedCardDescription(card, enemy);
-                    previews.Add(preview);
-                });
+                TryDo("card.vs_targets", () => previews.Add(BuildCardTargetPreview(card, enemy)));
             }
         }
         finally
@@ -5092,6 +5063,50 @@ public static partial class McpMod
             item["relic_rarity"] = relic.Rarity.ToString();
             item["keywords"] = BuildHoverTips(relic.HoverTipsExcludingRelic);
         }
+    }
+
+    private static Dictionary<string, object?> BuildCardTargetPreview(CardModel card, Creature enemy)
+    {
+        card.UpdateDynamicVarPreview(CardPreviewMode.Normal, enemy, card.DynamicVars);
+
+        var preview = new Dictionary<string, object?>(StringComparer.Ordinal)
+        {
+            ["target"] = GetStableEntityId(enemy),
+            ["combat_id"] = enemy.CombatId
+        };
+
+        // Var names differ per card (Damage, CalculatedDamage, ExtraDamage...),
+        // and the typed accessors throw when a card has no var of that name,
+        // so read whatever the card actually carries.
+        var values = ReadDynamicVarValues(card);
+        int? damage = PickDynamicVar(values, "CalculatedDamage", "Damage");
+        if (damage != null)
+            preview["damage"] = damage;
+
+        int? hits = PickDynamicVar(values, "Repeat");
+        if (hits != null && hits > 1)
+        {
+            preview["hits"] = hits;
+            if (damage != null)
+                preview["total_damage"] = damage * hits;
+        }
+
+        int? block = PickDynamicVar(values, "CalculatedBlock", "Block");
+        if (block != null)
+            preview["block"] = block;
+
+        if (damage != null)
+        {
+            var cap = BuildDamageCap(enemy, damage.Value, hits ?? 1);
+            if (cap != null)
+                preview["damage_cap"] = cap;
+        }
+
+        if (values.Count > 0)
+            preview["values"] = values;
+
+        preview["description"] = SafeGetTargetedCardDescription(card, enemy);
+        return preview;
     }
 
     private static RelicModel? GetRelicRewardModel(RelicReward reward)
