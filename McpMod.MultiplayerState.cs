@@ -703,7 +703,7 @@ public static partial class McpMod
             bool isShared = false;
             // Left silent: IsShared throws whenever no event is in progress, which is the
             // normal reading on every other screen - a warning here would fire constantly.
-            try { isShared = eventSync.IsShared; } catch { }
+            TryDo(() => { isShared = eventSync.IsShared; });
             state["is_shared"] = isShared;
 
             if (isShared)
@@ -868,22 +868,20 @@ public static partial class McpMod
 
                             // Energy getters run hooks (Hook.ModifyMaxEnergy) —
                             // isolate them so a throw still leaves the hand intact.
-                            try
+                            TryDo(() =>
                             {
                                 entry["energy"] = cs.Energy;
                                 entry["max_energy"] = cs.MaxEnergy;
-                            }
-                            catch { /* energy hooks threw — omit energy only */ }
+                            });
 
                             // Emotion Chip's owner-turn history, as for the local
                             // player. Isolated so a missing history omits only
                             // this field, which the planner then reports.
-                            try
+                            TryDo(() =>
                             {
                                 entry["damage_not_fully_blocked_this_owner_turn"] = DamageNotFullyBlockedThisOwnerTurn(
                                     player, CombatManager.Instance.History.Entries.OfType<DamageReceivedEntry>());
-                            }
-                            catch { /* owner-turn history unavailable — omit it only */ }
+                            });
                         }
                     });
                     /* teammate combat state mid-transition — omit hand */

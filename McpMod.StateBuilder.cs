@@ -1240,29 +1240,26 @@ public static partial class McpMod
             if (deckCards.Count > 0)
                 charData["starting_deck"] = deckCards;
 
-            try
+            TryDo(() =>
             {
                 var allCards = cm.CardPool?.AllCards;
                 if (allCards != null)
                     charData["total_cards"] = System.Linq.Enumerable.Count(allCards);
-            }
-            catch { }
+            });
 
-            try
+            TryDo(() =>
             {
                 var allRelics = cm.RelicPool?.AllRelics;
                 if (allRelics != null)
                     charData["total_relics"] = System.Linq.Enumerable.Count(allRelics);
-            }
-            catch { }
+            });
 
-            try
+            TryDo(() =>
             {
                 var allPotions = cm.PotionPool?.AllPotions;
                 if (allPotions != null)
                     charData["total_potions"] = System.Linq.Enumerable.Count(allPotions);
-            }
-            catch { }
+            });
 
             return charData;
         });
@@ -4046,7 +4043,7 @@ public static partial class McpMod
                 // rather than letting ObjectDisposedException fail the whole
                 // state build - the index still advances so it keeps lining up
                 // with what choose_event_option sees.
-                try
+                TryDo(() =>
                 {
                     var opt = button.Option;
                     var optData = new Dictionary<string, object?>(StringComparer.Ordinal)
@@ -4081,8 +4078,7 @@ public static partial class McpMod
                     }
                     optData["keywords"] = BuildHoverTips(opt.HoverTips);
                     options.Add(optData);
-                }
-                catch (ObjectDisposedException) { }
+                });
                 index++;
             }
         }
