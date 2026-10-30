@@ -251,97 +251,142 @@ public static partial class McpMod
         if (hand == null)
             return Error("No hand available");
 
-        // Prefer the uid: card_index shifts as soon as a card leaves the hand, so a
-        // multi-card plan built from one state read goes wrong after the first play.
-        CardModel card;
+        if (!TryResolveHandCard(data, hand, combatState, out var card, out var cardError))
+            return cardError!;
+
+        if (!card.CanPlay(out var reason, out _))
+            return Error($"Card '{card.Title}' cannot be played: {reason}");
+
+        var target = ResolvePlayCardTarget(player, combatState, card, data);
+        if (target.Failure != null)
+            return target.Failure;
+
+        // Play the card via the action queue (same path as the game UI)
+        RunManager.Instance.ActionQueueSynchronizer.RequestEnqueue(
+            Recorder.CombatRecorder.TagApiAction(new PlayCardAction(card, target.Target)));
+
+        return new Dictionary<string, object?>(StringComparer.Ordinal)
+        {
+            ["status"] = "ok",
+            ["message"] = $"Playing '{card.Title}'" + (target.Target != null ? $" targeting {DescribeCreature(target.Target)}" : "")
+        };
+    }
+
+    /// <summary>
+    /// Finds the card the request names. Prefer the uid: card_index shifts as soon as a card
+    /// leaves the hand, so a multi-card plan built from one state read goes wrong after the
+    /// first play.
+    /// </summary>
+    private static bool TryResolveHandCard(
+        Dictionary<string, JsonElement> data,
+        CardPile hand,
+        ICombatState combatState,
+        out CardModel card,
+        out Dictionary<string, object?>? error)
+    {
+        error = null;
+        card = null!;
         string? cardUid = TryReadStringParam(data, "card_uid", "uid");
         if (cardUid != null)
         {
             RefreshCardUidRegistry(combatState);
             card = hand.Cards.FirstOrDefault(c => string.Equals(GetStableCardUid(c), cardUid, StringComparison.Ordinal))!;
             if (card == null)
-                return Error(
+            {
+                error = Error(
                     $"Card '{cardUid}' is not in hand. Hand: "
                     + string.Join(", ", hand.Cards.Select(GetStableCardUid)));
-        }
-        else
-        {
-            if (!TryGetIntParam(data, out int cardIndex, "card_index", "index"))
-                return Error("Missing card selector. Provide 'card_uid' (preferred, stable across plays) or 'card_index' (position in hand).");
-            if (cardIndex < 0 || cardIndex >= hand.Cards.Count)
-                return Error($"card_index {cardIndex} out of range (hand has {hand.Cards.Count} cards)");
-            card = hand.Cards[cardIndex];
+                return false;
+            }
+            return true;
         }
 
-        if (!card.CanPlay(out var reason, out _))
-            return Error($"Card '{card.Title}' cannot be played: {reason}");
+        if (!TryGetIntParam(data, out int cardIndex, "card_index", "index"))
+        {
+            error = Error("Missing card selector. Provide 'card_uid' (preferred, stable across plays) or 'card_index' (position in hand).");
+            return false;
+        }
+        if (cardIndex < 0 || cardIndex >= hand.Cards.Count)
+        {
+            error = Error($"card_index {cardIndex} out of range (hand has {hand.Cards.Count} cards)");
+            return false;
+        }
+        card = hand.Cards[cardIndex];
+        return true;
+    }
 
-        // Resolve target
-        Creature? target = null;
-        if (card.TargetType == TargetType.AnyEnemy)
+    /// <summary>A resolved target for the play, or the error that refused it.</summary>
+    private sealed record PlayTargetResolution(
+        Creature? Target,
+        Dictionary<string, object?>? Failure);
+
+    private static PlayTargetResolution ResolvePlayCardTarget(
+        Player player, ICombatState combatState, CardModel card, Dictionary<string, JsonElement> data)
+        => card.TargetType switch
         {
-            string? targetId = TryReadTargetId(data);
-            if (targetId == null)
-            {
-                var alive = combatState.Enemies.Where(e => e.IsAlive).ToList();
-                if (alive.Count != 1)
-                    return Error(
-                        $"Card '{card.Title}' requires a target. Provide 'target' with an entity_id "
-                        + $"or combat_id ({alive.Count} enemies alive).");
-                target = alive[0];
-            }
-            else
-            {
-                target = ResolveTarget(combatState, targetId);
-                if (target == null)
-                    return Error($"Target '{targetId}' not found among alive enemies");
-            }
-        }
-        else if (card.TargetType == TargetType.AnyAlly)
-        {
-            // AnyAlly = another living player, never self: the game UI excludes
-            // self from targeting and CardCmd's auto-play picks among allies
-            // != owner. (CardModel.IsValidTarget only checks Side, so a self
-            // target would slip through mechanically - but it is a play the
-            // game never allows a human to make.) A null target is rejected by
-            // IsValidTarget and silently cancels the play.
-            // Optional 'target' picks the teammate (players[].entity_id, e.g.
-            // "player_1", or a numeric combat_id); default = lowest-HP living
-            // teammate. All current AnyAlly cards are multiplayer-only.
-            if (data.TryGetValue("target", out var allyElem))
-            {
-                target = ResolvePlayerTarget(player, combatState, allyElem.GetString() ?? "");
-                if (target == player.Creature)
-                    return Error($"Card '{card.Title}' targets an ally and cannot target yourself. Valid targets: {ListAllyTargetIds(player)}");
-                if (target is { IsAlive: false })
-                    target = null;
-                // Unresolvable ids (older clients send enemy ids here) fall
-                // through to the default teammate instead of failing the play.
-            }
-            target ??= player.RunState.Players
-                .Where(p => p != player && p.Creature.IsAlive)
-                .OrderBy(p => p.Creature.CurrentHp)
-                .FirstOrDefault()?.Creature;
-            if (target == null)
-                return Error($"Card '{card.Title}' requires a living teammate to target and there is none");
-        }
-        else if (card.TargetType == TargetType.AnyPlayer)
-        {
+            TargetType.AnyEnemy => ResolveEnemyTarget(combatState, card, data),
+            TargetType.AnyAlly => ResolveAllyTarget(player, combatState, card, data),
             // No card currently uses AnyPlayer (only potions do), and
             // CardModel.IsValidTarget rejects ANY non-null target for it -
             // null is the only value that lets the play execute.
-            target = null;
+            _ => new PlayTargetResolution(null, null),
+        };
+
+    private static PlayTargetResolution ResolveEnemyTarget(
+        ICombatState combatState, CardModel card, Dictionary<string, JsonElement> data)
+    {
+        string? targetId = TryReadTargetId(data);
+        if (targetId == null)
+        {
+            var alive = combatState.Enemies.Where(e => e.IsAlive).ToList();
+            if (alive.Count != 1)
+            {
+                return new PlayTargetResolution(null, Error(
+                    $"Card '{card.Title}' requires a target. Provide 'target' with an entity_id "
+                    + $"or combat_id ({alive.Count} enemies alive)."));
+            }
+            return new PlayTargetResolution(alive[0], null);
         }
 
-        // Play the card via the action queue (same path as the game UI)
-        RunManager.Instance.ActionQueueSynchronizer.RequestEnqueue(
-            Recorder.CombatRecorder.TagApiAction(new PlayCardAction(card, target)));
+        var target = ResolveTarget(combatState, targetId);
+        return target == null
+            ? new PlayTargetResolution(null, Error($"Target '{targetId}' not found among alive enemies"))
+            : new PlayTargetResolution(target, null);
+    }
 
-        return new Dictionary<string, object?>(StringComparer.Ordinal)
+    private static PlayTargetResolution ResolveAllyTarget(
+        Player player, ICombatState combatState, CardModel card, Dictionary<string, JsonElement> data)
+    {
+        // AnyAlly = another living player, never self: the game UI excludes
+        // self from targeting and CardCmd's auto-play picks among allies
+        // != owner. (CardModel.IsValidTarget only checks Side, so a self
+        // target would slip through mechanically - but it is a play the
+        // game never allows a human to make.) A null target is rejected by
+        // IsValidTarget and silently cancels the play.
+        // Optional 'target' picks the teammate (players[].entity_id, e.g.
+        // "player_1", or a numeric combat_id); default = lowest-HP living
+        // teammate. All current AnyAlly cards are multiplayer-only.
+        Creature? target = null;
+        if (data.TryGetValue("target", out var allyElem))
         {
-            ["status"] = "ok",
-            ["message"] = $"Playing '{card.Title}'" + (target != null ? $" targeting {DescribeCreature(target)}" : "")
-        };
+            target = ResolvePlayerTarget(player, combatState, allyElem.GetString() ?? "");
+            if (target == player.Creature)
+            {
+                return new PlayTargetResolution(null, Error(
+                    $"Card '{card.Title}' targets an ally and cannot target yourself. Valid targets: {ListAllyTargetIds(player)}"));
+            }
+            if (target is { IsAlive: false })
+                target = null;
+            // Unresolvable ids (older clients send enemy ids here) fall
+            // through to the default teammate instead of failing the play.
+        }
+        target ??= player.RunState.Players
+            .Where(p => p != player && p.Creature.IsAlive)
+            .OrderBy(p => p.Creature.CurrentHp)
+            .FirstOrDefault()?.Creature;
+        return target == null
+            ? new PlayTargetResolution(null, Error($"Card '{card.Title}' requires a living teammate to target and there is none"))
+            : new PlayTargetResolution(target, null);
     }
 
     private static Dictionary<string, object?> ExecuteEndTurn(Player player)
