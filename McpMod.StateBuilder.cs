@@ -2451,12 +2451,8 @@ public static partial class McpMod
 
     private static string? GetEndTurnBlockedReason()
     {
-        if (!CombatManager.Instance.IsInProgress)
-            return "NotInCombat";
-        if (!IsCombatPlayPhase())
-            return "NotInPlayPhase";
-        if (CombatManager.Instance.PlayerActionsDisabled)
-            return "PlayerActionsDisabled";
+        if (GetCombatActionBlockedReason(null) is { } blocked)
+            return blocked;
 
         NPlayerHand? hand = NCombatRoom.Instance?.Ui?.Hand;
         if (hand != null && hand.InCardPlay)

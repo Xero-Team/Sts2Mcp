@@ -752,14 +752,8 @@ public static partial class McpMod
 
     private static string? GetMultiplayerEndTurnBlockedReason(Player player)
     {
-        if (!CombatManager.Instance.IsInProgress)
-            return "NotInCombat";
-        if (!IsCombatPlayPhase())
-            return "NotInPlayPhase";
-        if (CombatManager.Instance.PlayerActionsDisabled)
-            return "PlayerActionsDisabled";
-        if (!player.Creature.IsAlive)
-            return "PlayerDead";
+        if (GetCombatActionBlockedReason(player) is { } blocked)
+            return blocked;
         if (CombatManager.Instance.IsPlayerReadyToEndTurn(player))
             return "AlreadyReady";
 
@@ -776,14 +770,8 @@ public static partial class McpMod
 
     private static string? GetMultiplayerUndoEndTurnBlockedReason(Player player)
     {
-        if (!CombatManager.Instance.IsInProgress)
-            return "NotInCombat";
-        if (!IsCombatPlayPhase())
-            return "NotInPlayPhase";
-        if (CombatManager.Instance.PlayerActionsDisabled)
-            return "PlayerActionsDisabled";
-        if (!player.Creature.IsAlive)
-            return "PlayerDead";
+        if (GetCombatActionBlockedReason(player) is { } blocked)
+            return blocked;
         if (!CombatManager.Instance.IsPlayerReadyToEndTurn(player))
             return "NotReady";
         if (player.Creature.CombatState == null)

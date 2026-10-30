@@ -242,14 +242,8 @@ public static partial class McpMod
 
     private static Dictionary<string, object?> ExecutePlayCard(Player player, Dictionary<string, JsonElement> data)
     {
-        if (!CombatManager.Instance.IsInProgress)
-            return Error("Not in combat");
-        if (!IsCombatPlayPhase())
-            return Error("Not in play phase - cannot act during enemy turn");
-        if (CombatManager.Instance.PlayerActionsDisabled)
-            return Error("Player actions are currently disabled");
-        if (!player.Creature.IsAlive)
-            return Error("Player creature is dead - cannot play cards");
+        if (GetCombatActionBlockedReason(player) is { } blocked)
+            return Error(DescribeCombatRefusal(blocked));
 
         ICombatState? combatState = player.Creature.CombatState;
         if (combatState == null)
@@ -400,12 +394,8 @@ public static partial class McpMod
 
     private static Dictionary<string, object?> ExecuteEndTurn(Player player)
     {
-        if (!CombatManager.Instance.IsInProgress)
-            return Error("Not in combat");
-        if (!IsCombatPlayPhase())
-            return Error("Not in play phase - cannot act during enemy turn");
-        if (CombatManager.Instance.PlayerActionsDisabled)
-            return Error("Player actions are currently disabled (turn may already be ending)");
+        if (GetCombatActionBlockedReason(player) is { } blocked)
+            return Error(DescribeCombatRefusal(blocked));
 
         // Match the game's own CanTurnBeEnded guard (NEndTurnButton.cs:114-123)
         NPlayerHand? hand = NCombatRoom.Instance?.Ui?.Hand;
