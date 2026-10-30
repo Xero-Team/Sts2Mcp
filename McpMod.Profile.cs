@@ -32,33 +32,13 @@ public static partial class McpMod
     private static void HandlePostProfiles(HttpListenerRequest request, HttpListenerResponse response)
     {
         bool pretty = WantsPretty(request);
-        string body;
-        using (var reader = new StreamReader(request.InputStream, request.ContentEncoding))
-            body = reader.ReadToEnd();
-
-        Dictionary<string, JsonElement>? parsed;
-        try
-        {
-            parsed = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(body);
-        }
-        catch
-        {
-            SendError(response, 400, "Invalid JSON", pretty, "invalid_json");
+        var actionRequest = TryReadActionRequest(
+            request, response, pretty, "Missing 'action' field. Use: switch, delete");
+        if (actionRequest == null)
             return;
-        }
 
-        if (parsed == null || !parsed.TryGetValue("action", out var actionElem))
-        {
-            SendError(response, 400, "Missing 'action' field. Use: switch, delete", pretty, "missing_action");
-            return;
-        }
-        if (actionElem.ValueKind != JsonValueKind.String)
-        {
-            SendError(response, 400, "'action' field must be a string", pretty, "invalid_action_type");
-            return;
-        }
-
-        string action = actionElem.GetString() ?? "";
+        var parsed = actionRequest.Parsed;
+        string action = actionRequest.Action;
         if (!parsed.TryGetValue("profile_id", out var idElem))
         {
             SendError(response, 400, "Missing 'profile_id' field. Use a profile slot 1-3.", "missing_profile_id");
@@ -69,8 +49,7 @@ public static partial class McpMod
             SendError(response, 400, "'profile_id' field must be a number", "invalid_profile_id_type");
             return;
         }
-        int profileId = 0;
-        if (idElem.ValueKind == JsonValueKind.Number && !idElem.TryGetInt32(out profileId))
+        if (!idElem.TryGetInt32(out int profileId))
         {
             SendError(response, 400, "'profile_id' field must be a 32-bit integer", "invalid_profile_id_type");
             return;

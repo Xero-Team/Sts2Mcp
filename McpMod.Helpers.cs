@@ -160,6 +160,27 @@ public static partial class McpMod
     }
 
     /// <summary>
+    /// <see cref="TryRead{T}(string, Func{T})"/> for the one failure that must not be
+    /// treated as "absent": a backed-up or stalled main thread means the work was not
+    /// done, and the HTTP layer has to answer 503 instead of guessing a value.
+    /// </summary>
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1031:Do not catch general exception types",
+        Justification = "The mod's read path is a compatibility boundary; only the one failure that carries its own meaning is rethrown.")]
+    internal static T? TryReadUnless<T, TException>(string context, Func<T> read)
+        where TException : Exception
+    {
+        try
+        {
+            return read();
+        }
+        catch (Exception ex) when (ex is not TException)
+        {
+            Warn(context, ex);
+            return default;
+        }
+    }
+
+    /// <summary>
     /// A read whose failure is normal rather than broken: a Godot node freed while a scene
     /// transitions, or a candidate member name this game version does not have. Returns
     /// default and records nothing - a search loop would otherwise report dozens of
@@ -195,6 +216,8 @@ public static partial class McpMod
         Justification = "Reporting every teardown race would drown the warnings a state read actually needs.")]
     [System.Diagnostics.CodeAnalysis.SuppressMessage("Major Code Smell", "S2486:Exceptions should not be ignored",
         Justification = "Same as ERP022: a UI call that races a scene change is not a compatibility break.")]
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("Major Code Smell", "S2737:Catch clauses should do more than rethrow",
+        Justification = "Quiet by design: the catch is the entire behavior, and the comment above states why.")]
     internal static void TryDoQuiet(Action action)
     {
         try

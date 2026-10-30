@@ -124,21 +124,18 @@ public static partial class McpMod
                 return _buildCommit;
 
             _buildCommitResolved = true;
-            try
+            // Reflection over assembly attributes can fail in a trimmed or odd host; an
+            // unknown commit is not worth failing a state read over.
+            _buildCommit = TryReadQuiet(() =>
             {
                 var informational = typeof(McpMod).Assembly
                     .GetCustomAttribute<AssemblyInformationalVersionAttribute>()
                     ?.InformationalVersion;
                 int plus = informational?.IndexOf('+') ?? -1;
-                if (plus >= 0 && plus + 1 < informational!.Length)
-                    _buildCommit = informational[(plus + 1)..];
-            }
-            catch
-            {
-                // Reflection over assembly attributes can fail in a trimmed or odd host;
-                // an unknown commit is not worth failing a state read over.
-                _buildCommit = null;
-            }
+                return plus >= 0 && plus + 1 < informational!.Length
+                    ? informational[(plus + 1)..]
+                    : null;
+            });
 
             return _buildCommit;
         }
@@ -183,20 +180,14 @@ public static partial class McpMod
     {
         if (_gameVersionRead) return _gameVersion;
         _gameVersionRead = true;
-        try
-        {
-            _gameVersion = MegaCrit.Sts2.Core.Debug.ReleaseInfoManager.Instance.ReleaseInfo?.Version;
-        }
-        catch (Exception ex)
-        {
-            GD.PrintErr($"[STS2 MCP] Failed to read game version: {ex.Message}");
-        }
+        _gameVersion = TryRead("game.version",
+            () => MegaCrit.Sts2.Core.Debug.ReleaseInfoManager.Instance.ReleaseInfo?.Version);
         return _gameVersion;
     }
 
     public static void Initialize()
     {
-        try
+        var failure = TryAction("startup", () =>
         {
             // Optional settings UI patches should not block the HTTP bridge itself.
             // The optional speed-settings detours stall startup on this macOS
@@ -240,24 +231,16 @@ public static partial class McpMod
             _serverThread.Start();
 
             GD.Print($"[STS2 MCP] v{VersionString} server started on {string.Join(", ", _boundPrefixes)}");
-        }
-        catch (Exception ex)
-        {
-            GD.PrintErr($"[STS2 MCP] Failed to start: {ex}");
-        }
+        });
+        if (failure != null)
+            GD.PrintErr($"[STS2 MCP] Failed to start: {failure}");
     }
 
     private static void TryApplyHarmonyPatches()
     {
-        try
-        {
-            new Harmony("com.sts2mcp").PatchAll();
-        }
-        catch (Exception ex)
-        {
-            GD.Print(
-                $"[STS2 MCP] Optional Harmony settings UI injection skipped: {ex.GetType().Name}: {ex.Message}");
-        }
+        var failure = TryAction("harmony.patch_all", () => new Harmony("com.sts2mcp").PatchAll());
+        if (failure != null)
+            GD.Print($"[STS2 MCP] Optional Harmony settings UI injection skipped: {failure}");
     }
 
     private static void ProcessMainThreadQueue()
@@ -275,31 +258,44 @@ public static partial class McpMod
         int processed = 0;
         while (_mainThreadQueue.TryDequeue(out var action) && processed < 10)
         {
-            try { action(); }
-            catch (Exception ex) { GD.PrintErr($"[STS2 MCP] Main thread action error: {ex}"); }
+            var failure = TryAction("main_thread.action", action);
+            if (failure != null)
+                GD.PrintErr($"[STS2 MCP] Main thread action error: {failure}");
             processed++;
+        }
+    }
+
+    /// <summary>
+    /// Hands one queued body's outcome to the awaiting caller: the result on success, the
+    /// exception on failure. The exception is not swallowed here - it crosses threads
+    /// through <see cref="TaskCompletionSource{TResult}"/> so the awaiting HTTP handler can
+    /// map it to a response.
+    /// </summary>
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1031:Do not catch general exception types",
+        Justification = "The exception is forwarded to the awaiting caller through SetException; without this catch it would vanish with the Godot frame.")]
+    private static void CompleteWith<T>(TaskCompletionSource<T> completion, Func<T> body)
+    {
+        try
+        {
+            completion.SetResult(body());
+        }
+        catch (Exception ex)
+        {
+            completion.SetException(ex);
         }
     }
 
     internal static Task<T> RunOnMainThread<T>(Func<T> func)
     {
         var tcs = new TaskCompletionSource<T>();
-        _mainThreadQueue.Enqueue(() =>
-        {
-            try { tcs.SetResult(func()); }
-            catch (Exception ex) { tcs.SetException(ex); }
-        });
+        _mainThreadQueue.Enqueue(() => CompleteWith(tcs, func));
         return tcs.Task;
     }
 
     internal static Task RunOnMainThread(Action action)
     {
         var tcs = new TaskCompletionSource<bool>();
-        _mainThreadQueue.Enqueue(() =>
-        {
-            try { action(); tcs.SetResult(true); }
-            catch (Exception ex) { tcs.SetException(ex); }
-        });
+        _mainThreadQueue.Enqueue(() => CompleteWith(tcs, () => { action(); return true; }));
         return tcs.Task;
     }
 
@@ -343,8 +339,7 @@ public static partial class McpMod
             // command the caller has since retried or abandoned.
             if (cancellation.Cancelled) return;
 
-            try { tcs.SetResult(func()); }
-            catch (Exception ex) { tcs.SetException(ex); }
+            CompleteWith(tcs, func);
         });
 
         bool completed;
@@ -389,7 +384,9 @@ public static partial class McpMod
 
     private static void HandleRequest(HttpListenerContext context)
     {
-        try
+        // The whole dispatcher is the last safety net: a stalled main thread is a retryable
+        // 503 ("nothing ran"), anything else a 500 carrying the message.
+        RunHandler(context.Response, () =>
         {
             var request = context.Request;
             var response = context.Response;
@@ -571,13 +568,6 @@ public static partial class McpMod
                 else
                     SendError(response, 405, "Method not allowed", pretty, "method_not_allowed");
             }
-            else if (string.Equals(path, "/api/v1/compendium", StringComparison.Ordinal))
-            {
-                if (string.Equals(request.HttpMethod, "GET", StringComparison.Ordinal))
-                    HandleGetCompendium(request, response);
-                else
-                    SendError(response, 405, "Method not allowed", pretty, "method_not_allowed");
-            }
             else if (string.Equals(path, "/api/v1/bestiary", StringComparison.Ordinal))
             {
                 if (string.Equals(request.HttpMethod, "GET", StringComparison.Ordinal))
@@ -617,23 +607,7 @@ public static partial class McpMod
             {
                 SendError(response, 404, "Not found", pretty, "not_found");
             }
-        }
-        // Safety net for any blocking call reached outside a handler's own try/catch: a stalled
-        // main thread must never be reported as an internal error.
-        catch (MainThreadUnavailableException ex)
-        {
-            TryDo(() => { SendUnavailable(context.Response, ex.Message, WantsPretty(context.Request)); });
-            /* response may already be closed */
-        }
-        catch (Exception ex)
-        {
-            TryDo(() =>
-            {
-                SendError(context.Response, 500, $"Internal error: {ex.Message}",
-                    WantsPretty(context.Request), "internal_error");
-            });
-            /* response may already be closed */
-        }
+        }, "Internal error", "internal_error", WantsPretty(context.Request));
     }
 
     private static List<Dictionary<string, object?>> BuildEndpointIndex()
@@ -728,33 +702,12 @@ public static partial class McpMod
     private static void HandlePostMultiplayerAction(HttpListenerRequest request, HttpListenerResponse response)
     {
         bool pretty = WantsPretty(request);
-        string body;
-        using (var reader = new StreamReader(request.InputStream, request.ContentEncoding))
-            body = reader.ReadToEnd();
-
-        Dictionary<string, JsonElement>? parsed;
-        try
-        {
-            parsed = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(body);
-        }
-        catch
-        {
-            SendError(response, 400, "Invalid JSON", pretty, "invalid_json");
+        var actionRequest = TryReadActionRequest(request, response, pretty, "Missing 'action' field");
+        if (actionRequest == null)
             return;
-        }
 
-        if (parsed == null || !parsed.TryGetValue("action", out var actionElem))
-        {
-            SendError(response, 400, "Missing 'action' field", pretty, "missing_action");
-            return;
-        }
-        if (actionElem.ValueKind != JsonValueKind.String)
-        {
-            SendError(response, 400, "'action' field must be a string", pretty, "invalid_action_type");
-            return;
-        }
-
-        string action = actionElem.GetString() ?? "";
+        var parsed = actionRequest.Parsed;
+        string action = actionRequest.Action;
 
         // Menu actions (FTUE/popup dismissal, game-over, character select, etc.) are
         // scene-tree-driven and equally valid in MP. Route them to the shared handler
@@ -968,6 +921,10 @@ public static partial class McpMod
     /// Polls the state from the HTTP thread until the game has settled, then appends
     /// `waited_ms` / `polls` / `settled` / `changed` (and `state`) to the action's own result.
     /// </summary>
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1031:Do not catch general exception types",
+        Justification = "The two failures mean opposite things here: a stalled main thread must stop the poll (503 semantics), while a scene-swap throw is transient and means keep polling.")]
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("Major Code Smell", "EPC12:Suspicious exception handling",
+        Justification = "The message is what the response's wait_error field reports; the consumer cannot act on the exception type.")]
     private static void AppendSettleResult(
         Dictionary<string, object?> result, string? before, int timeoutMs, bool includeState)
     {
@@ -1068,10 +1025,9 @@ public static partial class McpMod
 
         // Snapshot before acting, so an action that changes nothing can be recognised instead of
         // being waited out. A MainThreadUnavailableException here is a genuine 503: nothing ran yet.
-        string? before = null;
-        try { before = StateFingerprint(RunOnMainThreadBlocking(() => BuildGameState())); }
-        catch (MainThreadUnavailableException) { throw; }
-        catch { /* an unreadable pre-state only costs us the no-op shortcut */ }
+        string? before = TryReadUnless<string, MainThreadUnavailableException>(
+            "request.pre_state",
+            () => StateFingerprint(RunOnMainThreadBlocking(() => BuildGameState())));
 
         var result = EnsureStatus(RunOnMainThreadBlocking(action));
 
@@ -1098,36 +1054,51 @@ public static partial class McpMod
         return false;
     }
 
-    private static void HandlePostAction(HttpListenerRequest request, HttpListenerResponse response)
+    /// <summary>
+    /// Reads the POST body every action endpoint shares: a JSON object with a string
+    /// "action". On any problem the 400 is already sent, so the caller only has to return.
+    /// </summary>
+    private static ActionRequest? TryReadActionRequest(
+        HttpListenerRequest request, HttpListenerResponse response, bool pretty,
+        string missingActionMessage)
     {
-        bool pretty = WantsPretty(request);
         string body;
         using (var reader = new StreamReader(request.InputStream, request.ContentEncoding))
             body = reader.ReadToEnd();
 
-        Dictionary<string, JsonElement>? parsed;
-        try
-        {
-            parsed = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(body);
-        }
-        catch
+        Dictionary<string, JsonElement>? parsed = null;
+        if (TryAction("request.json",
+                () => parsed = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(body)) != null)
         {
             SendError(response, 400, "Invalid JSON", pretty, "invalid_json");
-            return;
+            return null;
         }
 
         if (parsed == null || !parsed.TryGetValue("action", out var actionElem))
         {
-            SendError(response, 400, "Missing 'action' field", pretty, "missing_action");
-            return;
+            SendError(response, 400, missingActionMessage, pretty, "missing_action");
+            return null;
         }
         if (actionElem.ValueKind != JsonValueKind.String)
         {
             SendError(response, 400, "'action' field must be a string", pretty, "invalid_action_type");
-            return;
+            return null;
         }
 
-        string action = actionElem.GetString() ?? "";
+        return new ActionRequest(parsed, actionElem.GetString() ?? "");
+    }
+
+    private sealed record ActionRequest(Dictionary<string, JsonElement> Parsed, string Action);
+
+    private static void HandlePostAction(HttpListenerRequest request, HttpListenerResponse response)
+    {
+        bool pretty = WantsPretty(request);
+        var actionRequest = TryReadActionRequest(request, response, pretty, "Missing 'action' field");
+        if (actionRequest == null)
+            return;
+
+        var parsed = actionRequest.Parsed;
+        string action = actionRequest.Action;
 
         // The recorder's switch works with or without a run, and is not itself recorded.
         if (string.Equals(action, "set_recording", StringComparison.Ordinal))
