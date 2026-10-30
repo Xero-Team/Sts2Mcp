@@ -401,7 +401,7 @@ public static partial class McpMod
         var bodies = new List<MethodBase> { stub };
         var smType = stub.DeclaringType?
             .GetNestedTypes(BindingFlags.Public | BindingFlags.NonPublic)
-            .FirstOrDefault(t => t.Name.StartsWith($"<{stub.Name}>d__"));
+            .FirstOrDefault(t => t.Name.StartsWith($"<{stub.Name}>d__", StringComparison.Ordinal));
         var moveNext = smType?.GetMethod("MoveNext",
             BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
         if (moveNext != null)
@@ -1072,7 +1072,7 @@ public static partial class McpMod
         // (get_Creature, get_AttackSfx) must NOT clobber the tracked int, but
         // they do carry the chain forward so a getter further along still has a
         // receiver (`Creature.CombatState.Players.Count`).
-        if (mm.Name.StartsWith("get_") && mm is MethodInfo getter)
+        if (mm.Name.StartsWith("get_", StringComparison.Ordinal) && mm is MethodInfo getter)
         {
             // Which creature an expression produced decides who a non-generic
             // apply targets, since that overload's parameter is always Creature.
@@ -1263,13 +1263,13 @@ public static partial class McpMod
             scan.Heal = (scan.Heal ?? 0) + (scan.TakeAmount() ?? 0);
             if (scan.Heal == 0) scan.Heal = null;
         }
-        else if (string.Equals(owner, "CardPileCmd", StringComparison.Ordinal) && mm.Name.StartsWith("AddToCombat")
+        else if (string.Equals(owner, "CardPileCmd", StringComparison.Ordinal) && mm.Name.StartsWith("AddToCombat", StringComparison.Ordinal)
                  && mm is MethodInfo cardMi && cardMi.IsGenericMethod)
         {
             scan.StatusCards.Add(BuildStatusCard(
                 cardMi.GetGenericArguments().FirstOrDefault()?.Name, cardMi, scan.CallArgs, null));
         }
-        else if (string.Equals(owner, "CardPileCmd", StringComparison.Ordinal) && mm.Name.StartsWith("AddGeneratedCard")
+        else if (string.Equals(owner, "CardPileCmd", StringComparison.Ordinal) && mm.Name.StartsWith("AddGeneratedCard", StringComparison.Ordinal)
                  && mm is MethodInfo generatedMi)
         {
             // One call inserts the single card the preceding `CreateCard<T>`

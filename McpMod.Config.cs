@@ -150,7 +150,7 @@ public static partial class McpMod
                 {
                     var stripped = line.Trim();
                     if (stripped.Length == 0
-                        || stripped.StartsWith("#", StringComparison.Ordinal)
+                        || stripped.StartsWith('#')
                         || !stripped.Contains('='))
                         continue;
 

@@ -822,7 +822,7 @@ public static partial class McpMod
 
                 string cardCost = item.TryGetValue("card_cost", out var cc) && cc != null ? cc.ToString()! : "";
                 string cardStarCost = item.TryGetValue("card_star_cost", out var csc) && csc != null ? $" + {csc} star" : "";
-                string cardEnergy = cardCost != "" ? $" ({cardCost} energy{cardStarCost})" : "";
+                string cardEnergy = !string.IsNullOrEmpty(cardCost) ? $" ({cardCost} energy{cardStarCost})" : "";
                 string cardUpgrade = "";
                 if (string.Equals(category, "card"
 , StringComparison.Ordinal) && item.TryGetValue("card_upgrade_preview_description", out var upgradeDesc)
@@ -831,8 +831,8 @@ public static partial class McpMod
                 {
                     string upgradeCost = item.TryGetValue("card_upgrade_preview_cost", out var uc) && uc != null ? uc.ToString()! : "";
                     string upgradeStar = item.TryGetValue("card_upgrade_preview_star_cost", out var usc) && usc != null ? $" + {usc} star" : "";
-                    string upgradeEnergy = upgradeCost != "" ? $"({upgradeCost} energy{upgradeStar})" : "";
-                    cardUpgrade = upgradeEnergy != ""
+                    string upgradeEnergy = !string.IsNullOrEmpty(upgradeCost) ? $"({upgradeCost} energy{upgradeStar})" : "";
+                    cardUpgrade = !string.IsNullOrEmpty(upgradeEnergy)
                         ? $" | Upgrade: {upgradeEnergy} {upgradeDesc}"
                         : $" | Upgrade: {upgradeDesc}";
                 }

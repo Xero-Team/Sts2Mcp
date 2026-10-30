@@ -1964,7 +1964,7 @@ public static partial class McpMod
         }
 
         const string prefix = "player_";
-        if (entityId.StartsWith(prefix)
+        if (entityId.StartsWith(prefix, StringComparison.Ordinal)
             && int.TryParse(entityId.Substring(prefix.Length), CultureInfo.InvariantCulture, out int idx)
             && idx >= 0 && idx < me.RunState.Players.Count)
             return me.RunState.Players[idx].Creature;

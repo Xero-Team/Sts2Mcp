@@ -187,7 +187,7 @@ public static partial class McpMod
 
     /// <summary>Closure display classes are noise, not tested members.</summary>
     private static bool IsCompilerGenerated(Type type) =>
-        type.Name.StartsWith("<") || type.Name.Contains("__DisplayClass");
+        type.Name.StartsWith('<') || type.Name.Contains("__DisplayClass");
 
     /// <summary>
     /// The comparison the predicate makes, normalized against its constant.
@@ -287,10 +287,10 @@ public static partial class McpMod
                 var lambda = ScanPredicate(pointer);
                 // `Creature` declares no equality operators, so `c != owner` is
                 // a reference compare: a `ceq` against the captured owner.
-                bool readsOwner = lambda.Members.Any(member => member.EndsWith(".get_Creature"));
+                bool readsOwner = lambda.Members.Any(member => member.EndsWith(".get_Creature", StringComparison.Ordinal));
                 if (readsOwner && lambda.Comparisons.Contains("ceq"))
                     return true;
-                if (lambda.Members.Any(member => member.EndsWith(".op_Inequality")))
+                if (lambda.Members.Any(member => member.EndsWith(".op_Inequality", StringComparison.Ordinal)))
                     return true;
             }
         }
@@ -494,7 +494,7 @@ public static partial class McpMod
     /// <summary>`AsleepPower` -&gt; `ASLEEP`, matching the consumer's power ids.</summary>
     private static string PowerIdFromClass(string className)
     {
-        string stripped = className.EndsWith("Power") ? className[..^"Power".Length] : className;
+        string stripped = className.EndsWith("Power", StringComparison.Ordinal) ? className[..^"Power".Length] : className;
         var id = new System.Text.StringBuilder(stripped.Length + 4);
         for (int i = 0; i < stripped.Length; i++)
         {

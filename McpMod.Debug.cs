@@ -337,7 +337,7 @@ public static partial class McpMod
             ? a
             : 1m;
 
-        var enchantment = canonical.ToMutable() as EnchantmentModel;
+        var enchantment = canonical.ToMutable();
         if (enchantment == null)
             return Error($"Could not make {wanted} mutable");
 

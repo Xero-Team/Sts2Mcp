@@ -233,7 +233,7 @@ public static partial class McpMod
                     }
                     // Multiplayer Join Friend screen (lives in the same submenu stack as
                     // NMultiplayerSubmenu; pushed when the user clicks "join")
-                    if (result.ContainsKey("menu_screen") == false)
+                    if (!result.ContainsKey("menu_screen"))
                     {
                         var joinScreen = FindFirst<NJoinFriendScreen>(tree.Root);
                         if (joinScreen != null && IsNodeVisible(joinScreen))
@@ -244,7 +244,7 @@ public static partial class McpMod
 
                     // Multiplayer Load lobby — resume saved MP run. Pushed by NMultiplayerSubmenu
                     // when "load" is clicked (host) or by JoinFlow when joining a save in progress (client).
-                    if (result.ContainsKey("menu_screen") == false)
+                    if (!result.ContainsKey("menu_screen"))
                     {
                         var loadLobby = FindFirst<NMultiplayerLoadGameScreen>(tree.Root);
                         if (loadLobby != null && IsNodeVisible(loadLobby))
@@ -256,7 +256,7 @@ public static partial class McpMod
                     // Custom mode setup screen (reached via singleplayer/multiplayer-host
                     // "custom"). It replaces the normal character select and adds a seed
                     // field and run modifiers, so detect it before the plain char select.
-                    if (result.ContainsKey("menu_screen") == false)
+                    if (!result.ContainsKey("menu_screen"))
                     {
                         var customRun = FindFirst<NCustomRunScreen>(tree.Root);
                         if (customRun != null && IsNodeVisible(customRun))
@@ -264,7 +264,7 @@ public static partial class McpMod
                     }
 
                     // Check for character select screen
-                    if (result.ContainsKey("menu_screen") == false)
+                    if (!result.ContainsKey("menu_screen"))
                     {
                         var charSelect = FindFirst<NCharacterSelectScreen>(tree.Root);
                         if (charSelect != null && IsNodeVisible(charSelect))

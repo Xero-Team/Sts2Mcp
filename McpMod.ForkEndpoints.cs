@@ -558,7 +558,7 @@ public static partial class McpMod
             var moves = new List<string>();
             foreach (var method in type.GetMethods(bindFlags))
             {
-                if (method.Name.EndsWith("Move")
+                if (method.Name.EndsWith("Move", StringComparison.Ordinal)
                     && method.DeclaringType == type
                     && !string.Equals(method.Name, "PerformMove"
 , StringComparison.Ordinal) && !string.Equals(method.Name, "RollMove"
