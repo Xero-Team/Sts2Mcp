@@ -44,7 +44,7 @@ public static partial class McpMod
             // privateなFilterForPlayerCountと同じ条件（sts2-9cb4f1ad）。
             CardMultiplayerConstraint excluded = run.Players.Count > 1
                 ? CardMultiplayerConstraint.SingleplayerOnly : CardMultiplayerConstraint.MultiplayerOnly;
-            var cards = CardFactory.FilterForCombat(unlocked.Where(c => c.MultiplayerConstraint != excluded))
+            List<Dictionary<string, object?>> cards = CardFactory.FilterForCombat(unlocked.Where(c => c.MultiplayerConstraint != excluded))
                 .Where(c => c.Type is CardType.Attack or CardType.Skill or CardType.Power)
                 .OrderBy(c => c.Id.Entry, StringComparer.Ordinal)
                 .Select(c => new Dictionary<string, object?>(StringComparer.Ordinal) { ["id"] = c.Id.Entry, ["type"] = c.Type.ToString() })

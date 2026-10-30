@@ -210,7 +210,7 @@ public static partial class McpMod
         string? historyDirectory = FindRunHistoryDirectory(snapshot);
         if (historyDirectory != null)
         {
-            var files = Directory.GetFiles(historyDirectory, "*.run")
+            List<FileInfo> files = Directory.GetFiles(historyDirectory, "*.run")
                 .Select(path => new FileInfo(path))
                 .OrderByDescending(file => file.LastWriteTimeUtc)
                 .ToList();
@@ -257,7 +257,7 @@ public static partial class McpMod
         string? parseFailure = TryAction("compendium.run_history_entry", () =>
         {
             using FileStream stream = file.OpenRead();
-            using var document = JsonDocument.Parse(stream);
+            using JsonDocument document = JsonDocument.Parse(stream);
             JsonElement root = document.RootElement;
 
             CopyJsonScalar(root, entry, "start_time");
@@ -350,7 +350,7 @@ public static partial class McpMod
         string? parseFailure = TryAction("compendium.current_run", () =>
         {
             using FileStream stream = File.OpenRead(currentRunPath);
-            using var document = JsonDocument.Parse(stream);
+            using JsonDocument document = JsonDocument.Parse(stream);
             JsonElement root = document.RootElement;
 
             CopyJsonScalar(root, result, "start_time");
@@ -521,7 +521,7 @@ public static partial class McpMod
     private static IEnumerable<string> EnumerateSaveRoots()
     {
         var yielded = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        var steamRoots = EnumerateSteamDataRoots().ToList();
+        List<string> steamRoots = EnumerateSteamDataRoots().ToList();
 
         string? activeSteamId = GetActiveSteamId();
         if (!string.IsNullOrWhiteSpace(activeSteamId))

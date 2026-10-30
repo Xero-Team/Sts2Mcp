@@ -343,7 +343,7 @@ public static partial class McpMod
         string? targetId = TryReadTargetId(data);
         if (targetId == null)
         {
-            var alive = combatState.Enemies.Where(e => e.IsAlive).ToList();
+            List<Creature> alive = combatState.Enemies.Where(e => e.IsAlive).ToList();
             if (alive.Count != 1)
             {
                 return new PlayTargetResolution(null, Error(
@@ -554,7 +554,7 @@ public static partial class McpMod
             // pick it rather than refusing. Otherwise say so loudly: this used
             // to fall through to target = null and the potion was consumed
             // against nothing while the call reported success.
-            var alive = combatState.Enemies.Where(e => e.IsAlive).ToList();
+            List<Creature> alive = combatState.Enemies.Where(e => e.IsAlive).ToList();
             if (alive.Count != 1)
             {
                 return new PlayTargetResolution(null, Error(
@@ -773,7 +773,7 @@ public static partial class McpMod
         if (!TryGetIntParam(data, out int index, "index", "option_index"))
             return MissingIntParam("event option index", "index", "option_index");
 
-        var buttons = FindAll<NEventOptionButton>(uiRoom)
+        List<NEventOptionButton> buttons = FindAll<NEventOptionButton>(uiRoom)
             .Where(button => button.Visible && button.IsVisibleInTree())
             .ToList();
 
@@ -848,7 +848,7 @@ public static partial class McpMod
             return Error("Rest site room is not open");
 
         // Resolve against the model list, which is what the state's options[].index counts.
-        var options = restSiteRoom.Options.ToList();
+        List<RestSiteOption> options = restSiteRoom.Options.ToList();
         if (options.Count == 0)
             return Error("No rest site options available");
 
@@ -1041,7 +1041,7 @@ public static partial class McpMod
         if (!TryGetIntParam(data, out int index, "index", "item_index"))
             return MissingIntParam("shop item index", "index", "item_index");
 
-        var allEntries = inventory.AllEntries.ToList();
+        List<MerchantEntry> allEntries = inventory.AllEntries.ToList();
         if (index < 0 || index >= allEntries.Count)
             return Error($"Shop item index {index} out of range ({allEntries.Count} items)");
 
@@ -1215,7 +1215,7 @@ public static partial class McpMod
         if (!TryGetIntParam(data, out int cardIndex, "card_index", "index"))
             return MissingIntParam("index of the offered card", "card_index", "index");
 
-        var cardHolders = FindAllSortedByPosition<NCardHolder>(cardScreen)
+        List<NCardHolder> cardHolders = FindAllSortedByPosition<NCardHolder>(cardScreen)
             .Where(holder => holder.CardModel != null && holder.Visible && holder.IsVisibleInTree())
             .ToList();
         if (cardIndex < 0 || cardIndex >= cardHolders.Count)
@@ -1623,7 +1623,7 @@ public static partial class McpMod
     private static Dictionary<string, object?> ExecuteSelectCardInChooseScreen(
         NChooseACardSelectionScreen chooseScreen, int index)
     {
-        var holders = FindAllSortedByPosition<NGridCardHolder>(chooseScreen)
+        List<NGridCardHolder> holders = FindAllSortedByPosition<NGridCardHolder>(chooseScreen)
             .Where(holder => holder.CardModel != null)
             .ToList();
         if (index < 0 || index >= holders.Count)
@@ -1862,7 +1862,7 @@ public static partial class McpMod
         if (previewContainer?.Visible == true)
             return Error("A bundle preview is already open - confirm or cancel it first");
 
-        var bundles = FindAll<NCardBundle>(screen)
+        List<NCardBundle> bundles = FindAll<NCardBundle>(screen)
             .Where(bundle => bundle.Visible
                              && bundle.IsVisibleInTree()
                              && bundle.Hitbox.IsEnabled
@@ -1974,7 +1974,7 @@ public static partial class McpMod
         if (!TryGetIntParam(data, out int index, "index", "relic_index"))
             return MissingIntParam("relic index", "index", "relic_index");
 
-        var holders = FindAll<NRelicBasicHolder>(screen)
+        List<NRelicBasicHolder> holders = FindAll<NRelicBasicHolder>(screen)
             .Where(holder => holder.Relic?.Model != null && holder.IsEnabled && holder.Visible && holder.IsVisibleInTree())
             .ToList();
         if (index < 0 || index >= holders.Count)
@@ -2024,7 +2024,7 @@ public static partial class McpMod
         if (!TryGetIntParam(data, out int index, "index", "relic_index"))
             return MissingIntParam("relic index", "index", "relic_index");
 
-        var holders = FindAll<NTreasureRoomRelicHolder>(relicCollection)
+        List<NTreasureRoomRelicHolder> holders = FindAll<NTreasureRoomRelicHolder>(relicCollection)
             .Where(h => h.IsEnabled && h.Visible && h.IsVisibleInTree())
             .ToList();
 
@@ -2154,7 +2154,7 @@ public static partial class McpMod
     /// <summary>Comma list of the caller's living teammates' entity ids, for error messages.</summary>
     private static string ListAllyTargetIds(Player me)
     {
-        var ids = me.RunState.Players
+        List<string> ids = me.RunState.Players
             .Select((p, i) => (p, i))
             .Where(t => t.p != me && t.p.Creature.IsAlive)
             .Select(t => $"player_{t.i}")
@@ -3457,7 +3457,7 @@ public static partial class McpMod
         bool explicitlyAModifier = option.StartsWith(ModifierOptionPrefix, StringComparison.OrdinalIgnoreCase);
         string token = explicitlyAModifier ? option.Substring(ModifierOptionPrefix.Length) : option;
 
-        var matches = entries.Where(e => string.Equals(e.Key, token, StringComparison.OrdinalIgnoreCase)).ToList();
+        List<RunModifierEntry> matches = entries.Where(e => string.Equals(e.Key, token, StringComparison.OrdinalIgnoreCase)).ToList();
         if (matches.Count == 0)
             matches = entries.Where(e => string.Equals(e.Id, token, StringComparison.OrdinalIgnoreCase)).ToList();
 
@@ -3487,7 +3487,7 @@ public static partial class McpMod
         List<string> after = TickedModifierKeys(entries);
 
         string message = $"Modifier '{title ?? target.Key}' {(wasTicked ? "disabled" : "enabled")}";
-        var alsoUnticked = before
+        List<string> alsoUnticked = before
             .Where(key => !after.Contains(key) && !string.Equals(key, target.Key, StringComparison.Ordinal))
             .ToList();
         if (alsoUnticked.Count > 0)
@@ -3592,7 +3592,7 @@ public static partial class McpMod
     private static Dictionary<string, object?>? BuildAlreadyRevealedUnlockResult(
         string queuedType, List<string> queuedEpochIds)
     {
-        var alreadyRevealed = queuedEpochIds
+        List<string> alreadyRevealed = queuedEpochIds
             .Where(id => string.Equals(GetProgressEpochState(id), "Revealed", StringComparison.OrdinalIgnoreCase))
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
@@ -3600,7 +3600,7 @@ public static partial class McpMod
             return null;
 
         var alreadyRevealedSet = new HashSet<string>(alreadyRevealed, StringComparer.OrdinalIgnoreCase);
-        var pendingEpochIds = queuedEpochIds
+        List<string> pendingEpochIds = queuedEpochIds
             .Where(id => !alreadyRevealedSet.Contains(id))
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();

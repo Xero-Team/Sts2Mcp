@@ -84,7 +84,7 @@ internal sealed class RewardSession
 
     internal void Sync(IEnumerable<object> available)
     {
-        var next = available.Select(key => Register(key)).Where(e => !string.Equals(e.SelectionState, "claimed", StringComparison.Ordinal)).ToList();
+        List<Entry> next = available.Select(key => Register(key)).Where(e => !string.Equals(e.SelectionState, "claimed", StringComparison.Ordinal)).ToList();
         if (_claimable.SequenceEqual(next)) return;
         _claimable = next;
         _revision++;

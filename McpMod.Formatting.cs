@@ -831,7 +831,7 @@ public static partial class McpMod
         if (!item.TryGetValue("keywords", out object? kw) || kw is not List<Dictionary<string, object?>> keywords || keywords.Count == 0)
             return "";
 
-        var names = keywords
+        List<string?> names = keywords
             .Select(keyword => keyword.TryGetValue("name", out object? name) ? name?.ToString() : null)
             .Where(name => !string.IsNullOrWhiteSpace(name))
             .ToList();
@@ -1183,7 +1183,7 @@ public static partial class McpMod
                 .OrderBy(n => ToInt(n.GetValueOrDefault("col")))
                 .Select(n =>
                 {
-                    var childKeys = GetChildKeys(n).OrderBy(k => k, StringComparer.Ordinal).ToList();
+                    List<string> childKeys = GetChildKeys(n).OrderBy(k => k, StringComparer.Ordinal).ToList();
                     string children = childKeys.Count > 0 ? string.Join("/", childKeys) : "-";
                     string marked = n.TryGetValue("marked_by", out object? mb) && mb is List<string> mbl && mbl.Count > 0
                         ? "*" : "";

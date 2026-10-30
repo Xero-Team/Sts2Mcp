@@ -952,7 +952,7 @@ public static partial class McpMod
         Justification = "The message is what the response's wait_error field reports; the consumer cannot act on the exception type.")]
     private static SettleOutcome PollUntilSettled(string? before, int timeoutMs)
     {
-        var elapsed = Stopwatch.StartNew();
+        Stopwatch elapsed = Stopwatch.StartNew();
         int polls = 0;
         int consecutiveSettled = 0;
         bool changed = false;

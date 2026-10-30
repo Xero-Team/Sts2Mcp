@@ -27,7 +27,7 @@ public static partial class McpMod
     private static void RefreshRewardRun()
     {
         s_rewardSession.CheckRun(RunManager.Instance.DebugOnlyGetState());
-        var staleParents = s_cardRewardParents
+        List<NCardRewardSelectionScreen> staleParents = s_cardRewardParents
             .Where(pair => !s_rewardSession.Contains(pair.Value))
             .Select(pair => pair.Key)
             .ToList();
@@ -40,9 +40,9 @@ public static partial class McpMod
     {
         RefreshRewardRun();
         s_rewardSession.Open(screen, RunManager.Instance.DebugOnlyGetState());
-        var buttons = FindAll<NRewardButton>(screen).Where(b => b.Reward != null).ToList();
+        List<NRewardButton> buttons = FindAll<NRewardButton>(screen).Where(b => b.Reward != null).ToList();
         foreach (NRewardButton? button in buttons) s_rewardSession.Register(button.Reward!, fresh && s_rewardTrackingAvailable);
-        var enabled = buttons.Where(b => b.IsEnabled).ToList();
+        List<NRewardButton> enabled = buttons.Where(b => b.IsEnabled).ToList();
         s_rewardSession.Sync(enabled.Select(b => (object)b.Reward!));
         return enabled.Where(b => !string.Equals(s_rewardSession.Find(b.Reward!)?.SelectionState, "claimed", StringComparison.Ordinal)).ToList();
     }

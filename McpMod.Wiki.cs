@@ -92,7 +92,7 @@ public static partial class McpMod
         // search's non-matching candidates are not results withheld.
         List<(WikiCandidate Candidate, double Score)> eligible = RankWikiCandidates(candidates, query, listing);
 
-        var matches = eligible
+        List<Dictionary<string, object?>> matches = eligible
             .Take(limit)
             .Select(match => BuildWikiResult(match.Candidate, match.Score))
             .ToList();

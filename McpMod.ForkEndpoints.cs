@@ -467,10 +467,10 @@ public static partial class McpMod
         List<Dictionary<string, object?>> monsters = BuildBestiaryMonsters();
         List<Dictionary<string, object?>> encounters = BuildBestiaryEncounters(monsters);
 
-        var orderedMonsters = monsters
+        List<Dictionary<string, object?>> orderedMonsters = monsters
             .OrderBy(entry => entry.TryGetValue("id", out object? id) ? id?.ToString() : "", StringComparer.Ordinal)
             .ToList();
-        var orderedEncounters = encounters
+        List<Dictionary<string, object?>> orderedEncounters = encounters
             .OrderBy(entry => entry.TryGetValue("id", out object? id) ? id?.ToString() : "", StringComparer.Ordinal)
             .ToList();
 

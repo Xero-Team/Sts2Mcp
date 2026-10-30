@@ -1528,7 +1528,7 @@ internal static class CombatRecorder
     {
         if (micros.Count == 0)
             return new JsonObject { ["count"] = 0 };
-        var sorted = micros.OrderBy(x => x).ToList();
+        List<double> sorted = micros.OrderBy(x => x).ToList();
         double P(double q) => sorted[Math.Min(sorted.Count - 1, (int)Math.Ceiling(q * sorted.Count) - 1)];
         return new JsonObject
         {

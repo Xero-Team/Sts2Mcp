@@ -58,7 +58,7 @@ public static partial class McpMod
         {
             try
             {
-                using var scope = UnpoweredCardVars.Apply(card);
+                using UnpoweredCardVars scope = UnpoweredCardVars.Apply(card);
                 return CleanCardDescription(card.GetDescriptionForPile(pile));
             }
             catch (Exception error) { throw RefuseUnpoweredCardValues(card, error); }

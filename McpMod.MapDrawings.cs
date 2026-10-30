@@ -59,7 +59,7 @@ public static partial class McpMod
             });
         }
 
-        var nodes = BuildMapDrawingNodePositions(mapScreen)
+        List<Dictionary<string, object?>> nodes = BuildMapDrawingNodePositions(mapScreen)
             .OrderBy(pair => pair.Key.row)
             .ThenBy(pair => pair.Key.col)
             .Select(pair => new Dictionary<string, object?>(StringComparer.Ordinal)

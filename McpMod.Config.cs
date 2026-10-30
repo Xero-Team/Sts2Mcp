@@ -68,7 +68,7 @@ public static partial class McpMod
         }
 
         string content = File.ReadAllText(configPath);
-        using var doc = JsonDocument.Parse(content);
+        using JsonDocument doc = JsonDocument.Parse(content);
         JsonElement root = doc.RootElement;
 
         // The combat recorder reads its keys ("record", "record_dir") from the same
@@ -285,7 +285,7 @@ public static partial class McpMod
                 if (!File.Exists(configPath))
                     return;
 
-                using var existing = JsonDocument.Parse(File.ReadAllText(configPath));
+                using JsonDocument existing = JsonDocument.Parse(File.ReadAllText(configPath));
                 if (existing.RootElement.ValueKind != JsonValueKind.Object)
                     return;
 

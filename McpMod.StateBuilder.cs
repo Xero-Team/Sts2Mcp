@@ -2841,7 +2841,7 @@ public static partial class McpMod
             var returns = new List<Dictionary<string, object?>>();
             foreach (SerializableCard saved in tooth.SerializableCards)
             {
-                var card = CardModel.FromSerializable(saved);
+                CardModel card = CardModel.FromSerializable(saved);
                 card.Owner = tooth.Owner;
                 if (card.IsUpgradable)
                 {
@@ -4432,7 +4432,7 @@ public static partial class McpMod
         if (uiRoom == null)
             return options;
 
-        var buttons = FindAll<NEventOptionButton>(uiRoom)
+        List<NEventOptionButton> buttons = FindAll<NEventOptionButton>(uiRoom)
             .Where(button => button.Visible && button.IsVisibleInTree())
             .ToList();
         int index = 0;
@@ -4874,7 +4874,7 @@ public static partial class McpMod
             AddMapNodeMarks(option, pt, marks);
 
             // 1-level lookahead
-            var children = pt.Children
+            List<Dictionary<string, object?>> children = pt.Children
                 .OrderBy(c => c.coord.col)
                 .Select(c => new Dictionary<string, object?>(StringComparer.Ordinal)
                 {
@@ -5570,7 +5570,7 @@ public static partial class McpMod
         state["parent_reward_id"] = parent?.Id;
         state["selection_state"] = parent?.SelectionState ?? "unknown";
 
-        var cardHolders = FindAllSortedByPosition<NCardHolder>(cardScreen)
+        List<NCardHolder> cardHolders = FindAllSortedByPosition<NCardHolder>(cardScreen)
             .Where(holder => holder.CardModel != null && holder.Visible && holder.IsVisibleInTree())
             .ToList();
         var cards = new List<Dictionary<string, object?>>();
@@ -6229,7 +6229,7 @@ public static partial class McpMod
 
         state["prompt"] = "Choose a relic.";
 
-        var relicHolders = FindAll<NRelicBasicHolder>(screen)
+        List<NRelicBasicHolder> relicHolders = FindAll<NRelicBasicHolder>(screen)
             .Where(holder => holder.Relic?.Model != null && holder.IsEnabled && holder.Visible && holder.IsVisibleInTree())
             .ToList();
         var relics = new List<Dictionary<string, object?>>();
@@ -6432,7 +6432,7 @@ public static partial class McpMod
         NTreasureRoomRelicCollection relicCollection = treasureUI.GetNodeOrNull<NTreasureRoomRelicCollection>("%RelicCollection");
         if (relicCollection?.Visible == true)
         {
-            var holders = FindAll<NTreasureRoomRelicHolder>(relicCollection)
+            List<NTreasureRoomRelicHolder> holders = FindAll<NTreasureRoomRelicHolder>(relicCollection)
                 .Where(h => h.IsEnabled && h.Visible && h.IsVisibleInTree())
                 .ToList();
 
@@ -6521,7 +6521,7 @@ public static partial class McpMod
         Dictionary<string, object?> entry, PowerModel power, bool isVisible)
         => TryDo("status.description", () =>
         {
-            var allTips = power.HoverTips.ToList();
+            List<IHoverTip> allTips = power.HoverTips.ToList();
             string? resolvedDesc = null;
             var extraTips = new List<IHoverTip>();
             foreach (IHoverTip? tip in allTips)

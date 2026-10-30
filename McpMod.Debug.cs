@@ -370,7 +370,7 @@ public static partial class McpMod
             return Error($"No {pileName} pile");
 
         index = data.TryGetValue("index", out JsonElement idxEl) && idxEl.TryGetInt32(out int i) ? i : 0;
-        var cards = pile.Cards.ToList();
+        List<CardModel> cards = pile.Cards.ToList();
         if (index < 0 || index >= cards.Count)
             return Error($"index {index} out of range for {pileName} ({cards.Count} cards)");
 
@@ -431,11 +431,11 @@ public static partial class McpMod
     // player past the act 1 boss. CardCmd.Upgrade rolls nothing.
     private static Dictionary<string, object?> ExecuteDebugUpgradeDeck(Player player)
     {
-        var deck = CardPile.Get(PileType.Deck, player);
+        CardPile? deck = CardPile.Get(PileType.Deck, player);
         if (deck == null)
             return Error("No deck");
 
-        var upgradable = deck.Cards.Where(c => c != null && c.IsUpgradable).ToList();
+        List<CardModel> upgradable = deck.Cards.Where(c => c != null && c.IsUpgradable).ToList();
         foreach (CardModel? card in upgradable)
             CardCmd.Upgrade(card);
 

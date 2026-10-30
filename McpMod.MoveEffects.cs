@@ -1579,7 +1579,7 @@ public static partial class McpMod
             ["count"] = fixedCount,
             ["position"] = null,
         };
-        var intLike = cardMi.GetParameters()
+        List<ParameterInfo> intLike = cardMi.GetParameters()
             .Where(p => p.ParameterType.IsEnum || p.ParameterType == typeof(int))
             .ToList();
         if (intLike.Count == 0 || intArgs.Count < intLike.Count)
