@@ -1,0 +1,60 @@
+<Project>
+
+  <!--
+    Shared build settings for every project in this repo.
+
+    This lives in Directory.Build.targets rather than Directory.Build.props on purpose:
+    Directory.Build.props is gitignored here (docs/../.gitignore "Machine-local build config")
+    because each developer points it at their own game install. A committed baseline has to
+    ride the other MSBuild convention file, which is imported after the project body - late
+    enough for analyzer settings and package references, which are consumed by targets.
+  -->
+
+  <PropertyGroup Label="Analysis baseline">
+    <!--
+      The SDK's default analyzer mode turns on a small rule subset and reports the rest only
+      if you opt in. All + latest opts in to the whole CA rule set at warning severity, so
+      findings show up in `dotnet build` and in the IDE from the same configuration.
+    -->
+    <EnableNETAnalyzers>true</EnableNETAnalyzers>
+    <AnalysisLevel>latest</AnalysisLevel>
+    <AnalysisMode>All</AnalysisMode>
+    <!-- Surface IDE style rules during `dotnet build`, not only in an IDE. -->
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+
+    <!--
+      Strict gate, ON by default: compiler warnings and analyzer findings are both build errors,
+      so a new warning cannot reach main. The backlog this exposes is listed in
+      docs/static-analysis.md and is being worked down; until it is empty, expect `dotnet build`
+      to fail on a fresh checkout.
+
+      Escape hatch for local work that is unrelated to a finding you did not introduce:
+        dotnet build -p:STS2StrictWarnings=false
+      or set STS2StrictWarnings=false in your machine-local Directory.Build.props. Do not commit
+      that relaxation, and do not add #pragma to get around a finding - fix it or fix the rule.
+    -->
+    <TreatWarningsAsErrors Condition="'$(STS2StrictWarnings)' != 'false'">true</TreatWarningsAsErrors>
+    <CodeAnalysisTreatWarningsAsErrors Condition="'$(STS2StrictWarnings)' != 'false'">true</CodeAnalysisTreatWarningsAsErrors>
+  </PropertyGroup>
+
+  <ItemGroup Label="Analyzers">
+    <!-- Microsoft.CodeAnalysis.NetAnalyzers (CAxxxx) ships with the SDK - no package needed.
+         StyleCop.Analyzers is deliberately absent: SA1201 throws (AD0001) on this codebase and
+         the package has been unmaintained since 2019. -->
+    <PackageReference Include="Meziantou.Analyzer" Version="3.0.318" PrivateAssets="all" />
+    <PackageReference Include="Microsoft.VisualStudio.Threading.Analyzers" Version="18.12.1" PrivateAssets="all" />
+    <PackageReference Include="SonarAnalyzer.CSharp" Version="10.35.0.4138" PrivateAssets="all" />
+    <PackageReference Include="ErrorProne.NET.CoreAnalyzers" Version="0.1.2" PrivateAssets="all" />
+    <PackageReference Include="AsyncFixer" Version="2.1.0" PrivateAssets="all" />
+    <PackageReference Include="Microsoft.CodeAnalysis.BannedApiAnalyzers" Version="5.6.0" PrivateAssets="all" />
+  </ItemGroup>
+
+  <ItemGroup Label="Banned API list">
+    <!-- RS0030 keeps the "no unsafe escape hatches" rule enforceable: the mod has no business
+         taking raw pointers or pinning objects, and a build warning is cheaper than a crash
+         inside a game process. Editing this file needs no project changes. -->
+    <AdditionalFiles Include="$(MSBuildThisFileDirectory)BannedSymbols.txt"
+                     Condition="Exists('$(MSBuildThisFileDirectory)BannedSymbols.txt')" />
+  </ItemGroup>
+
+</Project>
