@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using Godot;
 
 namespace STS2_MCP;
 
@@ -33,11 +34,23 @@ public static partial class McpMod
     /// <summary>A game exception message can be a multi-line dump; keep it to one line.</summary>
     private const int MaxWarningMessageLength = 200;
 
+    /// <summary>True between <see cref="BeginStateWarnings"/> and <see cref="EndStateWarnings"/>.
+    /// A warning raised outside a state read has no response to ride on, so it goes to the log
+    /// instead of a list the next read would clear.</summary>
+    private static bool _stateWarningsActive;
+
+    /// <summary>Contexts already printed, so a helper called per card does not flood the log.
+    /// Never cleared: one line per distinct break is what a support report needs.</summary>
+    private static readonly HashSet<string> _loggedWarningKeys = new(StringComparer.Ordinal);
+
+    private const int MaxLoggedWarnings = 100;
+
     private static void BeginStateWarnings()
     {
         _stateWarnings.Clear();
         _stateWarningKeys.Clear();
         _suppressedStateWarnings = 0;
+        _stateWarningsActive = true;
     }
 
     /// <summary>
@@ -54,6 +67,12 @@ public static partial class McpMod
         var entry = $"{context}: {Flatten(message)}";
         if (!_stateWarningKeys.Add(entry))
             return;
+
+        if (!_stateWarningsActive)
+        {
+            LogSwallowed(entry);
+            return;
+        }
 
         if (_stateWarnings.Count >= MaxStateWarnings)
         {
@@ -72,12 +91,23 @@ public static partial class McpMod
             : oneLine;
     }
 
+    private static void LogSwallowed(string entry)
+    {
+        if (_loggedWarningKeys.Count >= MaxLoggedWarnings)
+            return;
+        if (!_loggedWarningKeys.Add(entry))
+            return;
+
+        GD.PrintErr($"[STS2 MCP] swallowed exception: {entry}");
+    }
+
     /// <summary>
     /// Attaches the warnings to a finished state. Absent when nothing was swallowed, so
     /// a caller can treat the key's presence as "some fields below may be missing".
     /// </summary>
     private static void EndStateWarnings(Dictionary<string, object?> result)
     {
+        _stateWarningsActive = false;
         if (_stateWarnings.Count == 0)
             return;
 

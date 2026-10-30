@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Net;
@@ -31,12 +31,15 @@ public static partial class McpMod
     private static CardMultiplayerConstraint _cardPoolsCacheConstraint;
     private static Dictionary<string, object?>? _cardPoolsCache;
 
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1031:Do not catch general exception types",
+        Justification = "Transport boundary: every failure becomes the documented 500 body.")]
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("Major Code Smell", "EPC12:Suspicious exception handling",
+        Justification = "The message is the documented error body; the status code carries the category.")]
     private static void HandleGetCardPools(HttpListenerResponse response)
     {
         try
         {
-            var dataTask = RunOnMainThread(BuildCardPools);
-            SendJson(response, dataTask.GetAwaiter().GetResult());
+            SendJson(response, RunOnMainThreadBlocking(BuildCardPools));
         }
         catch (Exception ex)
         {
@@ -67,64 +70,21 @@ public static partial class McpMod
             }
         }
 
-        var pools = new Dictionary<string, object?>(StringComparer.Ordinal);
-        foreach (var pool in ModelDb.AllCardPools)
-        {
-            var title = pool.Title;
-            if (string.IsNullOrWhiteSpace(title) || pools.ContainsKey(title))
-                continue;
-
-            List<CardModel> cards;
-            try
-            {
-                cards = pool.GetUnlockedCards(unlockState, constraint).ToList();
-            }
-            catch
-            {
-                // A modded or malformed pool must not take down the response;
-                // its cards simply have no derivable domain client-side.
-                continue;
-            }
-
-            pools[title] = new Dictionary<string, object?>(StringComparer.Ordinal)
-            {
-                ["is_colorless"] = pool.IsColorless,
-                ["cards"] = cards.Select(BuildCardPoolEntry).ToList()
-            };
-        }
-
-        var characters = new Dictionary<string, object?>(StringComparer.Ordinal);
-        var characterPoolOrder = new List<string>();
-        foreach (var character in ModelDb.AllCharacters)
-        {
-            var name = SafeGetText(() => character.Title);
-            var poolTitle = character.CardPool?.Title;
-            if (!string.IsNullOrWhiteSpace(name))
-                characters[name!] = poolTitle;
-            if (!string.IsNullOrWhiteSpace(poolTitle) && !characterPoolOrder.Contains(poolTitle))
-                characterPoolOrder.Add(poolTitle);
-        }
+        var pools = BuildPoolsCatalogue(unlockState, constraint);
+        var characters = BuildCharacterCatalogue(out var characterPoolOrder);
 
         // `UnlockState.CharacterCardPools`: the character pools this profile has
         // unlocked, in `ModelDb.AllCharacters` order. Prismatic Gem widens every
         // card reward to exactly these, while `characters` above lists every
         // character in the game whether unlocked or not.
-        List<string>? unlockedCharacterPoolOrder = new();
-        try
-        {
-            foreach (var pool in unlockState.CharacterCardPools)
-            {
-                var poolTitle = pool?.Title;
-                if (!string.IsNullOrWhiteSpace(poolTitle) && !unlockedCharacterPoolOrder.Contains(poolTitle!))
-                    unlockedCharacterPoolOrder.Add(poolTitle!);
-            }
-        }
-        catch
-        {
-            // Absent rather than guessed: a client then refuses Prismatic Gem's
-            // widened reward instead of naming cards from the wrong pools.
-            unlockedCharacterPoolOrder = null;
-        }
+        // Absent rather than guessed: a client then refuses Prismatic Gem's
+        // widened reward instead of naming cards from the wrong pools.
+        var unlockedCharacterPoolOrder = TryRead(() => unlockState.CharacterCardPools
+            .Select(pool => pool?.Title)
+            .Where(title => !string.IsNullOrWhiteSpace(title))
+            .Select(title => title!)
+            .Distinct(StringComparer.Ordinal)
+            .ToList());
 
         var result = new Dictionary<string, object?>(StringComparer.Ordinal)
         {
@@ -143,6 +103,46 @@ public static partial class McpMod
             _cardPoolsCache = result;
         }
         return result;
+    }
+
+    private static Dictionary<string, object?> BuildPoolsCatalogue(UnlockState unlockState, CardMultiplayerConstraint constraint)
+    {
+        var pools = new Dictionary<string, object?>(StringComparer.Ordinal);
+        foreach (var pool in ModelDb.AllCardPools)
+        {
+            var title = pool.Title;
+            if (string.IsNullOrWhiteSpace(title) || pools.ContainsKey(title))
+                continue;
+
+            // A modded or malformed pool must not take down the response;
+            // its cards simply have no derivable domain client-side.
+            var cards = TryRead(() => pool.GetUnlockedCards(unlockState, constraint).ToList());
+            if (cards == null)
+                continue;
+
+            pools[title] = new Dictionary<string, object?>(StringComparer.Ordinal)
+            {
+                ["is_colorless"] = pool.IsColorless,
+                ["cards"] = cards.Select(BuildCardPoolEntry).ToList()
+            };
+        }
+        return pools;
+    }
+
+    private static Dictionary<string, object?> BuildCharacterCatalogue(out List<string> characterPoolOrder)
+    {
+        var characters = new Dictionary<string, object?>(StringComparer.Ordinal);
+        characterPoolOrder = new List<string>();
+        foreach (var character in ModelDb.AllCharacters)
+        {
+            var name = SafeGetText(() => character.Title);
+            var poolTitle = character.CardPool?.Title;
+            if (!string.IsNullOrWhiteSpace(name))
+                characters[name] = poolTitle;
+            if (!string.IsNullOrWhiteSpace(poolTitle) && !characterPoolOrder.Contains(poolTitle))
+                characterPoolOrder.Add(poolTitle);
+        }
+        return characters;
     }
 
     private static Dictionary<string, object?> BuildCardPoolEntry(CardModel card)
@@ -179,31 +179,19 @@ public static partial class McpMod
     // "unknown", which keeps such a card out of a cost-narrowed domain rather
     // than admitting it at a guessed cost.
     private static int? SafeCanonicalEnergyCost(CardModel card)
-    {
-        try { return card.EnergyCost?.Canonical; }
-        catch { return null; }
-    }
+        => TryRead(() => card.EnergyCost?.Canonical);
 
     private static bool SafeCostsX(CardModel card)
-    {
-        try { return card.EnergyCost?.CostsX ?? false; }
-        catch { return false; }
-    }
+        => TryRead<bool?>(() => card.EnergyCost?.CostsX) ?? false;
 
     private static string? SafeGetCardPoolTitle(CardModel card)
-    {
-        try { return card.Pool?.Title; }
-        catch { return null; }
-    }
+        => TryRead(() => card.Pool?.Title);
 
     // CanBeGeneratedInCombat is `virtual`, so an override is free to consult
     // run context that does not exist outside a combat. Match the game's own
     // default when reading it throws.
     private static bool SafeCanBeGeneratedInCombat(CardModel card)
-    {
-        try { return card.CanBeGeneratedInCombat; }
-        catch { return true; }
-    }
+        => TryRead<bool?>(() => card.CanBeGeneratedInCombat) ?? true;
 
     // Prefers the run's unlock state, which in multiplayer is the union across
     // players and therefore wider than the local profile's. Falls back to the

@@ -90,6 +90,8 @@ public static partial class McpMod
     // The caller's name stands in for a field name: this helper reads a few hundred
     // different things per state and "text: NullReferenceException" alone names none of
     // them. Warnings are de-duplicated, so the volume of calls costs at most one entry.
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1031:Do not catch general exception types",
+        Justification = "A game member that vanished must not kill a response; the failure is recorded in McpMod.Warnings.")]
     internal static string? SafeGetText(Func<object?> getter,
         [CallerMemberName] string caller = "")
     {
@@ -103,6 +105,52 @@ public static partial class McpMod
             return result.ToString();
         }
         catch (Exception ex) { Warn($"text in {caller}", ex); return null; }
+    }
+
+    /// <summary>
+    /// Reads one value whose source may throw because the game member was renamed or removed.
+    /// The exception is recorded in <see cref="McpMod.Warnings"/> and the caller gets
+    /// <c>default</c>, which is the same "absent, not guessed" meaning the state contract uses.
+    /// Callers must not wrap this in another try/catch: the whole point is that the catch lives
+    /// here, once, instead of at every read.
+    /// </summary>
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1031:Do not catch general exception types",
+        Justification = "The mod's read path is a compatibility boundary; a renamed game member is expected, not exceptional.")]
+    internal static T? TryRead<T>(Func<T> read,
+        [CallerMemberName] string member = "",
+        [CallerLineNumber] int line = 0)
+    {
+        try
+        {
+            return read();
+        }
+        catch (Exception ex)
+        {
+            Warn($"{member}:{line}", ex);
+            return default;
+        }
+    }
+
+    /// <summary>
+    /// <see cref="TryRead{T}"/> for a read whose only outcome the caller needs is "it worked".
+    /// Returns false when the action threw, so the caller can <c>continue</c> or fall back.
+    /// </summary>
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1031:Do not catch general exception types",
+        Justification = "The mod's read path is a compatibility boundary; a renamed game member is expected, not exceptional.")]
+    internal static bool TryDo(Action action,
+        [CallerMemberName] string member = "",
+        [CallerLineNumber] int line = 0)
+    {
+        try
+        {
+            action();
+            return true;
+        }
+        catch (Exception ex)
+        {
+            Warn($"{member}:{line}", ex);
+            return false;
+        }
     }
 
     internal static string StripRichTextTags(string text)
