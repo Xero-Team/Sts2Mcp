@@ -616,15 +616,15 @@ public static partial class McpMod
         switch (move.Id)
         {
             case "FABRICATE_MOVE":
-            fx["random_summon_pools"] = new[]
-            {
-                new[] { "Guardbot", "Noisebot" },
-                new[] { "Zapbot", "Stabbot" },
-            };
+                fx["random_summon_pools"] = new[]
+                {
+                    new[] { "Guardbot", "Noisebot" },
+                    new[] { "Zapbot", "Stabbot" },
+                };
                 break;
 
             case "FABRICATING_STRIKE_MOVE":
-            fx["random_summon_pools"] = new[] { new[] { "Zapbot", "Stabbot" } };
+                fx["random_summon_pools"] = new[] { new[] { "Zapbot", "Stabbot" } };
                 break;
         }
     }
@@ -698,15 +698,15 @@ public static partial class McpMod
         switch (move.Id)
         {
             case "CURSE_OF_KNOWLEDGE_MOVE":
-            fx["knowledge_choice"] = ReadMonsterInt(monster, "CurseOfKnowledgeCounter");
+                fx["knowledge_choice"] = ReadMonsterInt(monster, "CurseOfKnowledgeCounter");
                 break;
 
             case "PONDER_MOVE":
-            // Ponder heals 30 * CombatState.Players.Count. A cold export
-            // has no combat to read that count from; retain the source
-            // multiplier instead of dropping an unresolved numeric heal.
-            fx.Remove("heal");
-            fx["heal_per_player"] = 30;
+                // Ponder heals 30 * CombatState.Players.Count. A cold export
+                // has no combat to read that count from; retain the source
+                // multiplier instead of dropping an unresolved numeric heal.
+                fx.Remove("heal");
+                fx["heal_per_player"] = 30;
                 break;
         }
     }
@@ -717,19 +717,19 @@ public static partial class McpMod
         switch (move.Id)
         {
             case "SIPHON_MOVE":
-            // Read the ascension-scaled property, then let the consumer
-            // multiply by its actual combat player count exactly once.
-            fx.Remove("heal");
-            fx["heal_per_player"] = ReadMonsterInt(monster, "SiphonHeal");
+                // Read the ascension-scaled property, then let the consumer
+                // multiply by its actual combat player count exactly once.
+                fx.Remove("heal");
+                fx["heal_per_player"] = ReadMonsterInt(monster, "SiphonHeal");
                 break;
 
             case "PRESSURE_GUN_MOVE":
-            fx["repeat_damage_growth"] = 5;
-            fx["repeat_damage_base"] = ReadMonsterInt(monster, "BasePressureGunDamage");
-            var pressureBase = ReadMonsterInt(monster, "BasePressureGunDamage");
-            var pressureCurrent = ReadMonsterInt(monster, "CurrentPressureGunDamage");
-            fx["repeat_damage_completed"] = pressureBase.HasValue && pressureCurrent.HasValue
-                ? Math.Max(0, (pressureCurrent.Value - pressureBase.Value) / 5) : null;
+                fx["repeat_damage_growth"] = 5;
+                fx["repeat_damage_base"] = ReadMonsterInt(monster, "BasePressureGunDamage");
+                var pressureBase = ReadMonsterInt(monster, "BasePressureGunDamage");
+                var pressureCurrent = ReadMonsterInt(monster, "CurrentPressureGunDamage");
+                fx["repeat_damage_completed"] = pressureBase.HasValue && pressureCurrent.HasValue
+                    ? Math.Max(0, (pressureCurrent.Value - pressureBase.Value) / 5) : null;
                 break;
         }
     }
