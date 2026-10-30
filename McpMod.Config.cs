@@ -118,36 +118,6 @@ public static partial class McpMod
     }
 
     /// <summary>
-    /// If instant_mode is enabled in the config, force the game's FastMode
-    /// preference to Instant. No-op when disabled. Runs on the main thread because
-    /// it touches game save state; best-effort and never fatal.
-    /// </summary>
-    private static void ApplyInstantModeFromConfig()
-    {
-        if (!_config.InstantMode) return;
-
-        RunOnMainThread(() =>
-        {
-            try
-            {
-                var prefs = SaveManager.Instance?.PrefsSave;
-                if (prefs == null)
-                {
-                    GD.PrintErr("[STS2 MCP] instant_mode: PrefsSave unavailable; skipped");
-                    return;
-                }
-
-                prefs.FastMode = FastModeType.Instant;
-                GD.Print("[STS2 MCP] instant_mode enabled via config: FastMode set to Instant");
-            }
-            catch (Exception ex)
-            {
-                GD.PrintErr($"[STS2 MCP] Failed to apply instant_mode: {ex.Message}");
-            }
-        });
-    }
-
-    /// <summary>
     /// Persists the instant_mode state back to the config file so an in-game
     /// toggle stays in sync with the conf (and survives restarts). No-op when the
     /// value is unchanged. Called from the settings-UI Harmony patches, which run

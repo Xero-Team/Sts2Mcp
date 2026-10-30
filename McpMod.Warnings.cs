@@ -101,8 +101,13 @@ public static partial class McpMod
 
     private static Dictionary<string, object?> BuildMultiplayerGameState()
     {
+        return BuildMultiplayerGameState(false);
+    }
+
+    private static Dictionary<string, object?> BuildMultiplayerGameState(bool fullDetail)
+    {
         BeginStateWarnings();
-        var result = BuildMultiplayerGameStateCore();
+        var result = BuildMultiplayerGameStateCore(fullDetail);
         EndStateWarnings(result);
         return result;
     }

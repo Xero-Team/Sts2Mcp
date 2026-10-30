@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -170,6 +170,27 @@ public static partial class McpMod
         Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping
     };
 
+    // The game's own release version, from the release_info.json shipped next to the executable.
+    // Fixed for the process, so it is read once — and only from the main thread (the manager is a
+    // lazily-constructed singleton that touches Godot file IO). Null when the build ships without
+    // a release_info.json, in which case the key is omitted from the state.
+    private static string? _gameVersion;
+    private static bool _gameVersionRead;
+
+    internal static string? GameVersion()
+    {
+        if (_gameVersionRead) return _gameVersion;
+        _gameVersionRead = true;
+        try
+        {
+            _gameVersion = MegaCrit.Sts2.Core.Debug.ReleaseInfoManager.Instance.ReleaseInfo?.Version;
+        }
+        catch (Exception ex)
+        {
+            GD.PrintErr($"[STS2 MCP] Failed to read game version: {ex.Message}");
+        }
+        return _gameVersion;
+    }
     public static void Initialize()
     {
         try
@@ -187,12 +208,15 @@ public static partial class McpMod
             // settings-detour patches skipped above.
             InstallRewardTracking();
 
+            _config = LoadConfig();
+            int port = _config.Port;
+
+            // Needs the config above: instant_mode lives in the same file.
+            LoadInstantModePreference();
+
             // Connect to main thread process frame for action execution
             var tree = (SceneTree)Engine.GetMainLoop();
             tree.Connect(SceneTree.SignalName.ProcessFrame, Callable.From(ProcessMainThreadQueue));
-
-            _config = LoadConfig();
-            int port = _config.Port;
 
             // Combat recorder (docs/recording.md). After LoadConfig, which feeds it the
             // "record"/"record_dir" keys from the same file.
@@ -209,8 +233,6 @@ public static partial class McpMod
                 Name = "STS2_MCP_Server"
             };
             _serverThread.Start();
-
-            ApplyInstantModeFromConfig();
 
             GD.Print($"[STS2 MCP] v{VersionString} server started on http://localhost:{port}/");
         }
@@ -236,6 +258,15 @@ public static partial class McpMod
     private static void ProcessMainThreadQueue()
     {
         RewardObservation(RefreshRewardRun);
+
+        // Instant Mode is a mod preference rather than a game setting, so it has to be
+        // pushed into (and pulled back out of) the game's prefs as the run context changes.
+        ReconcileInstantMode();
+
+        // Reports a leaked NetLoadingHandle once it has outlived any real
+        // transition. See McpMod.LoadingDiagnostics.cs.
+        CheckLoadingHandleLeak();
+
         int processed = 0;
         while (_mainThreadQueue.TryDequeue(out var action) && processed < 10)
         {
@@ -471,6 +502,34 @@ public static partial class McpMod
                 else
                     SendError(response, 405, "Method not allowed", pretty);
             }
+            else if (path == "/api/v1/cardpools")
+            {
+                if (request.HttpMethod == "GET")
+                    HandleGetCardPools(response);
+                else
+                    SendError(response, 405, "Method not allowed");
+            }
+            else if (path == "/api/v1/potionpools")
+            {
+                if (request.HttpMethod == "GET")
+                    HandleGetPotionPools(response);
+                else
+                    SendError(response, 405, "Method not allowed");
+            }
+            else if (path == "/api/v1/relicbag")
+            {
+                if (request.HttpMethod == "GET")
+                    HandleGetRelicBag(response);
+                else
+                    SendError(response, 405, "Method not allowed");
+            }
+            else if (path == "/api/v1/mapdrawings")
+            {
+                if (request.HttpMethod == "GET")
+                    HandleGetMapDrawings(response);
+                else
+                    SendError(response, 405, "Method not allowed");
+            }
             else
             {
                 SendError(response, 404, "Not found", pretty);
@@ -512,9 +571,37 @@ public static partial class McpMod
         string format = request.QueryString["format"] ?? "json";
         bool pretty = WantsPretty(request);
 
+        string detail = request.QueryString["detail"] ?? "summary";
+        if (detail is not ("summary" or "full"))
+        {
+            SendError(response, 400, "detail must be either 'summary' or 'full'.");
+            return;
+        }
+        bool fullDetail = detail == "full";
+
+        // Card descriptions and enemy intent labels are rendered by the game with the
+        // player's standing powers and relics already applied. "unpowered" strips that
+        // baking back to base + enchantment; see UnpoweredCardVars in McpMod.Helpers.cs.
+        string values = request.QueryString["values"] ?? "powered";
+        if (values is not ("powered" or "unpowered"))
+        {
+            SendError(response, 400, "values must be either 'powered' or 'unpowered'.");
+            return;
+        }
+        bool unpowered = values == "unpowered";
+
         try
         {
-            var state = RunOnMainThreadBlocking(() => BuildMultiplayerGameState());
+            var state = RunOnMainThreadBlocking(() => WithCardValues(unpowered, () =>
+            {
+                var s = BuildMultiplayerGameState(fullDetail);
+                s["detail"] = detail;
+                if (fullDetail)
+                    s["relic_bag_generation"] = RelicBagGeneration;
+                s["game_version"] = GameVersion();
+                s["values"] = values;
+                return s;
+            }));
 
             if (format == "markdown")
             {
@@ -630,6 +717,17 @@ public static partial class McpMod
         string format = request.QueryString["format"] ?? "json";
         bool pretty = WantsPretty(request);
 
+        // Card descriptions and enemy intent labels are rendered by the game with the
+        // player's standing powers and relics already applied. "unpowered" strips that
+        // baking back to base + enchantment; see UnpoweredCardVars in McpMod.Helpers.cs.
+        string values = request.QueryString["values"] ?? "powered";
+        if (values is not ("powered" or "unpowered"))
+        {
+            SendError(response, 400, "values must be either 'powered' or 'unpowered'.");
+            return;
+        }
+        bool unpowered = values == "unpowered";
+
         try
         {
             // ?passive=1: read without the UI side effects some screens have (auto-opening the
@@ -639,7 +737,16 @@ public static partial class McpMod
             var state = RunOnMainThreadBlocking(() =>
             {
                 _passiveRead = passive;
-                try { return BuildGameState(); }
+                try
+                {
+                    return WithCardValues(unpowered, () =>
+                    {
+                        var s = BuildGameState();
+                        s["game_version"] = GameVersion();
+                        s["values"] = values;
+                        return s;
+                    });
+                }
                 finally { _passiveRead = false; }
             });
 

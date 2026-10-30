@@ -48,6 +48,10 @@ def _profiles_url() -> str:
     return f"{_base_url}/api/v1/profiles"
 
 
+def _map_drawings_url() -> str:
+    return f"{_base_url}/api/v1/mapdrawings"
+
+
 def _get_client() -> httpx.AsyncClient:
     global _http
     if _http is None:
@@ -106,11 +110,12 @@ async def _compendium_get() -> str:
     return r.text
 
 
-async def _wiki_get(query: str, item_type: str = "all", limit: int = 10, scope: str = "discovered") -> str:
-    r = await _get_client().get(
-        _wiki_url(),
-        params={"query": query, "item_type": item_type, "limit": limit, "scope": scope},
-    )
+async def _wiki_get(query: str, item_type: str = "all", limit: int | None = None,
+                    scope: str = "discovered") -> str:
+    params: dict[str, object] = {"query": query, "item_type": item_type, "scope": scope}
+    if limit is not None:
+        params["limit"] = limit
+    r = await _get_client().get(_wiki_url(), params=params)
     r.raise_for_status()
     return r.text
 
@@ -123,6 +128,12 @@ async def _profiles_get() -> str:
 
 async def _profiles_post(body: dict) -> str:
     r = await _get_client().post(_profiles_url(), json=body)
+    r.raise_for_status()
+    return r.text
+
+
+async def _map_drawings_get() -> str:
+    r = await _get_client().get(_map_drawings_url())
     r.raise_for_status()
     return r.text
 
@@ -179,7 +190,7 @@ def _handle_error(e: Exception) -> str:
 
 
 @mcp.tool()
-async def get_game_state(format: str = "markdown") -> str:
+async def get_game_state(format: str = "markdown", values: str = "powered") -> str:
     """Get the current Slay the Spire 2 game state.
 
     Returns the full game state including player stats, hand, enemies, potions, etc.
@@ -188,9 +199,16 @@ async def get_game_state(format: str = "markdown") -> str:
 
     Args:
         format: "markdown" for human-readable output, "json" for structured data.
+        values: "powered" (default) renders card descriptions and enemy intent
+            labels the way the game does, with the player's standing Strength,
+            Dexterity, Vigor, Focus, Weak and relic bonuses already applied to the
+            numbers. "unpowered" strips that back to the card's own base value plus
+            its enchantment, and marks each card `text_baked: false` and each
+            rebuilt intent `unbaked: true`. Keywords, enchantment text and energy
+            cost are identical either way.
     """
     try:
-        return await _get({"format": format})
+        return await _get({"format": format, "values": values})
     except Exception as e:
         return _handle_error(e)
 
@@ -395,22 +413,27 @@ async def get_playtest_metrics(
 
 
 @mcp.tool()
-async def search_wiki(query: str, item_type: str = "all", limit: int = 10, scope: str = "discovered") -> str:
-    """Search discovered card and relic wiki entries for the active profile.
+async def search_wiki(query: str = "", item_type: str = "all", limit: int | None = None,
+                      scope: str = "discovered") -> str:
+    """Search or list card and relic wiki entries.
 
-    Uses fuzzy matching so agents can ask for a card or relic by approximate
-    name without receiving the entire game catalog. Card results include both
-    base and upgraded variants when the card can be upgraded.
+    With a query this is a fuzzy search, so agents can ask for a card or relic
+    by approximate name. With no query it LISTS everything in scope, in name
+    order, which is what building a static catalog wants. Card results include
+    both base and upgraded variants when the card can be upgraded.
 
     Args:
         query: Search text such as "ironclad perfect strike" or "silver spoon".
+            Omit it to list rather than search.
         item_type: "all", "card", or "relic".
-        limit: Maximum results to return. Defaults to 10; the mod clamps it to
-            a bounded maximum.
-        scope: "discovered" (default) searches only what the active profile has
-            already seen. "all" searches the full catalog — use it when a card
-            or relic on offer generates something this profile has never held.
-            Every result carries a `discovered` flag either way.
+        limit: Maximum results. Defaults to 10 when searching and to the whole
+            list otherwise; the mod clamps it to a bounded maximum, which is
+            higher for a listing than for a search.
+        scope: "discovered" (the default) honours the active profile's
+            discovery progress; "all" ignores it and covers every card and
+            relic the game defines. Use "all" only for tooling -- it spoils
+            content the profile has not met. Every result carries a
+            `discovered` flag either way.
     """
     try:
         return await _wiki_get(query, item_type, limit, scope)
@@ -739,6 +762,20 @@ async def rewards_card_alternative(option_id: str) -> str:
 
 
 @mcp.tool()
+async def get_map_drawings() -> str:
+    """Get saved map drawing strokes and live map-node drawing positions.
+
+    This uses the dedicated /api/v1/mapdrawings endpoint; drawing data is not
+    included in the normal game-state response. Coordinates use the game's
+    resolution-independent map_normalized space.
+    """
+    try:
+        return await _map_drawings_get()
+    except Exception as e:
+        return _handle_error(e)
+
+
+@mcp.tool()
 async def map_choose_node(node_index: int) -> str:
     """[Map] Choose a map node to travel to.
 
@@ -747,6 +784,33 @@ async def map_choose_node(node_index: int) -> str:
     """
     try:
         return await _post({"action": "choose_map_node", "index": node_index})
+    except Exception as e:
+        return _handle_error(e)
+
+
+@mcp.tool()
+async def map_draw(strokes: list[dict]) -> str:
+    """[Map] Draw or erase one or more programmatic strokes on the open map.
+
+    Each stroke is {"mode": "draw"|"erase", "points": [...]}. A point may
+    be a normalized coordinate {"x": number, "y": number} or a live map-node
+    reference {"col": int, "row": int}. Node anchors are included as
+    draw_position on map.nodes and by get_map_drawings().
+
+    Args:
+        strokes: Up to 64 strokes and 2048 total points.
+    """
+    try:
+        return await _post({"action": "map_draw", "strokes": strokes})
+    except Exception as e:
+        return _handle_error(e)
+
+
+@mcp.tool()
+async def map_clear_drawings() -> str:
+    """[Map] Clear all map drawing strokes belonging to the local player."""
+    try:
+        return await _post({"action": "map_clear_drawings"})
     except Exception as e:
         return _handle_error(e)
 
@@ -788,11 +852,25 @@ async def rest_choose_option(
 
 
 @mcp.tool()
+async def shop_open_inventory() -> str:
+    """[Shop / Fake Merchant] Open the shop inventory.
+
+    State queries never open shop UI. Call this before purchasing after any
+    out-of-combat potion actions that require the inventory to remain closed.
+    """
+    try:
+        return await _post({"action": "shop_open"})
+    except Exception as e:
+        return _handle_error(e)
+
+
+@mcp.tool()
 async def shop_purchase(item_index: int) -> str:
     """[Shop / Fake Merchant] Purchase an item from the shop.
 
     Works for both regular shops (state_type: shop) and the fake merchant
-    event (state_type: fake_merchant). The fake merchant only sells relics.
+    event (state_type: fake_merchant). Call shop_open_inventory first. The fake
+    merchant only sells relics.
 
     Args:
         item_index: 0-based index of the item from the shop state.
@@ -1030,7 +1108,7 @@ async def crystal_sphere_proceed() -> str:
 
 
 @mcp.tool()
-async def mp_get_game_state(format: str = "markdown") -> str:
+async def mp_get_game_state(format: str = "markdown", values: str = "powered") -> str:
     """[Multiplayer] Get the current multiplayer game state.
 
     Returns a summary of all players (HP, gold, alive status) plus full
@@ -1040,9 +1118,16 @@ async def mp_get_game_state(format: str = "markdown") -> str:
 
     Args:
         format: "markdown" for human-readable output, "json" for structured data.
+        values: "powered" (default) renders card descriptions and enemy intent
+            labels the way the game does, with the player's standing Strength,
+            Dexterity, Vigor, Focus, Weak and relic bonuses already applied to the
+            numbers. "unpowered" strips that back to the card's own base value plus
+            its enchantment, and marks each card `text_baked: false` and each
+            rebuilt intent `unbaked: true`. Keywords, enchantment text and energy
+            cost are identical either way.
     """
     try:
-        return await _mp_get({"format": format})
+        return await _mp_get({"format": format, "values": values})
     except Exception as e:
         return _handle_error(e)
 
@@ -1140,6 +1225,31 @@ async def mp_map_vote(node_index: int) -> str:
 
 
 @mcp.tool()
+async def mp_map_draw(strokes: list[dict]) -> str:
+    """[Multiplayer Map] Draw or erase strokes and broadcast them to peers.
+
+    Uses the same stroke schema and normalized/node coordinates as map_draw.
+    Existing local and remote strokes can be read with get_map_drawings().
+
+    Args:
+        strokes: Up to 64 strokes and 2048 total points.
+    """
+    try:
+        return await _mp_post({"action": "map_draw", "strokes": strokes})
+    except Exception as e:
+        return _handle_error(e)
+
+
+@mcp.tool()
+async def mp_map_clear_drawings() -> str:
+    """[Multiplayer Map] Clear local strokes and broadcast the clear to peers."""
+    try:
+        return await _mp_post({"action": "map_clear_drawings"})
+    except Exception as e:
+        return _handle_error(e)
+
+
+@mcp.tool()
 async def mp_event_choose_option(option_index: int) -> str:
     """[Multiplayer Event] Choose or vote for an event option.
 
@@ -1180,10 +1290,19 @@ async def mp_rest_choose_option(option_index: int) -> str:
 
 
 @mcp.tool()
+async def mp_shop_open_inventory() -> str:
+    """[Multiplayer Shop] Open the local player's shop inventory."""
+    try:
+        return await _mp_post({"action": "shop_open"})
+    except Exception as e:
+        return _handle_error(e)
+
+
+@mcp.tool()
 async def mp_shop_purchase(item_index: int) -> str:
     """[Multiplayer Shop] Purchase an item from the shop.
 
-    Per-player inventory — no voting needed.
+    Call mp_shop_open_inventory first. Per-player inventory — no voting needed.
 
     Args:
         item_index: 0-based index of the item.

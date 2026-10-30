@@ -8,9 +8,11 @@ HTTP API served by the STS2_MCP mod on `localhost:15526`. No authentication. Loc
 - `POST /api/v1/singleplayer` — perform a game action
 - `GET  /api/v1/multiplayer` — read multiplayer game state
 - `POST /api/v1/multiplayer` — perform a multiplayer action
+- `GET  /api/v1/mapdrawings` — read saved map strokes and live node anchors
 - `GET  /api/v1/profile` — read current profile progress
 - `GET  /api/v1/compendium` — read Compendium-shaped profile progress
-- `GET  /api/v1/wiki` — fuzzy-search discovered card/relic wiki entries
+- `GET  /api/v1/wiki` — fuzzy-search, or list, card/relic wiki entries
+- `GET  /api/v1/cardpools` — every unlocked card pool in roll order (static per run)
 - `GET  /api/v1/profiles` — list profile slots
 - `POST /api/v1/profiles` — switch or delete profile slots
 
@@ -22,25 +24,75 @@ The endpoints are mutually exclusive: calling singleplayer during a multiplayer 
 
 ### Query Parameters
 
-| Parameter | Values                                        | Default | Description                                                     |
-|-----------|-----------------------------------------------|---------|-----------------------------------------------------------------|
-| `format`  | `json`, `markdown`                            | `json`  | Response format                                                 |
-| `pretty`  | `1`, `true`, `yes` (or present with no value) | off     | Indent the JSON. Off by default — compact output is ~32% smaller |
+| Parameter | Values                                        | Default   | Description                                                     |
+|-----------|-----------------------------------------------|-----------|-----------------------------------------------------------------|
+| `format`  | `json`, `markdown`                            | `json`    | Response format                                                 |
+| `pretty`  | `1`, `true`, `yes` (or present with no value) | off       | Indent the JSON. Off by default — compact output is ~32% smaller |
+| `detail`  | `summary`, `full`                             | `summary` | Multiplayer only. `full` adds every player's master deck, relics, potions, status, stable IDs, and player RNG to the top-level `players`; unknown values return HTTP 400. |
+| `values`  | `powered`, `unpowered`                        | `powered` | Whether card descriptions and enemy intent labels arrive with the player's standing powers and relics baked into their numbers; unknown values return HTTP 400. |
 
 JSON responses are compact by default; `pretty` opts into indentation for that one request. It works on
 every JSON-returning endpoint, on POST as well as GET (e.g. `POST /api/v1/singleplayer?pretty=1`), and on
 error responses. It has no effect on `format=markdown`.
 
+`detail=full` is opt-in so ordinary multiplayer polling keeps the compact
+response and its existing latency. Room-local `map.players`, `event.players`,
+and `treasure.players` arrays remain summaries even in a full response; only
+the top-level `players` array expands.
+
+### Powered vs unpowered values
+
+The game renders a card's description through its damage/block pipeline, so a
+live card's printed numbers already carry the player's standing Strength,
+Dexterity, Vigor, Focus and Weak plus every additive relic bonus. Enemy intent
+`label` strings are baked the same way, and additionally carry target Vulnerable
+and the Back Attack x1.5 multiplier. A consumer that then applies those
+modifiers itself double-counts them.
+
+`values=unpowered` renders the numbers at **base + enchantment** instead:
+
+- Each card gains `"text_baked": false`. The key is absent in `powered` mode, so
+  an existing consumer sees a byte-identical payload by default.
+- Each enemy intent whose label was actually rebuilt gains `"unbaked": true`. If
+  the label could not be rebuilt the game's own powered label is kept and the
+  marker is **not** emitted, so the flag never over-promises.
+- The response echoes `"values"` at the top level.
+
+An enchantment counts as part of the card, exactly as the game treats it, so
+enchanted values stay applied in both modes.
+
+Unaffected by this parameter, because none of it comes from the description's
+value pipeline:
+
+- `keywords` / `keyword_ids`, including single-turn Retain and Sly grants and
+  keywords a relic or upgrade adds or removes (a relic that strips Exhaust still
+  strips it).
+- The enchantment and affliction text lines, and the replay-count line.
+- `cost` / `star_cost`, which stay hook-modified: a relic that makes a card free
+  still reports `0`.
+- Orb `passive_val` / `evoke_val`, which use the orb model's current Focus and
+  relic hooks. Glass also exports its stored `base_passive_val` before those hooks.
+- Intent `title` / `description` hover text, which still carries the powered
+  damage number in its wording.
+
+`values=unpowered` also makes non-hand piles deterministic. A card's value set is
+shared UI state that only the card node writes, so in `powered` mode a draw-pile,
+shop or reward card reports whatever the last on-screen render happened to leave
+there. The unpowered path sets the values explicitly before rendering.
+
 ### Common Top-Level Fields
 
-Every response — `menu` and error-ish states included — carries the build stamp:
+Every response — `menu` and error-ish states included — carries the build stamp and the game's own
+release version:
 
 ```jsonc
 {
   "state_type": "...",      // Screen identifier (see sections below)
   "mod_version": "0.4.0",   // Mod version
   "mod_commit": "2de67cd",  // Git commit built from ("<sha>-dirty" from an edited tree); null if unknown
-  "schema_version": 3       // Contract version — see below
+  "schema_version": 3,      // Contract version — see below
+  "game_version": "0.108.2" // From the game's release_info.json; omitted when the
+                            // build ships without one
 }
 ```
 
@@ -66,7 +118,38 @@ state-specific data:
     "floor": 3,             // Total floors visited
     "player_count": 1,
     "card_multiplayer_constraint": "SingleplayerOnly",
-    "ascension": 0          // Ascension level
+    "ascension": 0,         // Ascension level
+    "visited_event_ids": ["WELLSPRING"]  // Events already seen this run;
+                            // RoomSet.EnsureNextEventIsValid skips past these
+  },
+  "act": {                  // The act's pre-rolled room queues (ActModel._rooms)
+    "index": 0,             // 0-based act index
+    "id": "OVERGROWTH",
+    "rooms_total": 15,
+    "floors_total": 17,
+    "encounters": {
+      // Consumed in order: PullNextEncounter is list[visited % count], so these
+      // name the exact fight behind every Monster and Elite node on the map.
+      "normal": ["NIBBITS_WEAK", "SLIMES_WEAK", "MAWLER_NORMAL"],
+      "normal_visited": 1,
+      "elite": ["BYRDONIS_ELITE", "PHROG_PARASITE_ELITE"],
+      "elite_visited": 0,
+      // NOT already skip-adjusted: replay EnsureNextEventIsValid yourself using
+      // run.visited_event_ids, since doing it here would mutate run state.
+      "events": ["SAPPHIRE_SEED", "WELLSPRING"],
+      "events_visited": 0,
+      "boss": "THE_KIN_BOSS",
+      "second_boss": null, // Present only when the act has a second boss
+      "boss_visited": 0
+    }
+  },
+  "profile": {
+    // UnknownMapPointOdds.Roll forces the first three "?" rooms on a profile
+    // that has never finished a run, consuming no RNG while it does.
+    "number_of_runs": 42,
+    // True if any party Ironclad has UnlockState.NumberOfRuns == 0.
+    // Lasting Candy uses this per-player fact, not the shared party maximum.
+    "first_run_ironclad_present": false
   },
   "player": { ... },        // Full player state (see Player Object below)
   // ... state-specific fields
@@ -124,6 +207,10 @@ Always present at the top level (except `menu`). Contains everything about the l
   "character": "The Ironclad",
   "character_id": "IRONCLAD", // Stable model ID (not localized)
   "player_id": "1",          // Player.NetId as a string
+  "turn_phase": "Play",   // None, Start, AutoPrePlay, Play, AutoPostPlay, End (per player).
+  "block_gains_this_turn": [], // Owner Move Block history: CardPlay identity per entry, null for no CardPlay.
+  "effect_depth": 0,       // Active card/potion bodies, including suspended and nested executions.
+                            // Read is_resolving for the surrounding animation/settlement window as well.
   "hp": 72,
   "max_hp": 80,
   "block": 0,
@@ -132,14 +219,33 @@ Always present at the top level (except `menu`). Contains everything about the l
   // --- Combat-only fields (present only when CombatManager.IsInProgress) ---
   "energy": 3,
   "max_energy": 3,
+  "turn_number": 4,         // This player's turn count, extra turns included (battle.round only counts normal side switches).
+                            //   Use it as the "a new player turn began" edge: is_play_phase alone is unreliable, since with
+                            //   Instant Mode the enemy phase can start and finish between two polls.
   "stars": 2,               // Regent only; omitted if 0 and character doesn't always show stars
   "hand": [ /* Card Objects */ ],
   "draw_pile_count": 15,
   "discard_pile_count": 3,
   "exhaust_pile_count": 1,
-  "draw_pile": [ /* Pile Card Objects (sorted by rarity, matching in-game display) */ ],
+  "play_pile_count": 0,
+  "attacks_played_this_turn": 2,   // Attack cards this player finished playing this turn (Finisher-style counters)
+  "stars_gained_this_turn": 2,     // Stars GAINED this turn (Radiate). The positive StarsModifiedEntry sum - neither the
+                                   //   current "stars" total nor the Stars spent, since a turn can gain and spend the same Star.
+                                   //   Added in 0.5.4; omitted by older builds, which clients should read as 0.
+  "unblocked_hits_taken_this_combat": 3,  // Times this player took unblocked damage THIS COMBAT (Tear Asunder). A count of
+                                   //   events, not HP lost; a fully blocked hit does not count. Added in 0.5.4.
+  "damage_not_fully_blocked_this_owner_turn": true,  // Whether this player received damage that was NOT fully blocked
+                                   //   during their current owner turn, enemy side included (Emotion Chip's
+                                   //   HappenedLastPlayerTurn query at the next turn start). Unlike lost_hp_this_turn it is
+                                   //   true when Buffer, Tungsten Rod or Osty prevented the HP loss, and for unblockable
+                                   //   damage. Also on teammate entries in "players". Omitted when the history is unavailable.
+  "exhausted_this_turn": true,     // true if any of this player's cards exhausted this turn (Forgotten Ritual)
+  "hand_will_flush": true,         // whether the end-of-turn flush will run at all. A hook can suppress it, in which
+                                   //   case the WHOLE hand is kept and no card left in it is headed for the discard pile.
+  "draw_pile": [ /* Pile Card Objects, in true order (index 0 = next draw; valid until the next shuffle event) */ ],
   "discard_pile": [ /* Pile Card Objects */ ],
   "exhaust_pile": [ /* Pile Card Objects */ ],
+  "play_pile": [ /* Pile Card Objects, in Play-pile order: executing cards and reserved autoplays */ ],
   "orbs": [ /* Orb Objects */ ],   // Defect only; omitted if orb capacity is 0
   "orb_slots": 3,
   "orb_empty_slots": 1,
@@ -194,6 +300,13 @@ from `RelicStatus.Disabled` in `NRelicInventoryHolder.RefreshStatus`; for exampl
 `LizardTail.WasUsed` sets that status when consumed. These booleans do not claim to
 encode every reason a relic can be disabled.
 
+Pael's Tooth exposes `relics[].runtime.return_cards` in saved-list order. Each
+entry is a full card record rendered after its pending upgrade, with
+`stored_upgrade_level` preserving the original saved upgrade level. The list
+replaces the opaque `_serializableCards` field; reading it does not add cards,
+run global upgrade hooks, or consume RNG. `values=unpowered` applies to these
+records too. A hidden counter and an empty list mean there are no cards left.
+
 ### Card Object (in hand)
 
 ```jsonc
@@ -209,7 +322,16 @@ encode every reason a relic can be disabled.
   "can_play": true,
   "unplayable_reason": null, // e.g. "NotEnoughEnergy", "Unplayable", null if playable
   "is_upgraded": false,
-  "keywords": [ /* Keyword Objects */ ]
+  "keywords": [ /* Keyword Objects */ ],   // localized hover tips — DISPLAY TEXT, don't match on it
+  "keyword_ids": ["Exhaust"],              // machine-readable CardKeyword names; use these
+  "combat_card_id": 12,      // stable physical identity for the fight; tells two copies of Strike apart
+  "has_retain_keyword": false,      // exact Keywords.Contains(Retain); survives turn cleanup
+  "has_single_turn_retain": false,  // private single-turn grant; cleared after the hand flush
+  "should_retain_this_turn": false, // OR of those two fields, for the current flush
+  "has_sly_keyword": false,        // exact permanent/combat keyword membership
+  "has_single_turn_sly": false,    // Hand Trick grant; cleared after the hand flush
+  "is_sly_this_turn": false,       // OR of the two Sly sources
+  "exhaust_on_next_play": false    // one-shot flag, separate from the Exhaust keyword
 }
 ```
 
@@ -217,14 +339,33 @@ encode every reason a relic can be disabled.
 
 ```jsonc
 {
+  "id": "STRIKE_R",
   "name": "Strike",
+  "type": "Attack",          // Attack, Skill, Power, Status, Curse
   "cost": "1",               // Energy cost as string ("X" for X-cost)
-  "star_cost": null,          // Regent star cost as string, null if N/A
-  "description": "Deal 6 damage."
+  "star_cost": null,         // Regent star cost as string, null if N/A
+  "description": "Deal 6 damage.",
+  "rarity": "Common",
+  "is_upgraded": false,
+  "target_type": "AnyEnemy", // None, Self, AnyEnemy, AllEnemies, etc.
+  "keywords": [ /* Keyword Objects */ ],   // localized hover tips — DISPLAY TEXT, don't match on it
+  "keyword_ids": ["Exhaust"],              // machine-readable CardKeyword names; use these
+  "combat_card_id": 12,      // stable physical identity for the fight
+  "has_retain_keyword": false,
+  "has_single_turn_retain": false,
+  "should_retain_this_turn": false,
+  "has_sly_keyword": false,
+  "has_single_turn_sly": false,
+  "is_sly_this_turn": false,
+  "exhaust_on_next_play": false // common card fields, present in every pile
 }
 ```
 
 ### Orb Object
+
+`passive_val` and `evoke_val` include current Focus and relic modifiers. Glass
+also includes `base_passive_val`, its stored passive amount before Focus. This
+field preserves the value hidden when negative Focus clamps the preview to zero.
 
 ```jsonc
 {
@@ -248,9 +389,26 @@ Used for both player `status` and enemy `status`.
   "amount": 3,
   "type": "Buff",            // "Buff" or "Debuff"
   "description": "Increases attack damage by 3.",
-  "keywords": [ /* Keyword Objects */ ]
+  "keywords": [ /* Keyword Objects */ ],
+  // Exact instance state, present even for powers the UI hides:
+  "display_amount": 3,               // what the game would render
+  "amount_on_turn_start": 3,         // for powers that tick per turn
+  "skip_next_duration_tick": false,
+  "instance_type": "Normal",         // game's InstanceType for the power
+  "applier_combat_id": 1,            // Creature.CombatId that applied it (null if none)
+  "target_combat_id": 42,            // Creature.CombatId it is attached to
+  "is_visible": true,                // power.IsVisible
+  "hidden_in_ui": true,              // present only when is_visible is false
+  "vars": {                          // DynamicVars, per var
+    "Strength": { "base": 3, "enchanted": 3, "preview": 3, "rendered": "3" }
+  },
+  "runtime": { /* BuildPowerRuntimeState: counters/recharge the display omits */ }
 }
 ```
+
+Powers are listed even when `is_visible` is false, because hidden tracker powers
+still change damage. `name`, `description` and `keywords` are omitted (rather
+than blanked) when localization or hover tips throw mid-transition.
 
 ### Keyword Object
 
@@ -290,6 +448,7 @@ Menu sub-screens expose their own options:
 - `multiplayer_load_lobby`: `confirm` / `embark`, `unready`, `back`
 - `profile_select`: `profile_1`, `profile_2`, `profile_3`, `back`
 - `character_select`: character IDs/names, `back`, `confirm` / `embark`, `unready` (MP, after readying)
+- `custom_run`: character IDs/names, `back`, `confirm` / `embark` (accepts `seed`), `unready` (MP, after readying)
 - `tutorial_prompt`: `no`, `yes`
 - `popup`: advertised popup button labels, normalized to lowercase words such as `ignore` or `back`
 - `timeline`: `advance`, `back`
@@ -360,6 +519,43 @@ Reached via the `multiplayer` submenu's `load` option (host) or by joining a hos
 }
 ```
 
+#### `custom_run` — Custom run setup (seeded runs)
+
+Reached from the `singleplayer` (or `multiplayer_host`) submenu via `custom`. This is
+a different screen from `character_select`: it owns the seed field, the ascension
+panel and the modifier tickboxes, and it carries its own character buttons.
+
+It is the **only** way to start a run on a chosen seed. Standard singleplayer
+character select has no lobby behind it, so a seeded `embark` there is rejected.
+
+```jsonc
+{
+  "state_type": "menu",
+  "menu_screen": "custom_run",
+  "message": "Custom run setup. Select a character, then 'embark' (pass 'seed' to fix the run).",
+  "characters": [ /* same shape as character_select */ ],
+  "selected_character": "IRONCLAD",  // the screen auto-selects the first button on open
+  "selection_busy": false,
+  "seed": "0",                       // the lobby's seed (what the run will actually use)
+  "seed_input": "0",                 // the on-screen text field
+  "ascension": 0,
+  "max_ascension": 0,
+  "modifiers": [],                   // ticked custom modifiers, empty for a clean run
+  "lobby": { /* present only in MP host/client */ },
+  "options": [
+    { "name": "IRONCLAD", "enabled": true },
+    { "name": "confirm",  "enabled": true },
+    { "name": "embark",   "enabled": true },   // alias of confirm
+    { "name": "back",     "enabled": true },
+    { "name": "unready",  "enabled": false }   // MP only; enabled after confirm/embark
+  ]
+}
+```
+
+`menu_select` with `confirm`/`embark` and a `seed` applies the seed to the lobby
+before clicking, so the run starts on it. The seed is canonicalized by the game
+(upper-cased, `O` -> `0`, `I` -> `1`).
+
 #### `character_select` — extended for MP
 
 The same screen drives SP, MP host, and MP client. In MP, an additional `lobby` block appears, and the `unready` option becomes available after the local player has hit `confirm`/`embark`:
@@ -373,7 +569,7 @@ The same screen drives SP, MP host, and MP client. In MP, an additional `lobby` 
   "lobby": {                       // present only in MP
     "type": "host",                // "host" | "client" | "singleplayer"
     "game_mode": "standard",       // "standard" | "daily" | "custom"
-    "max_players": 4,
+    "max_players": 4,              // private on beta v0.111+, still read; absent only if renamed
     "ascension": 0,
     "max_ascension": 5,            // min across all lobby members' MaxMultiplayerAscension
     "all_ready": false,
@@ -422,6 +618,16 @@ Run state or room type not recognized.
 
 ### `monster` / `elite` / `boss` — Combat
 
+A combat room reports its room type as `state_type` for its whole lifetime, so
+the payload says which phase it is in. `battle` is only present once the fight
+has actually started:
+
+| Payload | Meaning | What to do |
+|---------|---------|------------|
+| `battle` present | Combat is live | Act normally (respect `is_play_phase`) |
+| `combat_starting: true`, no `battle` | The room is entered but the fight has not started (asset load, deck shuffle, spawn-ins, combat-start banner). Covers combats reached from the map *and* from an event's "Fight" option | Poll again; do not send actions. Lasts about a second |
+| `message: "Combat ended. Waiting for rewards..."`, no `battle` | The fight is over and rewards are on the way | Poll again until the rewards overlay or the map appears |
+
 ```jsonc
 {
   "state_type": "monster",  // or "elite", "boss"
@@ -442,11 +648,72 @@ Run state or room type not recognized.
         "intents": [
           {
             "type": "Attack",          // Attack, Defend, Buff, Debuff, Sleep, etc.
+            "intent_class": "AttackIntent", // Concrete intent class name (never throws)
+            "is_stun": false,          // true when this intent is a StunIntent
             "label": "11",             // Damage number or short label
+            "damage": 11,              // Attack/DeathBlow only: exact per-hit damage
+            "hits": 1,                 //   (from the intent's DamageCalc/Repeats)
+            "card_count": 2,           // StatusCard only: cards shuffled in
             "title": "Attack",         // Hover tip title
             "description": "Deals 11 damage."  // Hover tip description
           }
-        ]
+        ],
+        "stunned": false,              // true when the current move is a stun turn
+        "move_id": "SEA_KICK",         // Stable id of the current move state
+        // What the current move ACTUALLY does, statically read from the move
+        // lambda's IL (PowerCmd.Apply<XxxPower> / CreatureCmd.GainBlock /
+        // CardPileCmd.AddToCombatAndPreview<Card> callsites). "target" is
+        // "self" (the monster) or "player". "amount" may be null when the
+        // value couldn't be resolved. Omitted when the move has no such
+        // effects or the scan failed.
+        "move_effects": {
+          "applies": [ { "power": "StrengthPower", "target": "self", "amount": 2 } ],
+          "block": 5,                  // block the move grants its owner
+          "heal": 4,                   // HP the move restores
+          "status_card": "Slimed"      // card class shuffled into player piles
+        },                             //   (count = the StatusCard intent's card_count)
+        // Numeric design stats declared on the concrete monster class.
+        // Names are "<MoveIdCamelCase><Effect>" (BUBBLE -> BubbleBlock,
+        // BubbleStr), so a Buff/Defend/Heal move's real amounts are joinable
+        // from its move_id when move_effects is absent.
+        "model_stats": { "SeaKickDamage": 8, "BubbleBlock": 9, "BubbleStr": 3 },
+        // Complete monster intent state machine. Move nodes include the same
+        // intent/effect shapes as the current move. Random branches retain the
+        // game's weight, repeat, max-repeat, and cooldown rules. Conditional
+        // branches are ordered; condition is a re-evaluable expression over
+        // simulated HP, powers, living allies, monster deaths, and move
+        // history. enabled preserves the live closure result for diagnostics.
+        // Unknown modded closures use {op:"snapshot"} and set the top-level
+        // snapshot flag. rng_seed/rng_counter (stable) or
+        // rng_state/rng_counter (beta) identify the shared MonsterAi
+        // xoshiro256** stream used by all enemies in slot order. A beta state
+        // is already at the reported counter and must not be advanced again.
+        // Omitted when reflection fails or no machine exists.
+        "intent_machine": {
+          "initial_state": "BUBBLE",
+          "current_state": "SEA_KICK",
+          "state_log": ["BUBBLE", "SEA_KICK"],
+          "rng_seed": 12345,
+          "rng_counter": 7,
+          "conditional_values_are_snapshots": true,
+          "random_weights_are_snapshots": false,
+          "states": [
+            { "id": "SEA_KICK", "kind": "move", "follow_up": "CHOICE",
+              "intents": [ { "type": "Attack", "label": "8" } ] },
+            { "id": "CHOICE", "kind": "random", "branches": [
+              { "state": "BUBBLE", "weight": 1.0, "repeat": "CannotRepeat",
+                "max_repeats": 0, "cooldown": 0 }
+            ] },
+            { "id": "PHASE", "kind": "conditional", "branches": [
+              { "state": "BUBBLE", "enabled": true,
+                "condition": { "op": "owner_hp_fraction", "cmp": "ge",
+                  "numerator": 1, "denominator": 2 } },
+              { "state": "SPINNING_KICK", "enabled": false,
+                "condition": { "op": "owner_hp_fraction", "cmp": "lt",
+                  "numerator": 1, "denominator": 2 } }
+            ] }
+          ]
+        }
       },
       {
         // A dead enemy the game keeps in the fight (a Decimillipede segment waiting to
@@ -467,10 +734,35 @@ Run state or room type not recognized.
         },
         "intents": []                  // Becomes a Heal intent on the turn before the revive
       }
-    ]
+    ],
+    // The player's side of the board: living, non-player creatures (Osty and
+    // other pets). Each entry has exactly the same shape as an `enemies[]`
+    // entry, so a target consumed from either list works the same way. The
+    // player's own creature is reported under `player`, not here.
+    "allies": [ { "entity_id": "OSTY_0", "combat_id": 50, "alive": true, "hp": 12 } ],
+    // The combat id the game will hand to the next creature it creates.
+    // A summon that lands this turn shows up with this id, so a client can
+    // tell a freshly spawned pet from one it has already seen.
+    "next_creature_id": 51,
+    // Run RNG stream coordinates (singleplayer and multiplayer battle states).
+    // Each stream is an independent xoshiro256** generator seeded once per run
+    // (seed = run seed + hash(snake_case(stream name))); counter = values
+    // consumed so far. Reconstructing the stream at counter and rolling it
+    // forward predicts future random results exactly: "shuffle" drives
+    // reshuffle order (StableShuffle: sort by (card id, upgrade level) then
+    // Fisher-Yates downward, count-1 rolls) plus random-position inserts and
+    // Beat Down/Catastrophe/Uproar-style pile picks; "combat_targets" drives
+    // random-target attacks and orb targeting (one NextInt(0, n) roll per
+    // pick over hittable enemies in slot order). In MP the host-synced
+    // RunRngSet is shared by all players in lockstep. Streams are read via
+    // reflection; a renamed stream is omitted. Absent if reflection fails.
+    // Identical to `run.rng` — see the "Run RNG" section below for the full
+    // stream list, the run seed and the odds accumulators.
+    "rng_streams": { "...": "same block as run.rng" }
   },
-  "run": { ... },
-  "player": { ... }  // Includes hand, energy, piles, orbs during combat
+  "run": { ... },   // Carries "rng" on every screen, in and out of combat
+  "player": { ... } // Includes hand, energy, piles, orbs during combat, plus
+                    // that player's own "rng" (rewards/shops/transformations)
 }
 ```
 
@@ -487,6 +779,115 @@ its `intents` then show `Heal`), and `hp` is the amount it heals for. A corpse h
 fight by something that never revives it (`DieForYouPower`, `IllusionPower`) has `alive: false`
 and no `revive`, and neither does the last segment of a Decimillipede — with no living peer
 left to reattach to, the fight is over rather than about to restart.
+
+**Allies.** `battle.allies` lists the player's own side of the board — living, non-player
+creatures such as Osty. Only `enemies[]` used to be reported, so a pet was invisible to
+anything reading combat state and the Necrobinder capture mechanic could not be verified.
+Entries share the `enemies[]` shape exactly (including `status`, `intents` and `revive`), so
+one target lookup handles both lists. The player's own creature stays under `player`.
+
+`battle.next_creature_id` is the combat id the game will assign to the next creature it
+creates (`CombatState._nextCreatureId`). An id equal to it in the same payload names a
+creature summoned during this turn.
+
+### Run RNG — `run.rng` / `battle.rng_streams` / `player.rng` / enemy `rng`
+
+Every deterministic generator the game holds is exported. Each is an independent
+xoshiro256** stream with `counter` = values consumed so far. Stable builds expose
+the constructor `seed`; reconstruct it and advance by `counter`. Beta v0.110+
+instead exposes the four-word current `state`, which is already advanced to the
+reported counter and must be used directly. Nothing here ever advances a live
+stream.
+
+Streams are read via reflection: a renamed stream is omitted rather than
+crashing, and a stream added by a game update is picked up automatically (under
+its snake-cased type name if it has no property accessor).
+
+**`run.rng`** — the run-wide `RunRngSet`, present on every screen (not just in
+combat, since map layout, `?`-node contents and the encounter order are all
+rolled outside a battle). `battle.rng_streams` carries the same block during
+combat, for backwards compatibility.
+
+```jsonc
+"rng": {
+  "run_seed": 3054346721,       // uint hash of the seed string; the map LAYOUT is
+                                // a fresh `new Rng(run_seed, "act_N_map")`, so it
+                                // is reconstructible from this alone
+  "run_string_seed": "ABC123",  // the seed as typed/displayed
+
+  "up_front":                { "seed": 771209812, "counter": 12 },  // monster/elite order, event pool, relic offers
+  "shuffle":                 { "seed": 3054346721, "counter": 42 }, // reshuffles (StableShuffle: sort by (card id,
+                                                                    // upgrade level) then Fisher-Yates downward,
+                                                                    // count-1 rolls), random-position inserts,
+                                                                    // Beat Down/Catastrophe/Uproar pile picks
+  "unknown_map_point":       { "seed": 118273645, "counter": 4 },   // the room type a "?" node rolls into
+  "combat_card_generation":  { "seed": 77120981,  "counter": 0 },
+  "combat_potion_generation":{ "seed": 5523187,   "counter": 0 },
+  "combat_card_selection":   { "seed": 445910227, "counter": 1 },   // True Grit-style random card picks
+  "combat_energy_costs":     { "seed": 8912345,   "counter": 0 },   // Confusion / Snecko Eye
+  "combat_targets":          { "seed": 1938475601,"counter": 3 },   // random-target attacks and orb targeting
+                                                                    // (one NextInt(0, n) per pick, hittable
+                                                                    // enemies in slot order)
+  "monster_ai":              { "seed": 12345,     "counter": 7 },
+  "niche":                   { "seed": 992134,    "counter": 9 },   // CursedRun, and SPAWNED MONSTER HP:
+                                                                    // CombatState.CreateCreature calls
+                                                                    // Creature.SetUniqueMonsterHpValue(niche),
+                                                                    // so mid-combat summons (Infested wrigglers,
+                                                                    // Surprise gremlins) are predictable
+  "combat_orb_generation":   { "seed": 190283345, "counter": 0 },   // Chaos
+  "treasure_room_relics":    { "seed": 44120983,  "counter": 0 },   // MP tie-break on duplicate relic picks
+
+  // Stateful odds the rolls are compared against. A counter alone cannot
+  // predict a "?" node without the running odds value.
+  "odds": {
+    "unknown_map_point": {
+      "current_value": 0.0,
+      "monster_odds": 0.1, "elite_odds": -1.0,   // negative = never rolled
+      "treasure_odds": 0.02, "shop_odds": 0.03
+    }
+  }
+}
+```
+
+On beta v0.110+, each stream entry uses the following shape instead. All four
+values are unsigned 64-bit integers:
+
+```jsonc
+"shuffle": {
+  "state": [13720838825685603483, 2398916695208396998,
+            17770384849984869256, 891717726879801395],
+  "counter": 42
+}
+```
+
+**`player.rng`** (and `players[i].rng` in multiplayer) — the per-player
+`PlayerRngSet`, seeded from the run seed plus the player's **slot** index.
+
+```jsonc
+"rng": {
+  "seed": 3054346799,
+  "slot_index": 0,              // also needed to rebuild ad-hoc content RNGs,
+                                // which seed from run seed + slot + content id
+  "rewards":         { "seed": 1122334, "counter": 6 },  // card + potion rewards, and
+                                                         // whether a potion drops at all
+  "shops":           { "seed": 5566778, "counter": 2 },
+  "transformations": { "seed": 9900112, "counter": 0 },
+  "odds": {
+    "card_rarity":   { "current_value": 0.0 },
+    "potion_reward": { "current_value": 0.4 }
+  }
+}
+```
+
+**Enemy `rng`** — each enemy in `battle.enemies[]` carries its own monster-local
+stream, assigned in `CombatState.CreateCreature` from the run seed and the
+current map coordinate. Omitted for canonical (non-mutable) models, whose getter
+returns the non-deterministic `Rng.Chaotic`.
+
+```jsonc
+"rng": { "seed": 3054346722, "counter": 3 } // stable
+// beta: { "state": [s0, s1, s2, s3], "counter": 3 }
+```
 
 ### `hand_select` — In-Combat Card Selection
 
@@ -512,7 +913,7 @@ Appears when a card effect prompts "Select a card to exhaust/discard/upgrade". *
       }
     ],
     "selected_cards": [          // Only present if cards have been selected
-      { "index": 0, "name": "Defend" }
+      { "index": 0, "hand_index": 2, "id": "DEFEND", "name": "Defend", "is_upgraded": false /* full Card State */ }
     ],
     "can_confirm": false
   },
@@ -637,6 +1038,19 @@ Pick one card to add to your deck. Appears after claiming a card reward, or dire
       { "col": 3, "row": 1, "type": "Monster" },
       { "col": 3, "row": 2, "type": "Monster" }
     ],
+    // Current act only. `visited` above carries the map-point TYPE; this is the
+    // only place a "?" reports the room it actually became, and which encounter
+    // or event was served there. Also the input to
+    // RunManager.BuildRoomTypeBlacklist (no Shop straight after a Shop).
+    "point_history": [
+      {
+        "map_point_type": "Unknown",
+        "rooms": [
+          { "room_type": "Monster", "model_id": "MAWLER_NORMAL",
+            "monster_ids": ["MAWLER"] }
+        ]
+      }
+    ],
     "next_options": [
       {
         "index": 0,
@@ -648,10 +1062,23 @@ Pick one card to add to your deck. Appears after claiming a card reward, or dire
         ]
       }
     ],
+    "travel_enabled": true,      // false while the current room is unfinished
+    "travel_in_flight": false,   // true between picking a node and the room loading
+    "transition_in_flight": false, // true while an act change is still resolving behind this map
+    "screen_open": false,          // NMapScreen.IsOpen — the map was deliberately opened
+    "screen_visible": true,        // the map node is on screen, which includes Close()'s animate-out
+    "drawing_coordinate_space": {
+      "name": "map_normalized",
+      "x_min": -3, "x_max": 3,
+      "y_min": -2, "y_max": 2
+    },
     "nodes": [                   // Full map DAG
       {
         "col": 3, "row": 0,
         "type": "Start",
+        // Live visual anchor after the map's per-run random jitter. Accepted
+        // directly as an x/y point by map_draw.
+        "draw_position": { "x": -0.08, "y": 0.83 },
         "children": [ [2, 1], [3, 1], [4, 1] ]  // [col, row] pairs
       }
     ],
@@ -685,6 +1112,9 @@ Pick one card to add to your deck. Appears after claiming a card reward, or dire
 }
 ```
 
+Existing drawing strokes are intentionally not included in game state. Read
+them from the dedicated `GET /api/v1/mapdrawings` endpoint.
+
 ### `event` — Event / Ancient Encounter
 
 ```jsonc
@@ -696,14 +1126,26 @@ Pick one card to add to your deck. Appears after claiming a card reward, or dire
     "is_ancient": true,
     "in_dialogue": false,        // true = click to advance dialogue first
     "body": "Event description text...",
+    // A room transition is resolving (entering this room, or an option body
+    // still running). choose_event_option refuses every option while it is
+    // true, and every option reports is_enabled: false to match — wait, don't
+    // retry. Notably non-zero with Instant Mode, which draws the interactive
+    // event well before the game's own room fade finishes.
+    "transition_in_flight": false,
     "options": [
       {
         "index": 0,
+        // EventOption.TextKey: a stable, language-independent option id. Match
+        // on this rather than on the localized title/description, which change
+        // with rewording and translation.
+        "option_key": "NEOW.pages.INITIAL.options.DRAFT",
         "title": "Draft",
         "description": "Choose 10 card rewards to replace your starting deck.",
         "is_locked": false,
         "is_proceed": false,
         "was_chosen": false,
+        "is_enabled": true,                  // false while a choice is executing or a transition is resolving
+        "relic_id": "RELIC_ID",             // Only if option has a relic
         "relic_name": "Relic Name",         // Only if option has a relic
         "relic_description": "Relic desc.",  // Only if option has a relic
         "keywords": [ /* Keyword Objects */ ]
@@ -721,6 +1163,7 @@ Pick one card to add to your deck. Appears after claiming a card reward, or dire
 {
   "state_type": "rest_site",
   "rest_site": {
+    "room_open": true,          // false while the room UI is still loading
     "options": [
       {
         "index": 0,
@@ -741,12 +1184,18 @@ Pick one card to add to your deck. Appears after claiming a card reward, or dire
 
 ### `shop` — Shop
 
-Shop inventory is auto-opened when state is queried.
+State queries do not open the inventory. Use `shop_open` when ready to buy;
+this permits out-of-combat actions such as throwing Foul Potion first.
+
+Card entries include `is_upgraded`, `enchantment`, and `enchantment_state` from
+the offered card. These use the same fields as deck and reward cards, including
+relic effects applied when the inventory is created or updated after a purchase.
 
 ```jsonc
 {
   "state_type": "shop",
   "shop": {
+    "inventory_open": false,
     "items": [
       // Card entry
       {
@@ -763,6 +1212,9 @@ Shop inventory is auto-opened when state is queried.
         "card_star_cost": null,    // Regent star cost as string, null if N/A
         "card_rarity": "Rare",
         "card_description": "Lose 6 HP. Gain 2 Energy. Draw 3 cards.",
+        "is_upgraded": false,
+        "enchantment": null,
+        "enchantment_state": null,
         "keywords": [ /* Keyword Objects */ ]
       },
       // Relic entry
@@ -808,7 +1260,9 @@ Shop inventory is auto-opened when state is queried.
 
 ### `fake_merchant` — Fake Merchant Event
 
-A relic-only shop disguised as an event. Uses `shop_purchase` and `proceed` actions (same as regular shop). If the player triggers a fight, the merchant disappears.
+A relic-only shop disguised as an event. Uses `shop_open`, `shop_purchase`, and
+`proceed` actions (same as a regular shop). If the player triggers a fight, the
+merchant disappears.
 
 ```jsonc
 {
@@ -818,6 +1272,7 @@ A relic-only shop disguised as an event. Uses `shop_purchase` and `proceed` acti
     "event_name": "Fake Merchant",
     "started_fight": false,         // true after triggering the foul potion fight
     "shop": {
+      "inventory_open": false,
       "items": [
         {
           "index": 0,
@@ -843,7 +1298,7 @@ A relic-only shop disguised as an event. Uses `shop_purchase` and `proceed` acti
 }
 ```
 
-**Note:** The fake merchant only sells relics — no cards, potions, or card removal. The `shop_purchase` action works the same as for a regular shop.
+**Note:** The fake merchant only sells relics — no cards, potions, or card removal. Its shop actions work the same as for a regular shop.
 
 ### `treasure` — Treasure Room
 
@@ -874,7 +1329,9 @@ Chest is auto-opened on first state query.
 
 ### `card_select` — Card Selection Overlay
 
-Covers deck transforms, upgrades, enchants, removals, and choose-a-card effects. Appears on top of any room.
+Covers deck transforms, upgrades, enchants, removals, and choose-a-card effects. Appears on top of any room. During combat the
+top-level payload also contains the full `battle` snapshot, so a client can evaluate the selection in its combat
+context rather than applying a deck-only heuristic.
 
 ```jsonc
 {
@@ -882,9 +1339,22 @@ Covers deck transforms, upgrades, enchants, removals, and choose-a-card effects.
   "card_select": {
     "screen_type": "transform",  // transform, upgrade, enchant, select, simple_select, choose
     "prompt": "Choose 2 cards to Transform.",
+    "selection_id": 17,          // monotonic identity of the command that opened the overlay
+    "selection_entry_point": "FromCombatPile",
+    "selection_surface": "combat_pile", // hand, combat_pile, generated_choice, generated_bundle, deck, simple_grid
+    "selection_effect": "discard_to_draw_top", // canonical post-selection continuation; origin_specific if unknown
+    "source_pile": "discard",   // present for combat-pile selectors
+    "origin_id": "HEADBUTT",    // source model when the command receives one
+    "origin_type": "Headbutt",  // decompiled caller/model type
+    "origin_kind": "card",      // card, potion, power, relic, monster, event, or model
+    "min_select": 1,
+    "max_select": 1,
+    "manual_confirmation": false,
+    "cancelable": false,
     "cards": [
       {
         "index": 0,
+        "combat_card_id": 23,   // stable physical-card identity; combat piles only
         "id": "STRIKE_R",
         "name": "Strike",
         "type": "Attack",
@@ -911,6 +1381,7 @@ Covers deck transforms, upgrades, enchants, removals, and choose-a-card effects.
     // For "choose" type: picking is immediate (no confirm needed).
     // can_skip indicates if a skip button exists.
   },
+  "battle": { ... },            // present when this overlay is inside a live combat
   "run": { ... },
   "player": { ... }
 }
@@ -995,7 +1466,7 @@ Boss relic selection. Pick is immediate.
   "crystal_sphere": {
     "instructions_title": "Crystal Sphere",
     "instructions_description": "Use divination tools to reveal cells...",
-    "grid_width": 9,
+    "grid_width": 11,
     "grid_height": 11,
     "cells": [
       {
@@ -1023,7 +1494,14 @@ Boss relic selection. Pick is immediate.
     "can_use_big_tool": true,
     "can_use_small_tool": true,
     "divinations_left_text": "3 divinations remaining",
-    "can_proceed": false
+    "can_proceed": false,
+    "minigame": {
+      "rng_at_start": { "seed": 1234567, "counter": 1 },  // beta builds: { "state": [..4..], "counter": 1 }
+      "divinations_left": 2,
+      "clicks": [ { "tool": "big", "x": 5, "y": 5 } ],
+      "click_in_flight": false,   // a click is still resolving (a curse reveal awaits a ~2s preview)
+      "trace_complete": true
+    }
   },
   "run": { ... },
   "player": { ... }
@@ -1063,6 +1541,50 @@ Prevents soft-locks when an unrecognized overlay is active.
   "player": { ... }
 }
 ```
+
+---
+
+## Map Drawings
+
+### `GET /api/v1/mapdrawings`
+
+Returns saved drawing/eraser polylines through a dedicated endpoint. Drawing
+data is never embedded in the normal singleplayer or multiplayer state payload.
+The endpoint works for either run mode and also reports live node anchors.
+
+```jsonc
+{
+  "status": "ok",
+  "coordinate_space": {
+    "name": "map_normalized",
+    "x_min": -3, "x_max": 3,
+    "y_min": -2, "y_max": 2,
+    "description": "Resolution-independent coordinates used by the game's saved and multiplayer map drawings"
+  },
+  "nodes": [
+    { "col": 2, "row": 3, "position": { "x": -0.18, "y": 0.63 } }
+  ],
+  "players": [
+    {
+      "player_id": "76561198000000000",
+      "is_local": true,
+      "lines": [
+        {
+          "mode": "draw",
+          "points": [
+            { "x": -0.18, "y": 0.63 },
+            { "x": 0.02, "y": 0.51 }
+          ]
+        }
+      ]
+    }
+  ]
+}
+```
+
+The node positions reflect the current live map's random visual jitter and
+canvas scroll transform. They use the game's native map-network coordinate
+space accepted by `map_draw`.
 
 ---
 
@@ -1128,15 +1650,24 @@ The response is built from `SaveManager.Progress`, the active profile's `progres
 
 ### `GET /api/v1/wiki`
 
-Searches wiki-style card and relic entries available to the active profile. The endpoint requires a query, filters to the profile's discovered card and relic IDs, fuzzy-ranks the matches, and returns a bounded result set. It does not expose the full game catalog.
+Searches or lists wiki-style card and relic entries. With a query the endpoint fuzzy-ranks the matches and returns a bounded result set; **with no query it lists everything in scope**, in name order, which is what a tool building a static catalog wants. By default both modes are filtered to the active profile's discovered card and relic IDs.
 
 Query parameters:
 
 | Parameter | Values | Default | Description |
 |---|---|---|---|
-| `query` or `q` | text | required | Fuzzy search text, such as `ironclad perfect strike` or `silver spoon`. |
+| `query` or `q` | text | *(none)* | Fuzzy search text, such as `ironclad perfect strike` or `silver spoon`. Omit it to list rather than search. |
 | `item_type` or `type` | `all`, `card`, `relic` | `all` | Restricts the search to one wiki kind. |
-| `limit` | integer | `10` | Maximum returned entries. The mod clamps values below 1 and above its internal maximum. |
+| `limit` | integer | `10` searching, whole list otherwise | Maximum returned entries. The mod clamps values below 1 and above its internal maximum, which is higher for a listing than for a search. |
+| `scope` | `discovered`, `all` | `discovered` | `all` ignores the profile's discovery progress and covers every card and relic the game defines. Tooling only — it spoils content the profile has not met. |
+
+The response carries `mode` (`search` or `list`), `scope`, `truncated` (the limit cut the result short), and a `counts` block.
+
+**`scope=all` is what a card catalog needs.** The discovery gate is a spoiler gate, not a data one: an undiscovered card still has a fully resolved description, and a tool that cannot see it writes a catalog entry with no text at all. An older DLL ignores the parameter and silently returns the discovered subset.
+
+```http
+GET /api/v1/wiki?scope=all&item_type=card
+```
 
 Card results include both `base` and `upgraded` variants when the card can be upgraded. The upgraded variant is built from a cloned preview, so the catalog model is not mutated.
 
@@ -1194,6 +1725,54 @@ GET /api/v1/wiki?query=silver%20spoon&item_type=relic
 ```
 
 Relic results include `id`, `name`, `rarity`, `description`, and `keywords`.
+
+### `GET /api/v1/cardpools`
+
+Every unlocked card pool, in the order the game rolls them. Added in 0.5.0,
+replacing the five per-state `combat_*_pool` fields.
+
+The payload is **static for a run** but not across runs: in multiplayer the
+unlock state is the union over all players, and the multiplayer constraint
+follows the player count. Fetch it once when a run starts, not per tick.
+
+```json
+{
+  "source": "run",                     // "run", "profile" (no run loaded), or "none"
+  "multiplayer_constraint": "SingleplayerOnly",
+  "characters": { "Ironclad": "ironclad" },   // character display name -> pool title
+  "character_pool_order": ["ironclad", "silent", "defect", "necrobinder", "regent"],
+  "pools": {
+    "ironclad": {
+      "is_colorless": false,
+      "cards": [
+        {
+          "id": "BASH",
+          "name": "Bash",
+          "type": "Attack",
+          "rarity": "Common",
+          "pool": "ironclad",               // the card's OWN pool, which can differ
+          "can_be_generated_in_combat": true
+        }
+      ]
+    },
+    "colorless": { "...": "..." }, "status": { "...": "..." }, "curse": { "...": "..." }
+  }
+}
+```
+
+Pools cover all five characters plus the shared Colorless, Curse, Deprecated,
+Event, Quest, Status and Token pools.
+
+**Card order is load-bearing.** The game's `Rng.NextItem` indexes straight into
+these lists, so consumers must preserve the order exactly — sorting them changes
+which card a roll produces. Two derived domains follow from this payload:
+
+- *combat generation* (Call of the Void, Creative AI, Hello World, Spectrum
+  Shift) — keep `can_be_generated_in_combat`, drop `Basic`/`Ancient`/`Event`;
+- *transformation* (Entropy) — draw from the original card's own `pool`, or the
+  colorless pool when the original is `Quest` type or `Event`/`Ancient`/`Token`
+  rarity; keep only `Common`/`Uncommon`/`Rare` unless the original is `Status`
+  or `Curse` (those draw from their whole pool); always exclude the original.
 
 ### `GET /api/v1/profiles`
 
@@ -1373,9 +1952,9 @@ Play a card from hand during combat.
 | Parameter | Type | Required | Description |
 |---|---|---|---|
 | `card_index` | int | Yes | 0-based index in hand |
-| `target` | string | For `AnyEnemy` cards | `entity_id` of the target enemy |
+| `target` | string | For `AnyEnemy` cards | `entity_id` of the target enemy. For `AnyAlly` cards (multiplayer-only) it is optional and names a teammate — `players[].entity_id` (e.g. `"player_1"`) or its numeric `combat_id`; self is rejected, and if omitted/unresolvable the lowest-HP living teammate is targeted. `AnyPlayer` cards ignore `target` (the engine only accepts a null target for them). |
 
-**Errors:** Not in combat, not play phase, card unplayable, invalid index, missing target.
+**Errors:** Not in combat, not play phase, card unplayable, invalid index, missing target, ally-targeting card with self as target or no living teammate.
 
 **Warning:** Playing a card removes it from hand — all higher indices shift left. Play from highest index first, or re-query state between plays.
 
@@ -1390,9 +1969,9 @@ Use a potion from the potion belt.
 | Parameter | Type | Required | Description |
 |---|---|---|---|
 | `slot` | int | Yes | Potion slot index |
-| `target` | string | For `AnyEnemy` potions | `entity_id` of the target enemy |
+| `target` | string | For `AnyEnemy` potions | `entity_id` of the target enemy. For `AnyPlayer` potions it is optional and may name any living player — `players[].entity_id` (e.g. `"player_1"`) or numeric `combat_id`; defaults to self (this is how you throw a potion to a teammate). `AnyAlly` potions require a teammate (never self); default is the lowest-HP living teammate. |
 
-**Errors:** Empty slot, combat-only potion used outside combat, automatic potion, already queued, player dead.
+**Errors:** Empty slot, combat-only potion used outside combat, automatic potion, already queued, player dead, unresolvable player target.
 
 ### `discard_potion`
 
@@ -1522,6 +2101,12 @@ Choose an event option.
 
 Works for both regular events and Ancients (after dialogue ends).
 
+An option is rejected once it has been chosen (`was_chosen`), while its button
+is disabled (`is_enabled: false`), or while a room transition is resolving.
+Options whose body starts a fight run across several frames, so without those
+guards a client polling fast enough re-picks the same option and fires it twice,
+which wedges the run. Poll until the state changes instead of retrying.
+
 ### `advance_dialogue`
 
 Click through Ancient dialogue.
@@ -1557,9 +2142,20 @@ Success adds the `option_id` and `index` of what was clicked:
 { "status": "ok", "message": "Selecting rest site option: Smith", "option_id": "SMITH", "index": 1 }
 ```
 
+### `shop_open`
+
+Open a regular or fake merchant inventory. Game-state queries do not open it
+automatically.
+
+```json
+{ "action": "shop_open" }
+```
+
+**Errors:** Not in shop, inventory UI not ready, inventory cannot be opened.
+
 ### `shop_purchase`
 
-Purchase a shop item.
+Purchase a shop item. The inventory must already be open via `shop_open`.
 
 ```json
 { "action": "shop_purchase", "index": 0 }
@@ -1569,7 +2165,7 @@ Purchase a shop item.
 |---|---|---|---|
 | `index` | int | Yes | 0-based index in the flat items list |
 
-**Errors:** Not in shop, item sold out, not enough gold, inventory not ready.
+**Errors:** Not in shop, inventory closed, item sold out, not enough gold, inventory not ready.
 
 ### `choose_map_node`
 
@@ -1582,6 +2178,53 @@ Travel to a map node.
 | Parameter | Type | Required | Description |
 |---|---|---|---|
 | `index` | int | Yes | 0-based index from `next_options` |
+
+`next_options` is empty (and this action errors) whenever the current room is
+not finished, a travel is already resolving, or an act change is still resolving
+— `map.travel_enabled`, `map.travel_in_flight`, `map.transition_in_flight`, and the two halves of the
+map-screen test (`map.screen_open` vs `map.screen_visible`; `Close()` clears `IsOpen` and only then
+animates out, so open=false with visible=true is the just-arrived-in-a-room window)
+say which. Sending a travel during either window wedges the run: a second map
+vote lands on top of the one still resolving, and travelling during an act
+change kills the tween `RunManager.EnterAct` is awaiting, which strands its
+loading handles and disables every later event choice for the session. Both are
+rejected rather than forwarded — wait for the flags to clear.
+
+### `map_draw`
+
+Add one or more drawing or eraser strokes to the open map. This calls the
+game's native map-drawing methods, so strokes are saved with the run and are
+broadcast to multiplayer peers.
+
+```json
+{
+  "action": "map_draw",
+  "strokes": [
+    {
+      "mode": "draw",
+      "points": [
+        { "col": 2, "row": 3 },
+        { "col": 3, "row": 4 },
+        { "x": 0.12, "y": 0.41 }
+      ]
+    }
+  ]
+}
+```
+
+Each point is either a normalized `{x,y}` coordinate or a live map-node
+reference `{col,row}`. Node references resolve through the jittered live UI,
+not an approximation from grid coordinates. `mode` is `draw` or `erase` and
+defaults to `draw`. A request is limited to 64 strokes and 2,048 total points.
+
+### `map_clear_drawings`
+
+Clear only the local player's map drawings. In multiplayer, the clear is
+broadcast using the game's reliable clear message.
+
+```json
+{ "action": "map_clear_drawings" }
+```
 
 ### `select_card`
 
@@ -1742,29 +2385,173 @@ Finish the Crystal Sphere minigame.
 ```jsonc
 {
   "game_mode": "multiplayer",
+  "detail": "summary",        // `full` when requested
   "net_type": "SteamMultiplayer",
   "player_count": 2,
   "local_player_slot": 0,      // Index of local player in players array
   "players": [                  // Summary of all players
     {
+      "entity_id": "player_0",  // Target id for AnyAlly/AnyPlayer cards & potions
       "character": "The Ironclad",
       "hp": 72, "max_hp": 80,
       "gold": 99,
       "is_alive": true,
       "is_local": true
+      // In combat also: "combat_id" (numeric, also accepted as a target),
+      // "block", "is_ready_to_end_turn", teammate "pets"
+      //
+      // For TEAMMATES in combat (not the local player) the entry also carries
+      // that player's fully revealed combat state — MP combat is lockstep, so
+      // every player's combat state is replicated client-side even though the
+      // game UI hides teammate hands (cf. STS2-ShowPlayerHandCards). This is
+      // enough to forward-model a teammate's turn:
+      //   "energy", "max_energy"
+      //   "hand": [ { card info: id/name/type/cost/description/... plus
+      //              "index" and "target_type" } ]
+      //   "draw_pile" / "discard_pile" / "exhaust_pile" / "play_pile": full card lists.
+      //      draw_pile is in true order (index 0 = next draw), valid until
+      //      that player's next shuffle — same guarantee as the local player.
+      //   "draw_pile_count", "discard_pile_count", "exhaust_pile_count", "play_pile_count"
+      //   "status": powers/debuffs (same shape as the local player's "status")
+      //   "orbs" / "orb_slots" / "orb_empty_slots": Defect orb queue, if any
+      //   "relics": same shape as the local player's "relics"
+      //   "potions" / "max_potion_slots": same shape as the local player's
+      // (omitted if the teammate's combat state is mid-transition)
     }
   ]
 }
 ```
+
+With `detail=full`, every top-level player additionally carries their stable
+`slot_index`, string `net_id`, locale-independent `character_id`, complete
+master `deck`, `relics` (including counters/runtime state), `potions`,
+`max_potion_slots`, persistent `status`, and player-scoped `rng`. The response
+also carries `relic_bag_generation`, a process-monotonic integer read in
+constant time. Relic deque contents are deliberately not included here.
+
+Fetch those separately from `GET /api/v1/relicbag`. That response carries the
+same `relic_bag_generation`; join players by `slot_index` and retry when the two
+generation values differ. The counter advances whenever any player's bag is
+populated, loaded, pruned, refreshed, pulled from, explicitly removed from, or
+moved into the multiplayer fallback deque. It detects bag drift between the two
+requests without hashing or traversing bags on the main multiplayer endpoint.
+
+### Relic Grab Bags
+
+`GET /api/v1/relicbag` remains the sole exporter of each player's ordered relic
+deques:
+
+```jsonc
+{
+  "relic_bag_generation": 42,
+  "players": [
+    {
+      "net_id": 123456789,
+      "slot_index": 0,
+      "is_me": true,
+      "deques": {
+        "common": ["AKABEKO", "ANCHOR"],
+        "uncommon": [],
+        "rare": [],
+        "shop": [],
+        "mp_fallback": []
+      }
+    }
+  ]
+}
+```
+
+`mp_fallback` is always exported, including an empty list. If its private source queue cannot be read, the bag export is unavailable rather than claiming exhaustion. After the normal rarity escalation is exhausted, front rewards and filtered merchant back pulls draw from this queue.
+
+Reward sources pull from the front, merchants pull from the back, and declined
+relics have already left the lists. Never sort or cache these deques across
+rooms.
 
 ### Battle State Additions
 
 ```jsonc
 {
   "battle": {
-    "all_players_ready": false
+    "all_players_ready": false,
     // Same shape as singleplayer (round, turn, is_play_phase, enemies).
     // Player state lives in top-level "player" (local) and "players" (all).
+
+    // Every card play this combat, ALL players (MP combat is lockstep, so
+    // the local client's history includes remote players' plays).  Appended
+    // in play order; "index" is a stable per-combat sequence number, so
+    // pollers can dedup with "index > last seen".  Cleared at combat start.
+    // NOTE: emitted in SINGLEPLAYER TOO, despite living in this section.
+    "card_plays": [
+      {
+        "index": 0,
+        "round": 1,
+        "player_turn": 1,             // the OWNER's turn number. Prefer this
+                                       // over "round" for grouping plays into
+                                       // turns: an extra turn carries the same
+                                       // round as the turn before it.
+        "player": "The Ironclad",
+        "is_local": true,
+        "card_id": "STRIKE",
+        "card_name": "Strike",
+        "combat_card_id": 12,         // physical instance, joins to the pile
+                                       // snapshots; null if unavailable
+        "result_pile": "Discard",     // where the card went after resolving —
+                                       // "Discard" vs "Exhaust" vs "Hand"
+        "play_index": 0,              // position in a Replay series
+        "play_count": 1,              // total plays in that series
+        "is_auto_play": false,        // true = Mayhem-style, not played by hand
+        "target": "KIN_PRIEST"        // monster model id, player character
+                                       // title for ally-targeted cards, or
+                                       // null for untargeted cards
+      }
+    ],
+
+    // Where every card WENT during the current and previous player turn.
+    // "card_plays" answers "what was played"; this answers everything else.
+    // Together they reconstruct a whole turn's card churn without diffing pile
+    // snapshots across polls — which cannot work on its own, because a card
+    // drawn and discarded between two polls is never observed in any pile, and
+    // a card mid-resolution sits in a "Play" pile that is not exported.
+    //
+    // IMPORTANT: the end-of-turn hand flush writes NOTHING here.  The game
+    // moves leftover cards with CardPileCmd.Add rather than CardCmd.Discard,
+    // and only the latter reaches the combat history.  So every "discarded"
+    // row is a MID-TURN discard, and "was this card simply left in hand?" must
+    // be answered from the hand itself (see "should_retain_this_turn").
+    //
+    // Bounded to this turn plus each owner's previous turn, so a long fight
+    // does not re-serialize hundreds of rows every poll.  Reading the previous
+    // turn is what lets a client wait until a turn is complete — end-of-turn
+    // cleanup resolves after the turn ends — before acting on it.
+    // Emitted in singleplayer too.
+    "card_history": [
+      {
+        "index": 0,
+        "kind": "drawn",              // played | drawn | discarded |
+                                       // exhausted | generated
+        "round": 1,
+        "player_turn": 1,             // the OWNER's turn number; see above
+        "is_local": true,
+        "card_id": "STRIKE",
+        "card_name": "Strike",
+        "is_upgraded": false,
+        "combat_card_id": 12,         // physical instance; null if unavailable
+        "keyword_ids": ["Sly"]        // machine-readable CardKeyword names
+      }
+    ],
+
+    // Unblocked (HP) damage dealt TO ENEMIES, per player per round.
+    // by_round[i] = damage dealt in round i+1; array length = current round.
+    // Pet damage credits the pet's owner.  Dealer-less damage (e.g. some
+    // DoTs) is not attributed and therefore not counted.
+    "player_damage": [
+      {
+        "player": "The Ironclad",
+        "is_local": true,
+        "by_round": [18, 25],
+        "total": 43
+      }
+    ]
   },
   "players": [
     {
@@ -1868,3 +2655,36 @@ In multiplayer, this is a vote. The turn ends only when all players submit.
 Retract the end-turn vote before all players have committed.
 
 All other actions work identically to singleplayer.
+
+## Exact card damage variables
+
+Cards with canonical `Damage`, `OstyDamage`, or `CalculatedDamage` variables include a `damage_var` object. Numeric values are invariant decimal strings, independent of localized or rounded descriptions:
+
+```json
+{"base":"8.5","enchantment_additive":"0","enchantment_multiplier":"2"}
+```
+
+`base` is the canonical value before enchantments and combat hooks. Calculated damage also includes `extra`; calculate `base + extra * current_count` using the card's current state and target. Apply the additive enchantment value, then its multiplier, before global combat modifiers such as Strength and Weak. These enchantment values reflect the current observation.
+
+The field is exported in every shared card context, including Hand, other piles, selections, decks, rewards, and shops. It is present regardless of the description's `values` mode. Cards without these canonical variables omit it.
+
+For Momentum and active Vigorous enchantments, `damage_var.after_play` describes the mutable callback. Momentum exports `{"kind":"Momentum","amount":"3"}` (with its actual amount): increase the additive bonus after the card's own commands resolve. Active Vigorous exports `{"kind":"Vigorous"}`: disable the bonus during its normal `AfterCardPlayed` listener, after owner relic listeners. Disabled Vigorous omits this field and exports zero additive damage. These updates apply between executions of a repeated card.
+
+Corrupted exports `damage_var.after_play` as `{"kind":"Corrupted"}`. After the card's own commands, it deals 2 unblockable, unpowered damage to its owner. Await damage callbacks before recording the completed play or running its post-card listeners; owner death cancels completion. The intrinsic 1.5 damage multiplier remains in `enchantment_multiplier`.
+
+Corrupted cards also export `hp_loss_var`: the card's own canonical `HpLoss` base as an exact decimal string, or null when that variable is absent. This separates intrinsic self-damage (for example Hemokinesis's first hit) from Corrupted's appended `Lose 2 HP.` description line and its later enchantment hit. Native snapshots preserve the parsed intrinsic amount in `native_self_damage`.
+
+## Master-deck card links
+
+Card objects include `deck_card_index`: the current zero-based master-deck index of the card itself (in the Deck pile) or its `DeckVersion` (in combat). It is `null` when no current deck entry exists. This position can change after deck edits; it is not a permanent ID. `has_deck_version` separately reports whether a parent pointer exists, including a parent removed from the deck.
+
+## Saved card counters
+
+Guilty card objects include `combats_seen`, its saved completed-fight counter (normally 0 through 4). `AfterCombatEnd` increments this field only for the master card in the Deck pile, removing it at 5. Combat copies retain their own saved value. The description shows `5 - combats_seen`, with singular `combat` at one remaining fight.
+
+
+### Fixed card returns and card object identity
+
+Mutable cards include `card_object_id`, an opaque positive integer stable for that physical object during the mod session. This is separate from the shifting `deck_card_index` and is not an action target. Card references in power `runtime` also include `deck_version`: the complete saved master card or `null`. For Swipe, the removed combat face and its master can have different upgrades or saved properties.
+
+`battle.special_card_rewards` lists pending local-player fixed-card rewards, including cards returned when Hopper dies. Each entry has `type: "special_card"`, `card_reference` (the master's `card_object_id`), `card` (the full master snapshot), and `encounter_source`. Reward-screen items of type `special_card` expose the same fields. A returned card remains outside the deck until `claim_reward` succeeds; repeated entries can refer to the same physical card. This list survives the dead enemy's power cleanup. An empty list means no pending fixed-card rewards.

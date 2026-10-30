@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Net;
 using System.Runtime.CompilerServices;
 using System.Text;
@@ -10,6 +11,8 @@ using MegaCrit.Sts2.Core.Combat;
 using MegaCrit.Sts2.Core.Entities.Cards;
 using MegaCrit.Sts2.Core.Entities.Merchant;
 using MegaCrit.Sts2.Core.HoverTips;
+using MegaCrit.Sts2.Core.Localization.DynamicVars;
+using MegaCrit.Sts2.Core.Map;
 using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Nodes.CommonUi;
 using MegaCrit.Sts2.Core.Nodes.GodotExtensions;
@@ -53,15 +56,6 @@ public static partial class McpMod
         return manager.DebugOnlyGetState()?.CurrentSide == MegaCrit.Sts2.Core.Combat.CombatSide.Player;
     }
 
-    private static string? SafeGetCardDescription(CardModel card, PileType pile = PileType.Hand)
-    {
-        try { return StripRichTextTags(card.GetDescriptionForPile(pile)).Replace("\n", " "); }
-        catch (Exception ex)
-        {
-            Warn("card.description", ex);
-            return SafeGetText(() => card.Description)?.Replace("\n", " ");
-        }
-    }
 
     private static CardModel? SafeBuildUpgradedCardPreview(CardModel card)
     {
@@ -345,6 +339,28 @@ public static partial class McpMod
         for (var type = source.GetType(); type != null; type = type.BaseType)
         {
             var field = type.GetField(fieldName, Flags);
+            if (field != null)
+                return field.GetValue(source);
+        }
+
+        return null;
+    }
+
+    private static object? GetInstanceMemberValue(object source, string memberName)
+    {
+        const System.Reflection.BindingFlags Flags =
+            System.Reflection.BindingFlags.Instance |
+            System.Reflection.BindingFlags.Public |
+            System.Reflection.BindingFlags.NonPublic |
+            System.Reflection.BindingFlags.DeclaredOnly;
+
+        for (var type = source.GetType(); type != null; type = type.BaseType)
+        {
+            var property = type.GetProperty(memberName, Flags);
+            if (property is { CanRead: true } && property.GetIndexParameters().Length == 0)
+                return property.GetValue(source);
+
+            var field = type.GetField(memberName, Flags);
             if (field != null)
                 return field.GetValue(source);
         }
@@ -672,6 +688,127 @@ public static partial class McpMod
     {
         var mapScreen = NMapScreen.Instance;
         return mapScreen != null && (mapScreen.IsOpen || IsNodeVisible(mapScreen));
+    }
+
+    /// <summary>
+    /// Has the map screen been deliberately OPENED, ignoring a lingering close?
+    /// </summary>
+    /// <remarks>
+    /// NMapScreen.Close() clears IsOpen and only then animates out, so for the
+    /// rest of that animation IsNodeVisible() still reports the screen -- which
+    /// makes IsMapScreenOpenOrVisible() true immediately after travelling into
+    /// a room. That is the right reading for "is the map on screen" and the
+    /// wrong one for "did the player go back to the map", and the merchant
+    /// branch needs the second.
+    ///
+    /// NMerchantRoom._Ready only calls SetTravelEnabled(true); the one merchant
+    /// path that calls NMapScreen.Open() is HideScreen, wired to the
+    /// ProceedButton's Released signal. So at a merchant this IS the discrete
+    /// "the shop is finished" signal, which is what the rest-site and event
+    /// branches have in their own room state and the merchant lacked.
+    /// </remarks>
+    private static bool IsMapScreenDeliberatelyOpen()
+    {
+        return NMapScreen.Instance?.IsOpen == true;
+    }
+
+    /// <summary>
+    /// Is the run in the middle of a room transition?
+    /// </summary>
+    /// <remarks>
+    /// RunManager wraps every room change in a NetLoadingHandle, which raises
+    /// NetService.IsGameLoading for the whole scope: map travel
+    /// (EnterMapPointInternal), an event option that pushes a combat room
+    /// (EnterRoomWithoutExitingCurrentRoom - the "Fight" options), act changes
+    /// and run start. The singleplayer service tracks the flag too, so this is
+    /// the one signal that covers every path.
+    ///
+    /// It is needed because RunManager.EnterRoomInternal pushes the destination
+    /// onto the room stack BEFORE awaiting its Enter, so a state read during a
+    /// transition sees the new room already current while none of its managers
+    /// have initialized - and before that push, the SOURCE screen is still
+    /// current and still looks actionable even though its choice is already
+    /// executing.
+    /// </remarks>
+    private static bool IsRunTransitionInFlight()
+    {
+        try
+        {
+            return MegaCrit.Sts2.Core.Runs.RunManager.Instance.IsInProgress
+                && MegaCrit.Sts2.Core.Runs.RunManager.Instance.NetService.IsGameLoading;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Is a map travel already resolving?
+    /// </summary>
+    /// <remarks>
+    /// NMapScreen.IsTraveling is set the instant a destination is finalized
+    /// (TravelToMapCoord) and is cleared only after RunManager has finished
+    /// entering the destination room. Throughout that window the map screen is
+    /// still visible and its points still report MapPointState.Travelable, so
+    /// anything keying off those two alone happily offers - and takes - a
+    /// second travel into a room that is still loading.
+    /// </remarks>
+    private static bool IsMapTravelInFlight()
+    {
+        try
+        {
+            var mapScreen = NMapScreen.Instance;
+            return mapScreen != null && IsLiveNode(mapScreen) && mapScreen.IsTraveling;
+        }
+        catch (ObjectDisposedException)
+        {
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// The map points the player could actually click right now, in column order.
+    /// </summary>
+    /// <remarks>
+    /// Mirrors the game's own NMapPoint.IsTravelable gate exactly. MapPointState
+    /// is only the topology flag - the game's own comment calls it "adjacent
+    /// node you can travel to IF you have completed the room" - and it stays
+    /// Travelable for the whole room. NMapScreen.IsTravelEnabled is the half
+    /// that says the room IS finished: TravelToMapCoord clears it, and every
+    /// room turns it back on when it completes (NMapRoom/NMerchantRoom on load,
+    /// NRestSiteRoom/NTreasureRoom/NEventRoom/NCrystalSphereScreen on proceed,
+    /// CombatManager after a win). Gating on it therefore keeps the
+    /// lingering-map escape hatches in the state builder working while closing
+    /// the room-transition window.
+    /// </remarks>
+    internal static List<NMapPoint> GetTravelableMapPoints(NMapScreen mapScreen)
+    {
+        // IsTraveling covers a travel started FROM this map screen. It does not
+        // cover an act change: RunManager.EnterAct opens the new act's map screen
+        // (EnterRoomInternal(new MapRoom())) and only THEN awaits its room fade,
+        // so for the length of that fade the new map is drawn with travelable
+        // points while the act transition is still in flight. Travelling into
+        // that window is not merely early, it corrupts the run: the entry we
+        // start calls NTransition.RoomFadeIn, whose first act is _tween?.Kill()
+        // on the very tween EnterAct is awaiting - and Tween.Kill() never emits
+        // `finished`, while TweenHelper.AwaitFinished only bails out when its
+        // OWNER node leaves the tree (NTransition never does). EnterAct's await
+        // therefore hangs forever, stranding its two NetLoadingHandles, and
+        // NetLoadingHandle's refcount can then never return to zero - pinning
+        // IsGameLoading true for the rest of the session, which makes every
+        // later event choice unanswerable. Diagnosed 2026-08-09 from the handle
+        // trace in McpMod.LoadingDiagnostics.cs; the window is normally hidden
+        // behind the fade animation and only reachable under Instant Mode.
+        if (mapScreen.IsTraveling || IsRunTransitionInFlight())
+            return new List<NMapPoint>();
+
+        return FindAll<NMapPoint>(mapScreen)
+            .Where(mp => mp.Point != null
+                         && (mapScreen.IsDebugTravelEnabled
+                             || (mapScreen.IsTravelEnabled && mp.State == MapPointState.Travelable)))
+            .OrderBy(mp => mp.Point!.coord.col)
+            .ToList();
     }
 
     private static bool IsControlVisibleInTree(NClickableControl? control)

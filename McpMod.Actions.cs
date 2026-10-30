@@ -79,9 +79,12 @@ public static partial class McpMod
             "discard_potion" => ExecuteDiscardPotion(player, data),
             "end_turn" => ExecuteEndTurn(player),
             "choose_map_node" => ExecuteChooseMapNode(data),
+            "map_draw" => ExecuteMapDraw(data),
+            "map_clear_drawings" => ExecuteMapClearDrawings(),
             "choose_event_option" => ExecuteChooseEventOption(data),
             "advance_dialogue" => ExecuteAdvanceDialogue(),
             "choose_rest_option" => ExecuteChooseRestOption(player, data),
+            "shop_open" => ExecuteShopOpen(player),
             "shop_purchase" => ExecuteShopPurchase(player, data),
             "claim_reward" => ExecuteClaimReward(data),
             "select_card_reward" => ExecuteSelectCardReward(data),
@@ -277,6 +280,41 @@ public static partial class McpMod
                     return Error($"Target '{targetId}' not found among alive enemies");
             }
         }
+        else if (card.TargetType == TargetType.AnyAlly)
+        {
+            // AnyAlly = another living player, never self: the game UI excludes
+            // self from targeting and CardCmd's auto-play picks among allies
+            // != owner. (CardModel.IsValidTarget only checks Side, so a self
+            // target would slip through mechanically - but it is a play the
+            // game never allows a human to make.) A null target is rejected by
+            // IsValidTarget and silently cancels the play.
+            // Optional 'target' picks the teammate (players[].entity_id, e.g.
+            // "player_1", or a numeric combat_id); default = lowest-HP living
+            // teammate. All current AnyAlly cards are multiplayer-only.
+            if (data.TryGetValue("target", out var allyElem))
+            {
+                target = ResolvePlayerTarget(player, combatState, allyElem.GetString() ?? "");
+                if (target == player.Creature)
+                    return Error($"Card '{card.Title}' targets an ally and cannot target yourself. Valid targets: {ListAllyTargetIds(player)}");
+                if (target is { IsAlive: false })
+                    target = null;
+                // Unresolvable ids (older clients send enemy ids here) fall
+                // through to the default teammate instead of failing the play.
+            }
+            target ??= player.RunState.Players
+                .Where(p => p != player && p.Creature.IsAlive)
+                .OrderBy(p => p.Creature.CurrentHp)
+                .FirstOrDefault()?.Creature;
+            if (target == null)
+                return Error($"Card '{card.Title}' requires a living teammate to target and there is none");
+        }
+        else if (card.TargetType == TargetType.AnyPlayer)
+        {
+            // No card currently uses AnyPlayer (only potions do), and
+            // CardModel.IsValidTarget rejects ANY non-null target for it -
+            // null is the only value that lets the play execute.
+            target = null;
+        }
 
         // Play the card via the action queue (same path as the game UI)
         RunManager.Instance.ActionQueueSynchronizer.RequestEnqueue(
@@ -285,7 +323,7 @@ public static partial class McpMod
         return new Dictionary<string, object?>
         {
             ["status"] = "ok",
-            ["message"] = $"Playing '{card.Title}'" + (target != null ? $" targeting {SafeGetText(() => target.Monster?.Title) ?? "target"}" : "")
+            ["message"] = $"Playing '{card.Title}'" + (target != null ? $" targeting {DescribeCreature(target)}" : "")
         };
     }
 
@@ -421,9 +459,47 @@ public static partial class McpMod
                 break;
             }
             case TargetType.Self:
-            case TargetType.AnyAlly:
-            case TargetType.AnyPlayer:
+                // PotionModel.IsValidTarget requires target == owner for Self
+                // (unlike cards, where Self passes no target).
                 target = player.Creature;
+                break;
+            case TargetType.AnyPlayer:
+                // Any living player, self included (PotionModel.IsValidTarget).
+                // Optional 'target' throws the potion to a teammate
+                // (players[].entity_id, e.g. "player_1", or a numeric
+                // combat_id); default = self, the pre-existing behavior.
+                if (data.TryGetValue("target", out var playerElem))
+                {
+                    string playerId = playerElem.GetString() ?? "";
+                    target = ResolvePlayerTarget(player, combatState, playerId);
+                    if (target is not { IsAlive: true })
+                        return Error($"Target '{playerId}' not found among living players");
+                }
+                else
+                    target = player.Creature;
+                break;
+            case TargetType.AnyAlly:
+                // Another living player, never self (PotionModel.IsValidTarget
+                // rejects self and the use would be silently cancelled). No
+                // such potion exists today; handled for completeness.
+                if (data.TryGetValue("target", out var allyElem))
+                {
+                    string allyId = allyElem.GetString() ?? "";
+                    target = ResolvePlayerTarget(player, combatState, allyId);
+                    if (target == player.Creature)
+                        return Error($"Potion '{SafeGetText(() => potion.Title)}' targets an ally and cannot target yourself. Valid targets: {ListAllyTargetIds(player)}");
+                    if (target is not { IsAlive: true })
+                        return Error($"Target '{allyId}' not found among living teammates");
+                }
+                else
+                {
+                    target = player.RunState.Players
+                        .Where(p => p != player && p.Creature.IsAlive)
+                        .OrderBy(p => p.Creature.CurrentHp)
+                        .FirstOrDefault()?.Creature;
+                    if (target == null)
+                        return Error($"Potion '{SafeGetText(() => potion.Title)}' requires a living teammate to target and there is none");
+                }
                 break;
             default:
                 target = null;
@@ -439,7 +515,9 @@ public static partial class McpMod
         string targetMsg = potion.TargetType switch
         {
             TargetType.AnyEnemy => $" targeting {SafeGetText(() => target?.Monster?.Title) ?? "enemy"}",
-            TargetType.Self or TargetType.AnyPlayer or TargetType.AnyAlly => " on self",
+            TargetType.Self => " on self",
+            TargetType.AnyPlayer or TargetType.AnyAlly =>
+                target == player.Creature ? " on self" : $" on {DescribeCreature(target)}",
             _ => ""
         };
 
@@ -616,9 +694,28 @@ public static partial class McpMod
             return Error($"Event option index {index} out of range ({buttons.Count} options)");
 
         var button = buttons[index];
-        if (button.Option.IsLocked)
+        var option = button.Option;
+        if (option.IsLocked)
             return Error($"Event option {index} is locked");
-        string title = SafeGetText(() => button.Option.Title) ?? "option";
+
+        // NClickableControl.ForceClick is an unconditional OnRelease + signal
+        // emit - it never consults IsEnabled - so this action has to apply the
+        // game's own gate itself. An option that starts a fight runs its body
+        // across several awaits (fade out, combat state sync, combat asset
+        // preload), and during all of it the buttons are still in the tree, so
+        // a client polling at 10 Hz re-picks the same option and fires the body
+        // a second time, which wedges the run. Both flags below are set the
+        // instant a choice begins executing: NEventRoom.BeforeOptionChosen
+        // calls DisableOptionButtons(), and EventOption.Chosen() assigns
+        // WasChosen synchronously before awaiting OnChosen.
+        if (IsRunTransitionInFlight())
+            return Error("A room transition is already resolving - wait for the destination room to finish loading");
+        if (option.WasChosen)
+            return Error($"Event option {index} was already chosen");
+        if (!button.IsEnabled)
+            return Error($"Event option {index} is not clickable right now - a choice is already resolving");
+
+        string title = SafeGetText(() => option.Title) ?? "option";
         button.ForceClick();
 
         return new Dictionary<string, object?>
@@ -702,6 +799,18 @@ public static partial class McpMod
                 $"Rest option [{index}] {option.OptionId} has no button on screen right now; re-read state. "
                 + $"Available: {DescribeRestOptions(options, uiRoom)}");
 
+        // Same gate as the event action above: ForceClick bypasses IsEnabled, and
+        // NRestSiteButton.SelectOption re-runs the option's whole body without
+        // consulting it either. The chosen option stays in the room's option list
+        // until that body finishes - and a heal that offers rewards (Tiny Mailbox)
+        // sits there for as long as the potions go unclaimed - so a client allowed
+        // to pick again (Miniature Tent) would otherwise fire a second option, or
+        // the same one twice, into the one still resolving. DisableOptions() runs
+        // the instant a selection begins; the buttons are rebuilt (enabled) once
+        // it completes, so this only ever blocks the in-flight window.
+        if (!button.IsEnabled)
+            return Error($"Rest option [{index}] {option.OptionId} is not clickable right now - an option is already resolving");
+
         string optionName = SafeGetText(() => option.Title) ?? option.OptionId;
         button.ForceClick();
 
@@ -750,41 +859,83 @@ public static partial class McpMod
         return null;
     }
 
+    private static Dictionary<string, object?> ExecuteShopOpen(Player player)
+    {
+        if (player.RunState.CurrentRoom is MerchantRoom)
+        {
+            var merchantRoom = NMerchantRoom.Instance;
+            if (merchantRoom?.Inventory == null)
+                return Error("Shop inventory UI is not ready yet; wait a moment and retry");
+            if (merchantRoom.Inventory.IsOpen)
+                return new Dictionary<string, object?>
+                {
+                    ["status"] = "ok",
+                    ["message"] = "Shop inventory is already open"
+                };
+
+            merchantRoom.OpenInventory();
+            return new Dictionary<string, object?>
+            {
+                ["status"] = "ok",
+                ["message"] = "Opening shop inventory"
+            };
+        }
+
+        if (player.RunState.CurrentRoom is EventRoom eventRoom
+            && eventRoom.CanonicalEvent is FakeMerchant
+            && (eventRoom.LocalMutableEvent ?? eventRoom.CanonicalEvent) is FakeMerchant fakeMerchant)
+        {
+            if (fakeMerchant.StartedFight)
+                return Error("The fake merchant is no longer available");
+
+            var eventUi = NEventRoom.Instance;
+            var fakeMerchantNode = eventUi == null ? null : FindFirst<NFakeMerchant>(eventUi);
+            var inventoryUi = fakeMerchantNode == null ? null : FindFirst<NMerchantInventory>(fakeMerchantNode);
+            if (fakeMerchantNode == null || inventoryUi == null)
+                return Error("Fake merchant inventory UI is not ready yet; wait a moment and retry");
+            if (inventoryUi.IsOpen)
+                return new Dictionary<string, object?>
+                {
+                    ["status"] = "ok",
+                    ["message"] = "Fake merchant inventory is already open"
+                };
+
+            var button = fakeMerchantNode.MerchantButton;
+            if (button == null || !button.Visible || !button.IsEnabled)
+                return Error("Fake merchant inventory cannot be opened right now");
+
+            button.ForceClick();
+            return new Dictionary<string, object?>
+            {
+                ["status"] = "ok",
+                ["message"] = "Opening fake merchant inventory"
+            };
+        }
+
+        return Error("Not in a shop");
+    }
+
     private static Dictionary<string, object?> ExecuteShopPurchase(Player player, Dictionary<string, JsonElement> data)
     {
         MerchantInventory? inventory = null;
 
         if (player.RunState.CurrentRoom is MerchantRoom merchantRoom)
         {
-            // Regular merchant - auto-open inventory if needed
             var merchUI = NMerchantRoom.Instance;
             if (merchUI?.Inventory != null && !merchUI.Inventory.IsOpen)
                 merchUI.OpenInventory();
-            inventory = GetMerchantInventory(merchantRoom);
+            // v0.107 split the merchant into per-player inventories; take the local one.
+            inventory = merchantRoom.GetLocalInventory() ?? GetMerchantInventory(merchantRoom);
         }
         else if (player.RunState.CurrentRoom is EventRoom eventRoom
                  && eventRoom.CanonicalEvent is FakeMerchant
                  && (eventRoom.LocalMutableEvent ?? eventRoom.CanonicalEvent) is FakeMerchant fakeMerchant)
         {
-            // Fake merchant event - auto-open via button if needed
-            if (!fakeMerchant.StartedFight)
-            {
-                var uiRoom = NEventRoom.Instance;
-                if (uiRoom != null)
-                {
-                    var fmNode = FindFirst<NFakeMerchant>(uiRoom);
-                    if (fmNode != null)
-                    {
-                        var inventoryUI = FindFirst<NMerchantInventory>(fmNode);
-                        if (inventoryUI != null && !inventoryUI.IsOpen)
-                        {
-                            var btn = fmNode.MerchantButton;
-                            if (btn != null && btn.Visible && btn.IsEnabled)
-                                btn.ForceClick();
-                        }
-                    }
-                }
-            }
+            var uiRoom = NEventRoom.Instance;
+            var fmNode = uiRoom == null ? null : FindFirst<NFakeMerchant>(uiRoom);
+            var inventoryUI = fmNode == null ? null : FindFirst<NMerchantInventory>(fmNode);
+            if (inventoryUI?.IsOpen != true)
+                return Error("Fake merchant inventory is closed. Use shop_open before purchasing.");
             inventory = fakeMerchant.Inventory;
         }
         else
@@ -824,13 +975,26 @@ public static partial class McpMod
         if (mapScreen == null || (!mapScreen.IsOpen && !IsNodeVisible(mapScreen)))
             return Error("Map screen is not open");
 
-        var travelable = FindAll<NMapPoint>(mapScreen)
-            .Where(mp => mp.State == MapPointState.Travelable && mp.Point != null)
-            .OrderBy(mp => mp.Point!.coord.col)
-            .ToList();
+        // The game gates a map click on NMapPoint.IsTravelable + IsInputAllowed;
+        // this action reaches OnMapPointSelectedLocally directly, so it has to
+        // apply the same gate itself. Without it a call landing in the window
+        // between picking a node and the destination room finishing its load
+        // enqueues a SECOND VoteForMapCoordAction on top of the one still
+        // resolving, which wedges the run.
+        if (IsMapTravelInFlight())
+            return Error("A travel is already resolving - wait for the destination room to finish loading");
+
+        // An act change leaves the new act's map drawn and travelable while it is
+        // still resolving, and travelling into that window strands the transition
+        // permanently - see GetTravelableMapPoints for the mechanism. Reported
+        // separately from the empty-options case below so the reason is legible.
+        if (IsRunTransitionInFlight())
+            return Error("A run transition is already resolving - wait for it to finish before travelling");
+
+        var travelable = GetTravelableMapPoints(mapScreen);
 
         if (travelable.Count == 0)
-            return Error("No travelable map nodes available");
+            return Error("No travelable map nodes available (the current room is not finished yet)");
 
         // Coordinates are the safe way to name a node: "index" is a position in the
         // current option list, so it shifts whenever the set of travelable nodes does,
@@ -1294,6 +1458,14 @@ public static partial class McpMod
             if (index < 0 || index >= holders.Count)
                 return Error($"Card index {index} out of range ({holders.Count} cards available)");
 
+            // `SelectHolder` swallows a press inside the screen's 350 ms opening
+            // deadzone without failing, so reporting `ok` here would tell a
+            // client its pick landed when nothing happened at all. See
+            // `ChooseCardScreenAcceptsInput`, which exports the same gate as
+            // `card_select.can_select` so a client can wait instead of guess.
+            if (!ChooseCardScreenAcceptsInput(chooseScreen))
+                return Error("Choose-a-card screen is still inside its 350ms opening deadzone - retry once card_select.can_select is true");
+
             var holder = holders[index];
             string cardName = SafeGetText(() => holder.CardModel?.Title) ?? "unknown";
             holder.EmitSignal(NCardHolder.SignalName.Pressed, holder);
@@ -1742,6 +1914,49 @@ public static partial class McpMod
 
         return FindAll<NProceedButton>(screen)
             .FirstOrDefault(IsControlVisibleOrActionable);
+    }
+
+    /// <summary>
+    /// Resolve a player creature from a target id: either "player_N"
+    /// (N = index in runState.Players, as exposed in players[].entity_id)
+    /// or a numeric combat_id. Returns null if the id doesn't name a player.
+    /// </summary>
+    private static Creature? ResolvePlayerTarget(Player me, ICombatState? combatState, string entityId)
+    {
+        if (uint.TryParse(entityId, out uint combatId))
+        {
+            var byId = combatState?.GetCreature(combatId);
+            return byId is { IsPlayer: true } ? byId : null;
+        }
+
+        const string prefix = "player_";
+        if (entityId.StartsWith(prefix)
+            && int.TryParse(entityId.Substring(prefix.Length), out int idx)
+            && idx >= 0 && idx < me.RunState.Players.Count)
+            return me.RunState.Players[idx].Creature;
+
+        return null;
+    }
+
+    /// <summary>Comma list of the caller's living teammates' entity ids, for error messages.</summary>
+    private static string ListAllyTargetIds(Player me)
+    {
+        var ids = me.RunState.Players
+            .Select((p, i) => (p, i))
+            .Where(t => t.p != me && t.p.Creature.IsAlive)
+            .Select(t => $"player_{t.i}")
+            .ToList();
+        return ids.Count > 0 ? string.Join(", ", ids) : "(none)";
+    }
+
+    /// <summary>Display name for a creature: monster title, player character title, or "target".</summary>
+    private static string DescribeCreature(Creature? creature)
+    {
+        if (creature == null)
+            return "target";
+        return SafeGetText(() => creature.Monster?.Title)
+               ?? SafeGetText(() => creature.Player?.Character.Title)
+               ?? "target";
     }
 
     private static Creature? ResolveTarget(ICombatState combatState, string entityId)

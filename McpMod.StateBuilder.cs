@@ -1,13 +1,18 @@
-using System;
+﻿using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
+using System.Reflection;
+using System.Threading.Tasks;
 using MegaCrit.Sts2.Core.Saves;
 using MegaCrit.Sts2.Core.Combat;
+using MegaCrit.Sts2.Core.Hooks;
+using MegaCrit.Sts2.Core.Combat.History.Entries;
 using MegaCrit.Sts2.Core.Context;
 using MegaCrit.Sts2.Core.Entities.Cards;
 using MegaCrit.Sts2.Core.Entities.Creatures;
-using MegaCrit.Sts2.Core.Hooks;
 using MegaCrit.Sts2.Core.HoverTips;
+using MegaCrit.Sts2.Core.Localization;
 using MegaCrit.Sts2.Core.Entities.Players;
 using MegaCrit.Sts2.Core.Entities.Potions;
 using MegaCrit.Sts2.Core.Models;
@@ -40,7 +45,12 @@ using MegaCrit.Sts2.Core.Models.Monsters;
 using MegaCrit.Sts2.Core.Rooms;
 using MegaCrit.Sts2.Core.Runs;
 using MegaCrit.Sts2.Core.Runs.History;
+using MegaCrit.Sts2.Core.Models.Relics;
 using MegaCrit.Sts2.Core.Models.RelicPools;
+using MegaCrit.Sts2.Core.Models.CardPools;
+using MegaCrit.Sts2.Core.Models.PotionPools;
+using MegaCrit.Sts2.Core.Models.Cards;
+using MegaCrit.Sts2.Core.Models.Orbs;
 using MegaCrit.Sts2.Core.Nodes.Screens.CharacterSelect;
 using MegaCrit.Sts2.Core.Nodes.Screens.CustomRun;
 using MegaCrit.Sts2.Core.Nodes.Screens.MainMenu;
@@ -53,6 +63,8 @@ using MegaCrit.Sts2.Core.Platform.Steam;
 using MegaCrit.Sts2.Core.Helpers;
 using MegaCrit.Sts2.Core.Nodes.Screens.GameOverScreen;
 using MegaCrit.Sts2.Core.Nodes.Screens.Timeline;
+using MegaCrit.Sts2.Core.Timeline.Epochs;
+using MegaCrit.Sts2.Core.ValueProps;
 using MegaCrit.Sts2.Core.Nodes.Screens.Settings;
 using MegaCrit.Sts2.Core.Nodes.Screens.ProfileScreen;
 using MegaCrit.Sts2.Core.Nodes.Screens.PauseMenu;
@@ -106,6 +118,19 @@ public static partial class McpMod
             // Detect which menu screen is active
             if (tree?.Root != null)
             {
+                // Custom run setup screen (seed / ascension / modifiers + its own
+                // character buttons). It is a submenu pushed over the singleplayer
+                // or multiplayer-host submenu, and it is NOT an NCharacterSelectScreen,
+                // so it needs its own detection before either of those.
+                if (!result.ContainsKey("menu_screen"))
+                {
+                    var customRun = FindFirst<NCustomRunScreen>(tree.Root);
+                    if (customRun != null && IsNodeVisible(customRun))
+                    {
+                        AddCustomRunMenuState(result, customRun);
+                    }
+                }
+
                 if (!result.ContainsKey("menu_screen"))
                 {
                 // Check for singleplayer submenu (Standard / Daily / Custom)
@@ -484,23 +509,51 @@ public static partial class McpMod
             result["state_type"] = "relic_select";
             result["relic_select"] = BuildRelicSelectState(relicSelectScreen, runState);
         }
-        else if (!mapIsOpen && topOverlay is NCrystalSphereScreen crystalSphereScreen)
+        else if (topOverlay is NCrystalSphereScreen crystalSphereScreen
+                 && (!mapIsOpen || CrystalSphereIsOutstanding(crystalSphereScreen)))
         {
             // Mirror the NRewardsScreen guard below: the Crystal Sphere overlay
             // lingers on the stack after proceed is clicked (only ClearScreens
             // on the next room transition pops it). Once the map opens on top,
             // report "map" so state matches the screen the player can interact
             // with. See issue #73.
+            //
+            // ...but only once it HAS been answered. `CrystalSphere.UncoverFuture`
+            // awaits `PlayMinigame()` before `SetEventFinished`, so a sphere still
+            // being played blocks its event room, and masking it reported an
+            // un-travellable map with nothing on it - the same deadlock Brain
+            // Leech's card reward and Tiny Mailbox's potions produced.
             result["state_type"] = "crystal_sphere";
             result["crystal_sphere"] = BuildCrystalSphereState(crystalSphereScreen, runState);
         }
-        else if (!mapIsOpen && topOverlay is NCardRewardSelectionScreen cardRewardScreen)
+        else if (topOverlay is NCardRewardSelectionScreen cardRewardScreen
+                 && (!mapIsOpen || CardRewardIsOutstanding(cardRewardScreen)))
         {
+            // The map deference here is only correct for a card reward that has
+            // already been answered - it lingers on the overlay stack while the
+            // map opens underneath. A pick the run is still WAITING on must win
+            // over the map, exactly as `RewardsSetIsOutstanding` makes it for a
+            // rewards set: Brain Leech's RIP awaits `RewardsCmd.OfferCustom`
+            // before `SetEventFinished`, so masking this screen reported an
+            // un-travellable "map" (`travel_enabled: false`, no `next_options`,
+            // because the room is unfinished) with nothing a client could act
+            // on. Observed live at act 1 floor 14: `[STALL] map unchanged` with
+            // "No map options" for the rest of the run.
             result["state_type"] = "card_reward";
             result["card_reward"] = BuildCardRewardState(cardRewardScreen);
         }
-        else if (!mapIsOpen && topOverlay is NRewardsScreen rewardsScreen)
+        else if (topOverlay is NRewardsScreen rewardsScreen
+                 && (!mapIsOpen || RewardsSetIsOutstanding(rewardsScreen)))
         {
+            // The map deference above is only correct for a rewards screen that
+            // has already been answered - it lingers on the stack while the map
+            // opens underneath. A set the run is still WAITING on must win over
+            // the map: Tiny Mailbox offers two potions from inside the rest-site
+            // heal (RewardsCmd.OfferCustom), and that heal is awaited before the
+            // chosen option leaves the room's option list, so masking the
+            // overlay reported "rest_site" with its (still enabled) options and
+            // nothing a client could act on - the run cannot proceed until the
+            // potions are taken or skipped, so nothing ever changed again.
             result["state_type"] = "rewards";
             result["rewards"] = BuildRewardsState(rewardsScreen, runState);
         }
@@ -529,10 +582,124 @@ public static partial class McpMod
                 ["message"] = $"An overlay ({topOverlay.GetType().Name}) is active. It may require manual interaction in-game."
             };
         }
+        else if (currentRoom is RestSiteRoom pendingRest
+                 && pendingRest.Options != null
+                 && pendingRest.Options.Any(o => o.IsEnabled))
+        {
+            // Priority over the map fallback below: after choose_map_node travels
+            // onto a rest-site node, the game updates the map model but the map
+            // SCREEN can linger visible for a while, so IsMapScreenOpenOrVisible()
+            // stays true and we'd otherwise report "map" while the rest room is
+            // actually loaded underneath (NRestSiteRoom.Instance != null). That
+            // makes the bot travel straight past the rest into the boss. An
+            // unfinished rest site (still has an enabled option) is reported as
+            // rest_site regardless of the lingering map. Once the rest is used the
+            // options disable and we fall through to "map" so the next node can be
+            // chosen. See handle_rest_site / handle_map in the bot.
+            result["state_type"] = "rest_site";
+            result["rest_site"] = BuildRestSiteState(pendingRest, runState);
+        }
+        else if (currentRoom is EventRoom pendingEvent
+                 && pendingEvent.CanonicalEvent is not FakeMerchant
+                 && EventHasPendingAction())
+        {
+            // Same lingering-map masking as the rest branch above: after travelling
+            // onto an "Unknown"/event node the map screen stays visible while the
+            // event room loads underneath (NEventRoom.Instance != null), so the
+            // mapIsOpen fallback would report "map" and the bot would travel past
+            // the event. Report "event" while the event still has an actionable
+            // choice or live dialogue; once it resolves (no pending action) we fall
+            // through to "map" so the next node can be chosen (no deadlock).
+            result["state_type"] = "event";
+            result["event"] = BuildEventState(pendingEvent, runState);
+        }
+        else if (currentRoom is TreasureRoom pendingTreasure
+                 && TreasureHasPendingAction())
+        {
+            // Same lingering-map masking as the rest/event branches above: after
+            // travelling onto a treasure node the map stays visible while the
+            // treasure room loads underneath, so the mapIsOpen fallback would
+            // report "map" and the bot would skip the chest. Report "treasure"
+            // while there is a chest still to open or a relic still to pick; once
+            // the room is finished (nothing pending) we fall through to "map".
+            result["state_type"] = "treasure";
+            result["treasure"] = BuildTreasureState(pendingTreasure, runState);
+        }
+        else if (currentRoom is MerchantRoom pendingShop
+                 && NMerchantRoom.Instance != null
+                 && (!IsMapScreenDeliberatelyOpen() || IsRunTransitionInFlight()))
+        {
+            // Same lingering-map masking as the rest/event/treasure branches: after
+            // travelling onto a shop node the map SCREEN stays visible while the
+            // merchant room loads underneath, so a mapIsOpen fallback would report
+            // "map" and the bot would skip the shop entirely.
+            //
+            // Outside that the mask still has to come off, because the singleton
+            // is not a finished signal: NMerchantRoom.Instance is NRun's current
+            // room scene, and proceeding out only calls NMapScreen.Open() — the
+            // scene is replaced when the NEXT room is entered, which cannot happen
+            // until we travel. Meanwhile ActiveScreenContext hands the map the
+            // focus, so NMerchantRoom.OnActiveScreenUpdated disables the
+            // ProceedButton and NMerchantInventory.OnActiveScreenUpdated disables
+            // its BackButton: the whole merchant UI is inert and "proceed" can only
+            // ever answer "No proceed button available or enabled". A bot that
+            // trusted the mask sat there posting it forever.
+            //
+            // The signal for that is the map being DELIBERATELY open, not merely
+            // on screen. IsMapScreenOpenOrVisible() also answers true through
+            // Close()'s animate-out, which is exactly the arrival window — so
+            // gating on it unmasked the shop about 0.75s after arriving, as soon as
+            // IsRunTransitionInFlight() went false, and every merchant reported
+            // "map" for the rest of the visit. Measured over a full seeded run:
+            // three shops entered, "shop" reported for 0.75s each, three
+            // "[MAP] room never opened after travel" guard releases, 783 gold
+            // unspent at death. NMerchantRoom._Ready only calls SetTravelEnabled;
+            // the one merchant path to NMapScreen.Open() is HideScreen on the
+            // ProceedButton, so IsOpen means the shop is done and nothing else.
+            result["state_type"] = "shop";
+            var shopState = BuildShopState(pendingShop, runState);
+            // Still exported for a client that wants to leave by travelling rather
+            // than by proceeding — the map's next nodes stay travelable from a
+            // merchant node whether or not the map screen is up.
+            shopState["next_options"] = BuildMapNextOptions();
+            result["shop"] = shopState;
+        }
+        else if (currentRoom is CombatRoom loadingCombat
+                 && !CombatManager.Instance.IsInProgress
+                 && (CombatManager.Instance.IsStarting
+                     || IsMapTravelInFlight()
+                     || IsRunTransitionInFlight()))
+        {
+            // Last of the lingering-map guards, and the one whose absence was a
+            // real soft-lock. The combat room is entered but CombatManager has
+            // not flipped IsInProgress yet (asset preload, deck shuffle,
+            // spawn-ins, the combat-start banner). Without this branch a state
+            // read landing in that window either:
+            //   * hits the mapIsOpen fallback below and reports "map" - the map
+            //     SCREEN is still visible during the transition - so a client
+            //     travels a SECOND time, on top of the travel that is still
+            //     resolving, which wedges the run; or
+            //   * hits the CombatRoom branch below and is labelled "Combat
+            //     ended. Waiting for rewards...", the exact opposite of what is
+            //     happening, with no "battle" for the client to act on.
+            // The three signals overlap deliberately and leave no gap.
+            // EnterRoomInternal pushes the combat room onto the room stack
+            // BEFORE awaiting its Enter, so from that moment the room is current
+            // while SetUpCombat (and therefore IsStarting) is still several
+            // awaits away, behind the combat asset preload - that is the window
+            // an event "Fight" option lands in, where neither IsStarting nor the
+            // map's IsTraveling is set and only the run-transition handle is.
+            // It flips to a real battle in about a second, so clients only ever
+            // have to wait.
+            result["state_type"] = loadingCombat.RoomType.ToString().ToLower();
+            result["combat_starting"] = true;
+            result["message"] = "Combat is starting. Wait for the battle state; do not send actions yet.";
+        }
         else if (mapIsOpen)
         {
             result["state_type"] = "map";
             result["map"] = BuildMapState(runState);
+            AddBlockedMapDiagnostics(result, currentRoom, topOverlay);
         }
         else if (currentRoom is CombatRoom combatRoom)
         {
@@ -657,8 +824,21 @@ public static partial class McpMod
             result["room_type"] = currentRoom?.GetType().Name;
         }
 
+        // Overlay-first detection must not hide the combat snapshot. The Rust
+        // planner needs the enemies, turn, history, and RNG streams both for a
+        // fresh selection search and to validate reuse of the subtree that
+        // opened the overlay.
+        if (currentRoom is CombatRoom overlayCombat
+            && CombatManager.Instance.IsInProgress
+            && result.TryGetValue("state_type", out var overlayStateType)
+            && overlayStateType is string overlayType
+            && overlayType is "card_select" or "bundle_select")
+        {
+            result["battle"] = BuildBattleState(runState, overlayCombat);
+        }
+
         // Common run info
-        result["run"] = new Dictionary<string, object?>
+        var runInfo = new Dictionary<string, object?>
         {
             ["act"] = runState.CurrentActIndex + 1,
             ["floor"] = runState.TotalFloor,
@@ -666,6 +846,37 @@ public static partial class McpMod
             ["card_multiplayer_constraint"] = ((IRunState)runState).CardMultiplayerConstraint.ToString(),
             ["ascension"] = runState.AscensionLevel
         };
+        // Run RNG streams on every screen, not just in combat: map layout, "?"
+        // node contents and the encounter order are all rolled outside a battle.
+        // See McpMod.RngStreams.cs. battle.rng_streams carries the same block.
+        var runRng = BuildRngStreams(runState);
+        if (runRng != null)
+            runInfo["rng"] = runRng;
+        // Events already seen this run. RoomSet.EnsureNextEventIsValid skips
+        // past these when serving the next event, so a client replaying the
+        // event queue needs them to name the same event the game will.
+        runInfo["visited_event_ids"] = runState.VisitedEventIds.Select(id => id.Entry).ToList();
+        result["run"] = runInfo;
+
+        // The act's pre-rolled room queues. These decide which fight and which
+        // event sit behind each map node, and they are pure run state, so they
+        // ride along on every screen rather than only on the map.
+        var actInfo = BuildActState(runState);
+        if (actInfo != null)
+            result["act"] = actInfo;
+
+        // Completed runs on this profile. UnknownMapPointOdds.Roll forces the
+        // first three "?" rooms on a brand-new profile, so a client predicting
+        // them has to know whether that override is active.
+        try
+        {
+            result["profile"] = new Dictionary<string, object?>
+            {
+                ["number_of_runs"] = SaveManager.Instance.Progress.NumberOfRuns,
+                ["first_run_ironclad_present"] = HasFirstRunIronclad(runState)
+            };
+        }
+        catch { }
 
         // Always include full player data (relics, potions, deck, etc.) on every screen
         var _player = LocalContext.GetMe(runState);
@@ -990,6 +1201,77 @@ public static partial class McpMod
         return name.Length > 0 ? name : "submenu";
     }
 
+    /// <summary>Describe one character-select button, or null when it carries no
+    /// visible character. Shared by the standard character select and the custom
+    /// run screen, which build their button rows from the same scene.</summary>
+    private static Dictionary<string, object?>? BuildCharacterButtonEntry(NCharacterSelectButton btn)
+    {
+        try
+        {
+            if (btn.Character is not { } cm || !IsNodeVisible(btn))
+                return null;
+
+            var charData = new Dictionary<string, object?>
+            {
+                ["name"] = SafeGetText(() => cm.Title),
+                ["id"] = cm.Id.Entry,
+                ["locked"] = btn.IsLocked,
+                ["hp"] = cm.StartingHp,
+                ["gold"] = cm.StartingGold,
+                ["energy"] = cm.MaxEnergy,
+                ["description"] = SafeGetText(() => cm.CardsModifierDescription),
+            };
+
+            var startRelics = new List<Dictionary<string, object?>>();
+            foreach (var relic in cm.StartingRelics)
+            {
+                startRelics.Add(new Dictionary<string, object?>
+                {
+                    ["name"] = SafeGetText(() => relic.Title),
+                    ["description"] = SafeGetText(() => relic.DynamicDescription)
+                });
+            }
+            if (startRelics.Count > 0)
+                charData["starting_relics"] = startRelics;
+
+            var deckCards = new List<string>();
+            foreach (var card in cm.StartingDeck)
+                deckCards.Add(SafeGetText(() => card.Title) ?? "?");
+            if (deckCards.Count > 0)
+                charData["starting_deck"] = deckCards;
+
+            try
+            {
+                var allCards = cm.CardPool?.AllCards;
+                if (allCards != null)
+                    charData["total_cards"] = System.Linq.Enumerable.Count(allCards);
+            }
+            catch { }
+
+            try
+            {
+                var allRelics = cm.RelicPool?.AllRelics;
+                if (allRelics != null)
+                    charData["total_relics"] = System.Linq.Enumerable.Count(allRelics);
+            }
+            catch { }
+
+            try
+            {
+                var allPotions = cm.PotionPool?.AllPotions;
+                if (allPotions != null)
+                    charData["total_potions"] = System.Linq.Enumerable.Count(allPotions);
+            }
+            catch { }
+
+            return charData;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
     private static void AddCharacterSelectMenuState(
         Dictionary<string, object?> result,
         NCharacterSelectScreen charSelect)
@@ -1206,75 +1488,15 @@ public static partial class McpMod
     {
         foreach (var btn in buttons)
         {
-            try
+            var charData = BuildCharacterButtonEntry(btn);
+            if (charData == null)
+                continue;
+            options.Add(new Dictionary<string, object?>
             {
-                if (btn.Character is { } cm && IsNodeVisible(btn))
-                {
-                    var characterId = cm.Id.Entry;
-                    var characterName = SafeGetText(() => cm.Title);
-                    options.Add(new Dictionary<string, object?>
-                    {
-                        ["name"] = characterId,
-                        ["enabled"] = !btn.IsLocked
-                    });
-
-                    var charData = new Dictionary<string, object?>
-                    {
-                        ["name"] = characterName,
-                        ["id"] = characterId,
-                        ["locked"] = btn.IsLocked,
-                        ["hp"] = cm.StartingHp,
-                        ["gold"] = cm.StartingGold,
-                        ["energy"] = cm.MaxEnergy,
-                        ["description"] = SafeGetText(() => cm.CardsModifierDescription),
-                    };
-
-                    var startRelics = new List<Dictionary<string, object?>>();
-                    foreach (var relic in cm.StartingRelics)
-                    {
-                        startRelics.Add(new Dictionary<string, object?>
-                        {
-                            ["name"] = SafeGetText(() => relic.Title),
-                            ["description"] = SafeGetText(() => relic.DynamicDescription)
-                        });
-                    }
-                    if (startRelics.Count > 0)
-                        charData["starting_relics"] = startRelics;
-
-                    var deckCards = new List<string>();
-                    foreach (var card in cm.StartingDeck)
-                        deckCards.Add(SafeGetText(() => card.Title) ?? "?");
-                    if (deckCards.Count > 0)
-                        charData["starting_deck"] = deckCards;
-
-                    try
-                    {
-                        var allCards = cm.CardPool?.AllCards;
-                        if (allCards != null)
-                            charData["total_cards"] = System.Linq.Enumerable.Count(allCards);
-                    }
-                    catch (Exception ex) { Warn("menu.character_select.total_cards", ex); }
-
-                    try
-                    {
-                        var allRelics = cm.RelicPool?.AllRelics;
-                        if (allRelics != null)
-                            charData["total_relics"] = System.Linq.Enumerable.Count(allRelics);
-                    }
-                    catch (Exception ex) { Warn("menu.character_select.total_relics", ex); }
-
-                    try
-                    {
-                        var allPotions = cm.PotionPool?.AllPotions;
-                        if (allPotions != null)
-                            charData["total_potions"] = System.Linq.Enumerable.Count(allPotions);
-                    }
-                    catch (Exception ex) { Warn("menu.character_select.total_potions", ex); }
-
-                    characters.Add(charData);
-                }
-            }
-            catch (Exception ex) { Warn("menu.character_select.characters", ex); }
+                ["name"] = charData["id"],
+                ["enabled"] = !(bool)(charData["locked"] ?? false)
+            });
+            characters.Add(charData);
         }
     }
 
@@ -1312,6 +1534,16 @@ public static partial class McpMod
 
     private static Dictionary<string, object?> BuildStartRunLobbyState(StartRunLobby lobby)
     {
+        // v0.111 renamed the roster's element type (LobbyPlayer ->
+        // StartRunLobbyPlayer) and dropped the public MaxPlayers. Naming either
+        // one directly would bake a typeref/memberref this DLL cannot resolve on
+        // the main branch — and the rename is worse than a failed call, because
+        // the lambdas over the roster put the element type on a compiler-
+        // generated closure, which fails the whole assembly's type enumeration
+        // and takes the entire mod down at load. Both are read reflectively; the
+        // roster's own field names survived the rename.
+        var roster = GetStartRunLobbyPlayers(lobby);
+
         var lobbyState = new Dictionary<string, object?>
         {
             ["type"] = lobby.NetService.Type switch
@@ -1325,43 +1557,41 @@ public static partial class McpMod
             ["max_players"] = GetStartRunLobbyMaxPlayers(lobby),
             ["ascension"] = lobby.Ascension,
             ["max_ascension"] = lobby.MaxAscension,
-            ["all_ready"] = lobby.Players.Count > 0 && lobby.Players.All(p => p.isReady),
+            ["all_ready"] = roster.Count > 0 && roster.All(p => p.IsReady),
             ["is_about_to_begin"] = SafeIsAboutToBeginGame(lobby)
         };
 
+        var local = GetStartRunLobbyLocalPlayer(lobby, roster);
+
         // is_local_ready === local player has hit Embark in MP and is now waiting.
         // Mirrors NCharacterSelectScreen._readyAndWaitingContainer.Visible.
-        try
+        if (local != null)
         {
-            var local = lobby.LocalPlayer;
-            lobbyState["is_local_ready"] = local.isReady;
-            lobbyState["local_player_id"] = local.id.ToString();
+            lobbyState["is_local_ready"] = local.IsReady;
+            lobbyState["local_player_id"] = local.Id.ToString();
         }
-        catch (Exception ex) { Warn("lobby.is_local_ready", ex); }
 
         var players = new List<Dictionary<string, object?>>();
-        ulong localId;
-        try { localId = lobby.LocalPlayer.id; }
-        catch (Exception ex) { Warn("lobby.local_player_id", ex); localId = 0; }
+        ulong localId = local?.Id ?? 0;
         ulong hostId = lobby.NetService.Type == NetGameType.Host ? localId : 0;
 
-        foreach (var p in lobby.Players)
+        foreach (var p in roster)
         {
             var entry = new Dictionary<string, object?>
             {
-                ["id"] = p.id.ToString(),
-                ["slot_id"] = p.slotId,
-                ["is_local"] = p.id == localId,
+                ["id"] = p.Id.ToString(),
+                ["slot_id"] = p.SlotId,
+                ["is_local"] = p.Id == localId,
                 // We can only positively identify the host as "us" when we ARE the host;
                 // a client doesn't know which remote id is the host without inspecting
                 // the net service. Keep it simple and only flag is_host=true for self
                 // when hosting — clients can infer host-ness by player_id when needed.
-                ["is_host"] = p.id == hostId && hostId != 0,
-                ["character"] = SafeGetText(() => p.character?.Title)
-                                ?? p.character?.Id.Entry,
-                ["character_id"] = p.character?.Id.Entry,
-                ["is_ready"] = p.isReady,
-                ["platform_name"] = SafeGetPlayerName(lobby.NetService.Platform, p.id)
+                ["is_host"] = p.Id == hostId && hostId != 0,
+                ["character"] = SafeGetText(() => p.Character?.Title)
+                                ?? p.Character?.Id.Entry,
+                ["character_id"] = p.Character?.Id.Entry,
+                ["is_ready"] = p.IsReady,
+                ["platform_name"] = SafeGetPlayerName(lobby.NetService.Platform, p.Id)
             };
             players.Add(entry);
         }
@@ -1374,15 +1604,83 @@ public static partial class McpMod
         return lobbyState;
     }
 
+    /// <summary>
+    /// One character-select lobby seat, read out of whichever struct this game
+    /// build uses for the roster.
+    /// </summary>
+    private sealed class StartRunLobbySeat
+    {
+        internal ulong Id;
+        internal int SlotId;
+        internal bool IsReady;
+        internal CharacterModel? Character;
+    }
+
+    /// <summary>
+    /// The character-select lobby roster, in slot order as the game holds it.
+    /// </summary>
+    private static List<StartRunLobbySeat> GetStartRunLobbyPlayers(StartRunLobby lobby)
+    {
+        var seats = new List<StartRunLobbySeat>();
+        if (SafeGet(() => GetInstanceMemberValue(lobby, "Players")) is not IEnumerable players)
+            return seats;
+
+        foreach (var player in players)
+        {
+            if (player == null)
+                continue;
+            var seat = ReadStartRunLobbySeat(player);
+            if (seat != null)
+                seats.Add(seat);
+        }
+        return seats;
+    }
+
+    /// <summary>
+    /// The local player's seat. `LocalPlayer` returns the roster struct itself,
+    /// so it is read the same reflective way; a build that ever stops exposing
+    /// it falls back to matching the roster against our own net id.
+    /// </summary>
+    private static StartRunLobbySeat? GetStartRunLobbyLocalPlayer(StartRunLobby lobby, List<StartRunLobbySeat> roster)
+    {
+        var local = SafeGet(() => GetInstanceMemberValue(lobby, "LocalPlayer"));
+        if (local != null)
+        {
+            var seat = ReadStartRunLobbySeat(local);
+            // A struct roster returns default(T) rather than null for a missing
+            // seat, which reads as id 0 — not a real player.
+            if (seat != null && seat.Id != 0)
+                return seat;
+        }
+
+        ulong netId;
+        try { netId = lobby.NetService.NetId; }
+        catch { return null; }
+        return roster.Find(p => p.Id == netId);
+    }
+
+    private static StartRunLobbySeat? ReadStartRunLobbySeat(object player)
+    {
+        var id = SafeGet(() => GetInstanceMemberValue(player, "id"));
+        if (id == null)
+            return null;
+
+        var seat = new StartRunLobbySeat
+        {
+            Character = SafeGet(() => GetInstanceMemberValue(player, "character")) as CharacterModel,
+            IsReady = SafeGet(() => GetInstanceMemberValue(player, "isReady")) as bool? ?? false,
+            SlotId = SafeGet(() => GetInstanceMemberValue(player, "slotId")) as int? ?? -1,
+        };
+        try { seat.Id = Convert.ToUInt64(id); }
+        catch { return null; }
+        return seat;
+    }
+
     private static bool SafeIsAboutToBeginGame(StartRunLobby lobby)
     {
         try { return lobby.IsAboutToBeginGame(); }
         catch (Exception ex) { Warn("lobby.is_about_to_begin", ex); return false; }
     }
-
-    // v0.111.0 compat: StartRunLobby.MaxPlayers (a public property) was replaced with the
-    // private _maxPlayers field. BuildStartRunLobbyState reads it directly and falls back to
-    // the current player count, so no helper is needed here.
 
     private static string? SafeGetPlayerName(PlatformType platform, ulong playerId)
     {
@@ -1489,6 +1787,7 @@ public static partial class McpMod
         var lobby = GetInstanceFieldValue(loadLobby, "_runLobby") as LoadRunLobby;
         if (lobby != null)
         {
+            var connectedPlayers = GetLoadLobbyPlayers(lobby);
             var info = new Dictionary<string, object?>
             {
                 ["type"] = lobby.NetService.Type switch
@@ -1615,6 +1914,57 @@ public static partial class McpMod
         result["message"] = "Multiplayer load lobby. Confirm to ready up; once everyone is connected and ready, the run resumes.";
     }
 
+    /// <summary>
+    /// Returns connected load-lobby player IDs and readiness across game versions.
+    /// </summary>
+    private static Dictionary<ulong, bool> GetLoadLobbyPlayers(LoadRunLobby lobby)
+    {
+        var result = new Dictionary<ulong, bool>();
+
+        // v0.110 folds connection and readiness into a Players collection of
+        // LoadRunLobbyPlayer structs. Read its fields without referencing that
+        // beta-only type so the same DLL remains loadable on the main branch.
+        if (SafeGet(() => GetInstanceMemberValue(lobby, "Players")) is IEnumerable players)
+        {
+            foreach (var player in players)
+            {
+                if (player == null)
+                    continue;
+                var id = SafeGet(() => GetInstanceMemberValue(player, "id"));
+                var ready = SafeGet(() => GetInstanceMemberValue(player, "isReady"));
+                if (id != null && ready is bool isReady)
+                {
+                    try { result[Convert.ToUInt64(id)] = isReady; }
+                    catch { }
+                }
+            }
+            return result;
+        }
+
+        // Main-branch builds expose the connected IDs separately and retain a
+        // method for querying each player's ready flag.
+        if (SafeGet(() => GetInstanceMemberValue(lobby, "ConnectedPlayerIds")) is not IEnumerable connectedIds)
+            return result;
+
+        var readyMethod = lobby.GetType().GetMethod(
+            "IsPlayerReady",
+            BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance,
+            null,
+            new[] { typeof(ulong) },
+            null);
+        foreach (var rawId in connectedIds)
+        {
+            try
+            {
+                var id = Convert.ToUInt64(rawId);
+                var ready = SafeGet(() => readyMethod?.Invoke(lobby, new object[] { id })) as bool? ?? false;
+                result[id] = ready;
+            }
+            catch { }
+        }
+        return result;
+    }
+
     private static Dictionary<string, object?> BuildBattleState(RunState runState, CombatRoom combatRoom)
     {
         var combatState = CombatManager.Instance.DebugOnlyGetState();
@@ -1627,6 +1977,11 @@ public static partial class McpMod
         }
 
         RefreshCardUidRegistry(combatState);
+        var localPlayer = LocalContext.GetMe(runState);
+        battle["special_card_rewards"] = localPlayer != null && combatRoom.ExtraRewards.TryGetValue(localPlayer, out var extraRewards)
+            ? extraRewards.OfType<SpecialCardReward>().Select(BuildSpecialCardReward).ToList()
+            : new List<Dictionary<string, object?>>();
+        battle["next_creature_id"] = NextCreatureId(combatState);
 
         battle["round"] = combatState.RoundNumber;
         battle["turn"] = combatState.CurrentSide.ToString().ToLower();
@@ -1669,7 +2024,98 @@ public static partial class McpMod
 
         battle["allies"] = allies;
 
+        // The encounter's slot list, in declaration order. `EncounterModel
+        // .GetNextSlot` is `Slots.FirstOrDefault(s => Enemies.All(c => c.SlotName
+        // != s), "")`, so a consumer holding this plus each enemy's own slot can
+        // reproduce where a summoned creature lands — and, more importantly,
+        // when the board is full and a move that summons produces nothing at
+        // all. Without it a simulated Living Fog would keep bloating forever.
+        try
+        {
+            var slots = combatState.Encounter?.Slots;
+            if (slots != null && slots.Count > 0)
+                battle["encounter_slots"] = new List<string>(slots);
+        }
+        catch { }
+
+        // Run RNG stream coordinates (seed/counter per stream) so the planner
+        // can resolve shuffle/target randomness exactly. See McpMod.RngStreams.cs.
+        var rngStreams = BuildRngStreams(runState);
+        if (rngStreams != null)
+            battle["rng_streams"] = rngStreams;
+
+        // Gold Axe and other combat-wide counters include every player's card
+        // plays. Singleplayer now exposes the same history shape as MP.
+        try { battle["card_plays"] = BuildCardPlaysState(combatState); }
+        catch { /* history unavailable while combat is tearing down */ }
+
+        // Where every card went this turn and last — drawn/discarded/exhausted/
+        // generated, not just played. See BuildCardHistoryState.
+        try { battle["card_history"] = BuildCardHistoryState(combatState); }
+        catch { /* history unavailable while combat is tearing down */ }
+
         return battle;
+    }
+
+    /// <summary>
+    /// Whether one of this player's card or potion effects is still resolving.
+    /// </summary>
+    /// <remarks>
+    /// A polled client sees whatever frame it lands on, so it cannot tell a
+    /// finished action from one the game is halfway through. This is the game's
+    /// own answer to that, and it is the union of the two windows because
+    /// neither covers the other:
+    ///
+    /// CombatManager.IsExecutingCardOrPotionEffect wraps the effect BODY --
+    /// CardModel.OnPlay and PotionModel.OnUse, nested auto-plays included -- and
+    /// is the only signal that covers potions at all, since nothing about a
+    /// potion touches a card pile.
+    ///
+    /// The Play pile covers what surrounds that body. OnPlayWrapper puts the
+    /// card there before the first execution and files it to its result pile
+    /// only after the last one, so it spans the repeats of a Burst or Echo Form
+    /// play and the pile-move animation on either side. That animation is why
+    /// this is not academic at Instant speed: AppendPileLerpTween gives a card
+    /// entering Play a hard-coded 0.25s scale tween that FastMode does not
+    /// scale, and AddDuringManualCardPlay awaits it for Power cards.
+    ///
+    /// True while a selection overlay is up as well, since the play that opened
+    /// it genuinely has not finished. Callers that gate on this must therefore
+    /// exclude the overlay states, or they will wait for a screen that is
+    /// waiting for them; HandleGetState does it by settling only plain combat
+    /// state types.
+    /// </remarks>
+    private static bool PlayerIsResolvingEffect(Player player)
+    {
+        try
+        {
+            if (CombatManager.Instance.IsExecutingCardOrPotionEffect(player))
+                return true;
+            return player.PlayerCombatState?.PlayPile.Cards.Count > 0;
+        }
+        catch { return false; }
+    }
+
+    private static readonly FieldInfo NextCreatureIdField = typeof(CombatState)
+        .GetField("_nextCreatureId", BindingFlags.Instance | BindingFlags.NonPublic)
+        ?? throw new MissingFieldException(typeof(CombatState).FullName, "_nextCreatureId");
+
+    private static uint NextCreatureId(object combatState) =>
+        NextCreatureIdField.GetValue(combatState) is uint value
+            ? value
+            : throw new InvalidOperationException("CombatState next creature identity is unavailable");
+
+    private static readonly FieldInfo OwnerEffectDepthField = typeof(CombatManager)
+        .GetField("_cardOrPotionEffectDepth", BindingFlags.Instance | BindingFlags.NonPublic)
+        ?? throw new MissingFieldException(typeof(CombatManager).FullName, "_cardOrPotionEffectDepth");
+
+    private static int OwnerEffectDepth(Player player)
+    {
+        var depths = OwnerEffectDepthField.GetValue(CombatManager.Instance) as Dictionary<Player, int>
+            ?? throw new InvalidOperationException("CombatManager owner effect depths are unavailable");
+        var depth = depths.TryGetValue(player, out var value) ? value : 0;
+        if (depth < 0) throw new InvalidOperationException("CombatManager owner effect depth is negative");
+        return depth;
     }
 
     private static Dictionary<string, object?> BuildPlayerState(Player player)
@@ -1682,9 +2128,20 @@ public static partial class McpMod
         state["character_id"] = player.Character.Id.Entry;
         state["player_id"] = player.NetId.ToString();
         state["generation_pool"] = BuildGenerationPool(player);
+        state["combat_id"] = creature.CombatId;
         state["hp"] = creature.CurrentHp;
+        state["effect_depth"] = OwnerEffectDepth(player);
+        state["turn_phase"] = combatState?.Phase.ToString() ?? "None";
+        state["block_gains_this_turn"] = BuildOwnerBlockGains(player);
         state["max_hp"] = creature.MaxHp;
         state["block"] = creature.Block;
+
+        // Player-scoped RNG (Rewards / Shops / Transformations) + the odds
+        // accumulators those rolls are compared against, so card/potion/shop
+        // rewards are predictable. See McpMod.RngStreams.cs.
+        var playerRng = BuildPlayerRngStreams(player);
+        if (playerRng != null)
+            state["rng"] = playerRng;
 
         // The run deck, which is not a combat pile and so was reported nowhere: on every
         // screen the piles below are empty, and the deck is exactly what the screens that
@@ -1725,6 +2182,38 @@ public static partial class McpMod
             state["energy"] = combatState.Energy;
             state["max_energy"] = combatState.MaxEnergy;
 
+            // This required history has a different predicate and lifetime
+            // from Spite's actual HP loss during the current side's turn.
+            state["damage_not_fully_blocked_this_owner_turn"] = DamageNotFullyBlockedThisOwnerTurn(
+                player, CombatManager.Instance.History.Entries.OfType<DamageReceivedEntry>());
+
+            // Card models query combat history directly for these conditions.
+            // Export the owner-scoped values so the native forward model can
+            // seed an exact mid-turn search instead of inferring from HP/piles.
+            try
+            {
+                var history = CombatManager.Instance.History.Entries;
+                state["lost_hp_this_turn"] = history.OfType<DamageReceivedEntry>().Any(entry =>
+                    entry.HappenedThisTurn(creature.CombatState)
+                    && entry.Receiver == creature
+                    && entry.Result.UnblockedDamage > 0);
+                state["cards_created_this_combat"] = history.OfType<CardGeneratedEntry>().Count(entry =>
+                    entry.Creator == player);
+                state["lightning_channeled_this_combat"] = history.OfType<OrbChanneledEntry>().Count(entry =>
+                    entry.Actor.Player == player && entry.Orb is LightningOrb);
+            }
+            catch
+            {
+                // History can disappear while combat tears down. The Rust
+                // builder treats omitted counters as zero on those inert states.
+            }
+
+            // Counts every turn THIS player takes, extra turns included (battle.round
+            // only ticks on a normal side switch). Clients use it as the "a new player
+            // turn began" edge, which they cannot get from is_play_phase alone: with
+            // Instant Mode the enemy phase can start and finish between two polls.
+            state["turn_number"] = combatState.TurnNumber;
+
             // Stars (The Regent's resource, conditionally shown)
             if (player.Character.ShouldAlwaysShowStarCounter || combatState.Stars > 0)
             {
@@ -1749,15 +2238,89 @@ public static partial class McpMod
             state["draw_pile_count"] = combatState.DrawPile.Cards.Count;
             state["discard_pile_count"] = combatState.DiscardPile.Cards.Count;
             state["exhaust_pile_count"] = combatState.ExhaustPile.Cards.Count;
+            state["play_pile_count"] = combatState.PlayPile.Cards.Count;
+            state["is_resolving"] = PlayerIsResolvingEffect(player);
 
-            // Pile contents (draw pile sorted by rarity then card ID, matching in-game display)
-            var drawCards = combatState.DrawPile.Cards.ToList();
-            drawCards.Sort((c1, c2) => c1.Rarity != c2.Rarity
-                ? c1.Rarity.CompareTo(c2.Rarity)
-                : string.Compare(c1.Id.Entry, c2.Id.Entry, StringComparison.Ordinal));
-            state["draw_pile"] = BuildPileCardList(drawCards, PileType.Draw);
+            // Turn-history counters for cards whose effects depend on what already
+            // happened this turn (Finisher counts attacks; Forgotten Ritual checks
+            // exhausts). Mirrors the game's own queries in those card models.
+            try
+            {
+                var history = CombatManager.Instance.History;
+                var combatStateShared = creature.CombatState;
+                state["cards_started_this_turn"] = history.CardPlaysStarted.Count(en =>
+                    en.HappenedThisTurn(combatStateShared) && en.CardPlay.Card.Owner == player);
+                state["skills_started_this_turn"] = history.CardPlaysStarted.Count(en =>
+                    en.HappenedThisTurn(combatStateShared) && en.CardPlay.Card.Owner == player
+                    && en.CardPlay.Card.Type == CardType.Skill);
+                state["card_series_started_this_turn"] = history.CardPlaysStarted.Count(en =>
+                    en.HappenedThisTurn(combatStateShared) && en.CardPlay.Card.Owner == player && en.CardPlay.IsFirstInSeries);
+                state["zero_cost_attacks_started_this_turn"] = history.CardPlaysStarted.Count(en =>
+                    en.HappenedThisTurn(combatStateShared) && en.CardPlay.Card.Owner == player
+                    && en.CardPlay.Card.Type == CardType.Attack && en.CardPlay.Resources.EnergyValue == 0);
+                state["attacks_played_this_turn"] = history.CardPlaysFinished.Count(en =>
+                    en.HappenedThisTurn(combatStateShared)
+                    && en.CardPlay.Card.Type == CardType.Attack
+                    && en.CardPlay.Card.Owner == player);
+                state["energy_spent_this_turn"] = history.Entries.OfType<EnergySpentEntry>()
+                    .Where(en => en.HappenedThisTurn(combatStateShared) && en.Actor.Player == player)
+                    .Sum(en => en.Amount);
+                state["exhausted_this_turn"] = history.Entries.OfType<CardExhaustedEntry>().Any(en =>
+                    en.HappenedThisTurn(combatStateShared) && en.Card.Owner == player);
+                state["cards_drawn_this_turn"] = history.Entries.OfType<CardDrawnEntry>().Count(en =>
+                    en.HappenedThisTurn(combatStateShared) && en.Card.Owner == player && !en.FromHandDraw);
+                state["cards_drawn_this_combat"] = history.Entries.OfType<CardDrawnEntry>().Count(en =>
+                    en.Card.Owner == player);
+                // Stars GAINED this turn (Radiate's hit count). The positive
+                // StarsModifiedEntry sum, which is neither the current Star total
+                // nor the Stars spent - a turn can gain and spend the same Star.
+                state["stars_gained_this_turn"] = history.Entries.OfType<StarsModifiedEntry>()
+                    .Where(en => en.HappenedThisTurn(combatStateShared) && en.Amount > 0 && en.Actor == creature)
+                    .Sum(en => en.Amount);
+                // Times this player took unblocked damage THIS COMBAT (Tear
+                // Asunder's hit count). A count of events, not HP lost, and a
+                // fully blocked hit does not count.
+                state["unblocked_hits_taken_this_combat"] = history.Entries.OfType<DamageReceivedEntry>()
+                    .Count(en => en.Receiver == creature && en.Result.UnblockedDamage > 0);
+                state["doom_applied_this_turn"] = history.Entries.OfType<PowerReceivedEntry>().Any(en =>
+                    en.HappenedThisTurn(combatStateShared)
+                    && en.Applier == creature
+                    && en.Power.GetType().Name == "DoomPower");
+                // Whether the end-of-turn flush will run at all: a hook can
+                // suppress it, in which case the WHOLE hand is kept and no card
+                // left in it should read as discarded.
+                if (combatStateShared != null)
+                    state["hand_will_flush"] = Hook.ShouldFlush(combatStateShared, player);
+            }
+            catch
+            {
+                // History unavailable mid-transition - omit rather than fail the
+                // whole state build; the bot treats missing keys as 0/false.
+            }
+
+            // Pile contents. Draw pile is serialized in true order (index 0 = next draw).
+            // Note: the order is only valid until the next shuffle event (empty-pile
+            // reshuffle or an effect that shuffles cards into the draw pile).
+            state["draw_pile"] = BuildPileCardList(combatState.DrawPile.Cards, PileType.Draw);
             state["discard_pile"] = BuildPileCardList(combatState.DiscardPile.Cards, PileType.Discard);
             state["exhaust_pile"] = BuildPileCardList(combatState.ExhaustPile.Cards, PileType.Exhaust);
+            state["play_pile"] = BuildPileCardList(combatState.PlayPile.Cards, PileType.Play);
+
+            // Alchemize uses this exact ordered unlocked domain before its
+            // rarity and item rolls on CombatPotionGeneration.
+            try
+            {
+                state["combat_potion_generation_pool"] = player.Character.PotionPool
+                    .GetUnlockedPotions(player.UnlockState)
+                    .Concat(ModelDb.PotionPool<SharedPotionPool>().GetUnlockedPotions(player.UnlockState))
+                    .Where(potion => potion.CanBeGeneratedInCombat)
+                    .Select(BuildPotionInfo)
+                    .ToList();
+            }
+            catch { /* an unavailable pool must not break combat state */ }
+        // Card-generation and transformation domains are static for a run and
+        // are served by GET /api/v1/cardpools instead; rebuilding them here
+        // cost a full pool enumeration per distinct deck card, every poll.
 
             // FORK ADDITION — true pile order (index 0 = top of pile, drawn next), with
             // raw entry ids rather than localized titles. `draw_pile` above is sorted by
@@ -1775,36 +2338,7 @@ public static partial class McpMod
             state["exhaust_pile_ordered"] = BuildOrderedPileList(combatState.ExhaustPile.Cards);
 
             // Orbs
-            var orbQueue = combatState.OrbQueue;
-            if (orbQueue != null && orbQueue.Capacity > 0)
-            {
-                var orbs = new List<Dictionary<string, object?>>();
-                foreach (var orb in orbQueue.Orbs)
-                {
-                    // Populate SmartDescription placeholders with Focus-modified values,
-                    // mirroring OrbModel.HoverTips getter (OrbModel.cs:92-94)
-                    string? description = SafeGetText(() =>
-                    {
-                        var desc = orb.SmartDescription;
-                        desc.Add("energyPrefix", orb.Owner.Character.CardPool.Title);
-                        desc.Add("Passive", orb.PassiveVal);
-                        desc.Add("Evoke", orb.EvokeVal);
-                        return desc;
-                    });
-                    orbs.Add(new Dictionary<string, object?>
-                    {
-                        ["id"] = orb.Id.Entry,
-                        ["name"] = SafeGetText(() => orb.Title),
-                        ["description"] = description,
-                        ["passive_val"] = orb.PassiveVal,
-                        ["evoke_val"] = orb.EvokeVal,
-                        ["keywords"] = BuildHoverTips(orb.HoverTips)
-                    });
-                }
-                state["orbs"] = orbs;
-                state["orb_slots"] = orbQueue.Capacity;
-                state["orb_empty_slots"] = orbQueue.Capacity - orbQueue.Orbs.Count;
-            }
+            AddOrbsState(state, player);
 
             // Pets (Osty for Necrobinder)
             var pets = BuildPetsState(player);
@@ -1820,6 +2354,154 @@ public static partial class McpMod
         state["status"] = BuildPowersState(creature);
 
         // Relics
+        state["relics"] = BuildRelicsList(player);
+
+        // Potions
+        AddPotionsState(state, player);
+
+        AddDeckState(state, player, inCombat);
+
+        return state;
+    }
+
+    // Cached reflection handles for ActModel._rooms and the RoomSet fields.
+    // RoomSet's lists are protected, but they are the only place the act's room
+    // ORDER lives, and re-deriving it would mean replaying GenerateRooms.
+    private static FieldInfo? _actRoomsField;
+    private static readonly Dictionary<string, FieldInfo?> _roomSetFields = new();
+
+    /// <summary>The act's pre-rolled encounter and event queues plus their
+    /// consumed counters, or null when the run has not finished act setup.</summary>
+    /// <remarks>
+    /// PullNextEncounter is just <c>list[visited % count]</c>, so these two
+    /// numbers name the exact fight behind every Monster and Elite node on the
+    /// map. Nothing here mutates: EnsureNextEventIsValid would bump
+    /// eventsVisited, so the raw list is exported and the skip is replayed
+    /// client-side instead.
+    /// </remarks>
+    private static Dictionary<string, object?>? BuildActState(RunState runState)
+    {
+        try
+        {
+            var act = runState.Act;
+            _actRoomsField ??= typeof(ActModel).GetField(
+                "_rooms", BindingFlags.Instance | BindingFlags.NonPublic);
+            var rooms = _actRoomsField?.GetValue(act);
+            if (rooms == null)
+                return null;
+
+            List<string>? Ids(string field)
+            {
+                if (!_roomSetFields.TryGetValue(field, out var info))
+                {
+                    info = rooms.GetType().GetField(
+                        field, BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public);
+                    _roomSetFields[field] = info;
+                }
+                if (info?.GetValue(rooms) is not System.Collections.IEnumerable list)
+                    return null;
+                var ids = new List<string>();
+                foreach (var item in list)
+                {
+                    var id = item?.GetType().GetProperty("Id")?.GetValue(item);
+                    var entry = id?.GetType().GetProperty("Entry")?.GetValue(id) as string;
+                    if (entry != null)
+                        ids.Add(entry);
+                }
+                return ids;
+            }
+
+            int Visited(string field)
+            {
+                if (!_roomSetFields.TryGetValue(field, out var info))
+                {
+                    info = rooms.GetType().GetField(
+                        field, BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public);
+                    _roomSetFields[field] = info;
+                }
+                return info?.GetValue(rooms) is int value ? value : 0;
+            }
+
+            var normal = Ids("normalEncounters");
+            var elite = Ids("eliteEncounters");
+            var events = Ids("events");
+            if (normal == null || elite == null || events == null)
+                return null;
+
+            EncounterModel? bossEncounter = null;
+            try { bossEncounter = act.BossEncounter; } catch { }
+            var secondBossEncounter = act.SecondBossEncounter;
+            var encounters = new Dictionary<string, object?>
+            {
+                ["normal"] = normal,
+                ["normal_visited"] = Visited("normalEncountersVisited"),
+                ["elite"] = elite,
+                ["elite_visited"] = Visited("eliteEncountersVisited"),
+                ["events"] = events,
+                ["events_visited"] = Visited("eventsVisited"),
+                ["boss_visited"] = Visited("bossEncountersVisited")
+            };
+            var bossId = bossEncounter?.Id?.Entry;
+            var secondBossId = secondBossEncounter?.Id?.Entry;
+            if (!string.IsNullOrWhiteSpace(bossId))
+                encounters["boss"] = bossId;
+            if (!string.IsNullOrWhiteSpace(secondBossId))
+                encounters["second_boss"] = secondBossId;
+
+            bool isMultiplayer = runState.Players.Count > 1;
+            return new Dictionary<string, object?>
+            {
+                ["index"] = runState.CurrentActIndex,
+                ["id"] = act.Id.Entry,
+                ["rooms_total"] = act.GetNumberOfRooms(isMultiplayer),
+                ["floors_total"] = act.GetNumberOfFloors(isMultiplayer),
+                ["encounters"] = encounters
+            };
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    /// <summary>Per map point visited this act: what it was, and which rooms and
+    /// models it actually resolved into.</summary>
+    /// <remarks>
+    /// This is the only record of what a "?" turned into and which encounter was
+    /// fought there, so it is both the ground truth for validating a client's
+    /// "?" predictions and the input to RunManager.BuildRoomTypeBlacklist.
+    /// </remarks>
+    private static List<Dictionary<string, object?>> BuildMapPointHistory(RunState runState)
+    {
+        var history = new List<Dictionary<string, object?>>();
+        var acts = runState.MapPointHistory;
+        if (acts.Count == 0)
+            return history;
+        foreach (var entry in acts[acts.Count - 1])
+        {
+            var rooms = new List<Dictionary<string, object?>>();
+            foreach (var room in entry.Rooms)
+            {
+                rooms.Add(new Dictionary<string, object?>
+                {
+                    ["room_type"] = room.RoomType.ToString(),
+                    ["model_id"] = room.ModelId?.Entry,
+                    ["monster_ids"] = room.MonsterIds.Select(m => m.Entry).ToList()
+                });
+            }
+            history.Add(new Dictionary<string, object?>
+            {
+                ["map_point_type"] = entry.MapPointType.ToString(),
+                ["rooms"] = rooms
+            });
+        }
+        return history;
+    }
+
+    // Serializes a player's relics. Shared by the local player (BuildPlayerState)
+    // and the teammate reveal (BuildAllPlayersState).
+    private static List<Dictionary<string, object?>> BuildRelicsList(Player player)
+    {
         var relics = new List<Dictionary<string, object?>>();
         foreach (var relic in player.Relics)
         {
@@ -1828,40 +2510,162 @@ public static partial class McpMod
                 ["id"] = relic.Id.Entry,
                 ["name"] = SafeGetText(() => relic.Title),
                 ["description"] = SafeGetText(() => relic.DynamicDescription),
-                ["counter"] = relic.ShowCounter ? relic.DisplayAmount : null,
+                // Golden Compass hides its counter in the UI but the act it was
+                // picked up in decides whether every "?" this act is an Event,
+                // so a client predicting them needs it.
+                ["counter"] = relic is GoldenCompass compass
+                    ? compass.GoldenPathAct
+                    : (relic.ShowCounter ? relic.DisplayAmount : (int?)null),
                 ["used_up"] = relic.IsUsedUp,
                 ["melted"] = relic.IsMelted,
+                ["status"] = relic.Status.ToString(),
+                ["is_wax"] = relic.IsWax,
+                ["vars"] = relic.DynamicVars.ToDictionary(
+                    pair => pair.Key,
+                    pair => (object?)new Dictionary<string, object?>
+                    {
+                        ["base"] = pair.Value.BaseValue,
+                        ["enchanted"] = pair.Value.EnchantedValue,
+                        ["preview"] = pair.Value.PreviewValue,
+                        ["rendered"] = pair.Value.ToString()
+                    }),
+                ["runtime"] = BuildRelicRuntimeState(relic),
                 ["keywords"] = BuildHoverTips(relic.HoverTipsExcludingRelic)
             });
         }
-        state["relics"] = relics;
+        return relics;
+    }
 
-        // Potions
+    private sealed class CardObjectIdentity
+    {
+        public readonly long Value = System.Threading.Interlocked.Increment(ref _nextCardObjectIdentity);
+    }
+
+    private static long _nextCardObjectIdentity;
+    private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<CardModel, CardObjectIdentity> CardObjectIdentities = new();
+
+    private static long GetCardObjectIdentity(CardModel card) => CardObjectIdentities.GetValue(card, _ => new CardObjectIdentity()).Value;
+
+    private sealed class CardPlayIdentity
+    {
+        public readonly long Value = System.Threading.Interlocked.Increment(ref _nextCardPlayIdentity);
+    }
+
+    private static long _nextCardPlayIdentity;
+    private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<CardPlay, CardPlayIdentity> CardPlayIdentities = new();
+
+    private static long GetCardPlayIdentity(CardPlay play) => CardPlayIdentities.GetValue(play, _ => new CardPlayIdentity()).Value;
+
+    private static List<long?> BuildOwnerBlockGains(Player player)
+    {
+        var state = player.Creature.CombatState;
+        if (state == null)
+            return new List<long?>();
+        return CombatManager.Instance.History.Entries.OfType<BlockGainedEntry>()
+            .Where(entry => entry.Actor == player.Creature && entry.HappenedThisTurn(state) && entry.Props.IsCardOrMonsterMove())
+            .Select(entry => entry.CardPlay == null ? (long?)null : GetCardPlayIdentity(entry.CardPlay)).ToList();
+    }
+
+    private static Dictionary<string, object?> BuildRelicRuntimeState(RelicModel relic)
+    {
+        var runtime = new Dictionary<string, object?>();
+        if (relic is MegaCrit.Sts2.Core.Models.Relics.PaelsTooth tooth)
+        {
+            // Render fresh copies as they will return. UpgradeInternal changes
+            // only this copy and runs no global hooks, deck additions, or RNG.
+            var returns = new List<Dictionary<string, object?>>();
+            foreach (var saved in tooth.SerializableCards)
+            {
+                var card = CardModel.FromSerializable(saved);
+                card.Owner = tooth.Owner;
+                if (card.IsUpgradable)
+                {
+                    card.UpgradeInternal();
+                    card.FinalizeUpgradeInternal();
+                }
+                var returned = BuildCardInfo(card, PileType.Deck);
+                returned["stored_upgrade_level"] = saved.CurrentUpgradeLevel;
+                returns.Add(returned);
+            }
+            runtime["return_cards"] = returns;
+        }
+        if (relic is MegaCrit.Sts2.Core.Models.Relics.FurCoat furCoat)
+        {
+            var currentMapPoint = furCoat.Owner.RunState.CurrentMapPoint;
+            runtime["active_combat"] = currentMapPoint != null
+                && furCoat.GetMarkedCoords()?.Contains(currentMapPoint.coord) == true;
+        }
+        var seen = new HashSet<object>(ReferenceEqualityComparer.Instance);
+
+        // Concrete and intermediate relic classes carry saved counters and
+        // combat-only latches that are not represented by DisplayAmount. The
+        // planner re-plans mid-combat, so it needs those fields to avoid
+        // replaying one-shot hooks or restarting persistent cycles.
+        for (Type? type = relic.GetType(); type != null && type != typeof(RelicModel); type = type.BaseType)
+        {
+            foreach (var field in type.GetFields(BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public | BindingFlags.DeclaredOnly))
+            {
+                if (field.IsStatic || field.IsLiteral)
+                    continue;
+                // The normalized return_cards above replaces the opaque save
+                // objects, retaining list order and exact rendered card values.
+                if (relic is MegaCrit.Sts2.Core.Models.Relics.PaelsTooth && field.Name == "_serializableCards")
+                    continue;
+                runtime[field.Name] = SerializePowerRuntimeValue(field.GetValue(relic), seen, 0);
+            }
+        }
+        return runtime;
+    }
+
+    // Writes "potions"/"max_potion_slots" into `state`. Shared by the local
+    // player (BuildPlayerState) and the teammate reveal (BuildAllPlayersState).
+    private static void AddPotionsState(Dictionary<string, object?> state, Player player)
+    {
         var potions = new List<Dictionary<string, object?>>();
         int slotIndex = 0;
         foreach (var potion in player.PotionSlots)
         {
             if (potion != null)
             {
-                potions.Add(new Dictionary<string, object?>
-                {
-                    ["id"] = potion.Id.Entry,
-                    ["name"] = SafeGetText(() => potion.Title),
-                    ["description"] = SafeGetText(() => potion.DynamicDescription),
-                    ["slot"] = slotIndex,
-                    ["can_use_in_combat"] = potion.Usage == PotionUsage.CombatOnly || potion.Usage == PotionUsage.AnyTime,
-                    ["target_type"] = potion.TargetType.ToString(),
-                    ["keywords"] = BuildHoverTips(potion.ExtraHoverTips)
-                });
+                var info = BuildPotionInfo(potion);
+                info["slot"] = slotIndex;
+                potions.Add(info);
             }
             slotIndex++;
         }
         state["potions"] = potions;
         state["max_potion_slots"] = player.MaxPotionCount;
+    }
 
-        AddDeckState(state, player, inCombat);
+    private static Dictionary<string, object?> BuildPotionInfo(PotionModel potion)
+    {
+        return new Dictionary<string, object?>
+        {
+            ["id"] = potion.Id.Entry,
+            ["name"] = SafeGetText(() => potion.Title),
+            ["description"] = SafeGetText(() => potion.DynamicDescription),
+            ["rarity"] = potion.Rarity.ToString(),
+            ["pool"] = SafeGet(() => potion.Pool.Id.Entry),
+            ["epoch"] = GetPotionEpoch(potion),
+            ["usage"] = potion.Usage.ToString(),
+            ["can_be_generated_in_combat"] = potion.CanBeGeneratedInCombat,
+            ["can_use_in_combat"] = potion.Usage == PotionUsage.CombatOnly || potion.Usage == PotionUsage.AnyTime,
+            ["target_type"] = potion.TargetType.ToString(),
+            ["keywords"] = BuildHoverTips(potion.ExtraHoverTips)
+        };
+    }
 
-        return state;
+    private static string? GetPotionEpoch(PotionModel potion)
+    {
+        var id = potion.Id;
+        if (Potion1Epoch.Potions.Any(candidate => candidate.Id == id)) return "POTION1_EPOCH";
+        if (Potion2Epoch.Potions.Any(candidate => candidate.Id == id)) return "POTION2_EPOCH";
+        if (Ironclad4Epoch.Potions.Any(candidate => candidate.Id == id)) return "IRONCLAD4_EPOCH";
+        if (Silent4Epoch.Potions.Any(candidate => candidate.Id == id)) return "SILENT4_EPOCH";
+        if (Regent4Epoch.Potions.Any(candidate => candidate.Id == id)) return "REGENT4_EPOCH";
+        if (Necrobinder4Epoch.Potions.Any(candidate => candidate.Id == id)) return "NECROBINDER4_EPOCH";
+        if (Defect4Epoch.Potions.Any(candidate => candidate.Id == id)) return "DEFECT4_EPOCH";
+        return null;
     }
 
     /// <summary>
@@ -1901,11 +2705,113 @@ public static partial class McpMod
     private static string GetCostDisplay(CardModel card)
         => card.EnergyCost.CostsX ? "X" : card.EnergyCost.GetAmountToSpend().ToString();
 
+    // Cost display alone loses ordering, intrinsic upgrades, and independent
+    // expiration flags. Reflection is required because this source list is private.
+    private static readonly FieldInfo EnergyLocalModifiersField =
+        typeof(CardEnergyCost).GetField("_localModifiers", BindingFlags.Instance | BindingFlags.NonPublic)
+        ?? throw new MissingFieldException(typeof(CardEnergyCost).FullName, "_localModifiers");
+
+    private static Dictionary<string, object?> BuildEnergyCostState(CardModel card)
+    {
+        var energy = card.EnergyCost;
+        if (EnergyLocalModifiersField.GetValue(energy) is not List<LocalCostModifier> modifiers)
+            throw new InvalidOperationException("CardEnergyCost._localModifiers has an unsupported shape.");
+        return new Dictionary<string, object?>
+        {
+            ["canonical"] = energy.Canonical,
+            ["base"] = energy.GetWithModifiers(CostModifiers.None),
+            ["costs_x"] = energy.CostsX,
+            ["captured_x"] = energy.CostsX ? energy.CapturedXValue : (int?)null,
+            ["modifiers"] = modifiers.Select(modifier => new Dictionary<string, object?>
+            {
+                ["amount"] = modifier.Amount,
+                ["kind"] = modifier.Type.ToString(),
+                ["expiration"] = (int)modifier.Expiration,
+                ["reduce_only"] = modifier.IsReduceOnly
+            }).ToArray()
+        };
+    }
+
+    private static readonly FieldInfo StarCostModifiersField =
+        typeof(CardModel).GetField("_temporaryStarCosts", BindingFlags.Instance | BindingFlags.NonPublic)
+        ?? throw new MissingFieldException(typeof(CardModel).FullName, "_temporaryStarCosts");
+
+    private static Dictionary<string, object?> BuildStarCostState(CardModel card)
+    {
+        if (StarCostModifiersField.GetValue(card) is not List<TemporaryCardCost> modifiers)
+            throw new InvalidOperationException("CardModel._temporaryStarCosts has an unsupported shape.");
+        return new Dictionary<string, object?>
+        {
+            ["canonical"] = card.CanonicalStarCost,
+            ["base"] = card.BaseStarCost,
+            ["costs_x"] = card.HasStarCostX,
+            ["last_spent"] = card.LastStarsSpent,
+            ["modifiers"] = modifiers.Select(modifier => new Dictionary<string, object?>
+            {
+                ["cost"] = modifier.Cost,
+                ["clears_when_turn_ends"] = modifier.ClearsWhenTurnEnds,
+                ["clears_when_played"] = modifier.ClearsWhenCardIsPlayed
+            }).ToArray()
+        };
+    }
+
     private static string? GetStarCostDisplay(CardModel card)
     {
         if (card.HasStarCostX) return "X";
         if (card.CurrentStarCost >= 0) return card.GetStarCostWithModifiers().ToString();
         return null;
+    }
+
+    private static readonly FieldInfo GlassOrbPassiveValueField = typeof(GlassOrb)
+        .GetField("_passiveVal", BindingFlags.Instance | BindingFlags.NonPublic)
+        ?? throw new MissingFieldException(typeof(GlassOrb).FullName, "_passiveVal");
+
+    // Writes "orbs"/"orb_slots"/"orb_empty_slots" into `state` for a player's
+    // orb queue (Defect). Shared by the local player (BuildPlayerState) and the
+    // teammate reveal (BuildAllPlayersState) so orb serialization stays in sync.
+    private static void AddOrbsState(Dictionary<string, object?> state, Player player)
+    {
+        state["base_orb_slots"] = player.Character.BaseOrbSlotCount;
+        var combatState = player.PlayerCombatState;
+        var orbQueue = combatState?.OrbQueue;
+        if (orbQueue == null)
+            return;
+
+        var orbs = new List<Dictionary<string, object?>>();
+        foreach (var orb in orbQueue.Orbs)
+        {
+            // Populate SmartDescription placeholders with Focus-modified values,
+            // mirroring OrbModel.HoverTips getter (OrbModel.cs:92-94)
+            string? description = SafeGetText(() =>
+            {
+                var desc = orb.SmartDescription;
+                desc.Add("energyPrefix", orb.Owner.Character.CardPool.Title);
+                desc.Add("Passive", orb.PassiveVal);
+                desc.Add("Evoke", orb.EvokeVal);
+                return desc;
+            });
+            var info = new Dictionary<string, object?>
+            {
+                ["id"] = orb.Id.Entry,
+                ["name"] = SafeGetText(() => orb.Title),
+                ["description"] = description,
+                ["passive_val"] = orb.PassiveVal,
+                ["evoke_val"] = orb.EvokeVal,
+                ["keywords"] = BuildHoverTips(orb.HoverTips)
+            };
+            if (orb is GlassOrb)
+            {
+                // Focus clamps PassiveVal at zero, so its preview cannot
+                // recover the orb's stored value when Focus later changes.
+                info["base_passive_val"] = GlassOrbPassiveValueField.GetValue(orb) is decimal value
+                    ? value
+                    : throw new InvalidOperationException("GlassOrb stored passive value is unavailable");
+            }
+            orbs.Add(info);
+        }
+        state["orbs"] = orbs;
+        state["orb_slots"] = orbQueue.Capacity;
+        state["orb_empty_slots"] = orbQueue.Capacity - orbQueue.Orbs.Count;
     }
 
     /// <summary>
@@ -1914,21 +2820,169 @@ public static partial class McpMod
     /// </summary>
     private static Dictionary<string, object?> BuildCardInfo(CardModel card, PileType pile = PileType.None)
     {
-        return new Dictionary<string, object?>
+        // NetDeckCard addresses the current deck order. A combat card can
+        // retain a DeckVersion pointer after that parent left the deck.
+        var deckCard = card.Pile?.Type == PileType.Deck ? card : card.DeckVersion;
+        uint? deckCardIndex = deckCard?.Pile?.Type == PileType.Deck
+            ? NetDeckCard.FromModel(deckCard).DeckIndex
+            : null;
+        var info = new Dictionary<string, object?>
         {
             ["id"] = card.Id.Entry,
             ["name"] = SafeGetText(() => card.Title),
             ["type"] = card.Type.ToString(),
             ["cost"] = GetCostDisplay(card),
+            ["energy_cost_state"] = BuildEnergyCostState(card),
             ["star_cost"] = GetStarCostDisplay(card),
+            ["star_cost_state"] = BuildStarCostState(card),
             ["description"] = SafeGetCardDescription(card, pile),
             ["rarity"] = card.Rarity.ToString(),
+            ["enchantment"] = card.Enchantment?.GetType().Name,
+            ["enchantment_state"] = BuildEnchantmentState(card),
+            ["affliction"] = card.Affliction?.Id.Entry,
+            ["has_deck_version"] = card.DeckVersion != null,
+            ["deck_card_index"] = deckCardIndex,
             ["is_upgraded"] = card.IsUpgraded,
             ["is_upgradable"] = card.IsUpgradable,
             ["upgrade_level"] = card.CurrentUpgradeLevel,
             ["max_upgrade_level"] = card.MaxUpgradeLevel,
-            ["keywords"] = BuildHoverTips(card.HoverTips)
+            ["base_replay_count"] = card.BaseReplayCount,
+            ["exhaust_on_next_play"] = card.ExhaustOnNextPlay,
+            ["tags"] = card.Tags.Select(tag => tag.ToString()).ToArray(),
+            ["keywords"] = BuildHoverTips(card.HoverTips),
+            // Machine-readable CardKeyword names beside the localized hover tips
+            // above. `keywords` is display text and cannot be matched against
+            // reliably; this is what a client tests for Sly/Ethereal/Retain.
+            ["keyword_ids"] = BuildKeywordIds(card),
+            ["has_retain_keyword"] = card.Keywords.Contains(CardKeyword.Retain),
+            ["has_single_turn_retain"] = GetSingleTurnRetain(card),
+            ["should_retain_this_turn"] = card.ShouldRetainThisTurn,
+            ["has_sly_keyword"] = card.Keywords.Contains(CardKeyword.Sly),
+            ["has_single_turn_sly"] = GetSingleTurnSly(card),
+            ["is_sly_this_turn"] = card.IsSlyThisTurn
         };
+        if (card.IsMutable)
+            info["card_object_id"] = GetCardObjectIdentity(card);
+        // Only present, and only false, when this build stripped the game's power
+        // and relic baking out of the numbers above. A powered payload omits the key
+        // entirely, which is the shape every existing consumer already assumes.
+        if (UnpoweredValues)
+            info["text_baked"] = false;
+        var damageVar = BuildDamageVarState(card);
+        if (damageVar != null)
+            info["damage_var"] = damageVar;
+        // Separate the card's own HP-loss variable from Corrupted's appended text.
+        if (card.Enchantment is MegaCrit.Sts2.Core.Models.Enchantments.Corrupted)
+            info["hp_loss_var"] = card.DynamicVars.ContainsKey("HpLoss")
+                ? card.DynamicVars.HpLoss.BaseValue.ToString(System.Globalization.CultureInfo.InvariantCulture)
+                : null;
+        if (card is MadScience madScience)
+        {
+            info["mad_science_type"] = madScience.TinkerTimeType.ToString();
+            info["mad_science_rider"] = madScience.TinkerTimeRider.ToString();
+        }
+        if (card is GeneticAlgorithm geneticAlgorithm)
+        {
+            info["current_block"] = geneticAlgorithm.CurrentBlock;
+            info["increased_block"] = geneticAlgorithm.IncreasedBlock;
+        }
+        if (card is Guilty guilty)
+            info["combats_seen"] = guilty.CombatsSeen;
+        // The multiplayer synchronizer already assigns every mutable combat
+        // card a stable 16-bit identity. Export the same identity so an MCTS
+        // selection can distinguish physical copies with equal card IDs.
+        try
+        {
+            if (card.Pile?.IsCombatPile == true)
+                info["combat_card_id"] = NetCombatCard.FromModel(card).CombatCardIndex;
+        }
+        catch { /* immutable/deck cards intentionally have no combat identity */ }
+        return info;
+    }
+
+    private static Dictionary<string, object?>? BuildEnchantmentState(CardModel card)
+    {
+        if (card.Enchantment == null) return null;
+        // Match description rendering, including the enchantment's own DynamicVars.
+        using UnpoweredCardVars? scope = UnpoweredValues ? UnpoweredCardVars.Apply(card) : null;
+        var text = card.Enchantment.DynamicExtraCardText?.GetFormattedText();
+        return new Dictionary<string, object?>
+        {
+            ["amount"] = card.Enchantment.Amount,
+            ["status"] = card.Enchantment.Status.ToString(),
+            ["extra_text"] = text == null ? null : CleanCardDescription(text)
+        };
+    }
+
+    // Canonical values are simulation inputs; description formatting can truncate them.
+    private static Dictionary<string, object?>? BuildDamageVarState(CardModel card)
+    {
+        decimal damage;
+        decimal? extra = null;
+        ValueProp props;
+        if (card.DynamicVars.ContainsKey("CalculatedDamage"))
+        {
+            damage = card.DynamicVars.CalculationBase.BaseValue;
+            extra = card.DynamicVars.ExtraDamage.BaseValue;
+            props = card.DynamicVars.CalculatedDamage.Props;
+        }
+        else if (card.DynamicVars.ContainsKey("Damage"))
+        {
+            damage = card.DynamicVars.Damage.BaseValue;
+            props = card.DynamicVars.Damage.Props;
+        }
+        else if (card.DynamicVars.ContainsKey("OstyDamage"))
+        {
+            damage = card.DynamicVars.OstyDamage.BaseValue;
+            props = card.DynamicVars.OstyDamage.Props;
+        }
+        else return null;
+        var additive = card.Enchantment?.EnchantDamageAdditive(damage, props) ?? 0m;
+        var multiplier = card.Enchantment?.EnchantDamageMultiplicative(damage + additive, props) ?? 1m;
+        var state = new Dictionary<string, object?>
+        {
+            ["base"] = damage.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            ["enchantment_additive"] = additive.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            ["enchantment_multiplier"] = multiplier.ToString(System.Globalization.CultureInfo.InvariantCulture)
+        };
+        if (extra.HasValue)
+            state["extra"] = extra.Value.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        if (card.Enchantment is MegaCrit.Sts2.Core.Models.Enchantments.Momentum momentum)
+            state["after_play"] = new Dictionary<string, object?>
+            {
+                ["kind"] = "Momentum",
+                ["amount"] = momentum.Amount.ToString(System.Globalization.CultureInfo.InvariantCulture)
+            };
+        else if (card.Enchantment is MegaCrit.Sts2.Core.Models.Enchantments.Vigorous vigorous
+                 && vigorous.Status == MegaCrit.Sts2.Core.Entities.Enchantments.EnchantmentStatus.Normal)
+            state["after_play"] = new Dictionary<string, object?> { ["kind"] = "Vigorous" };
+        else if (card.Enchantment is MegaCrit.Sts2.Core.Models.Enchantments.Corrupted)
+            state["after_play"] = new Dictionary<string, object?> { ["kind"] = "Corrupted" };
+        return state;
+    }
+
+    private static readonly FieldInfo SingleTurnRetainField =
+        typeof(CardModel).GetField("_hasSingleTurnRetain", BindingFlags.Instance | BindingFlags.NonPublic)
+        ?? throw new MissingFieldException(typeof(CardModel).FullName, "_hasSingleTurnRetain");
+
+    private static readonly FieldInfo SingleTurnSlyField =
+        typeof(CardModel).GetField("_hasSingleTurnSly", BindingFlags.Instance | BindingFlags.NonPublic)
+        ?? throw new MissingFieldException(typeof(CardModel).FullName, "_hasSingleTurnSly");
+
+    private static bool GetSingleTurnSly(CardModel card)
+    {
+        if (SingleTurnSlyField.GetValue(card) is not bool temporarySly)
+            throw new InvalidOperationException("CardModel._hasSingleTurnSly has an unsupported shape.");
+        return temporarySly;
+    }
+
+    private static bool GetSingleTurnRetain(CardModel card)
+    {
+        // A positive predicate cannot reveal which part survives cleanup.
+        // Missing or unsupported private state must refuse publication.
+        if (SingleTurnRetainField.GetValue(card) is not bool temporaryRetain)
+            throw new InvalidOperationException("CardModel._hasSingleTurnRetain has an unsupported shape.");
+        return temporaryRetain;
     }
 
     /// <summary>
@@ -2243,15 +3297,9 @@ public static partial class McpMod
         var list = new List<Dictionary<string, object?>>();
         foreach (var card in cards)
         {
-            // Pile cards only need a subset - keep it lightweight
-            list.Add(new Dictionary<string, object?>
-            {
-                ["uid"] = GetStableCardUid(card),
-                ["name"] = SafeGetText(() => card.Title),
-                ["cost"] = GetCostDisplay(card),
-                ["star_cost"] = GetStarCostDisplay(card),
-                ["description"] = SafeGetCardDescription(card, pile)
-            });
+            var info = BuildCardInfo(card, pile);
+            info["target_type"] = card.TargetType.ToString();
+            list.Add(info);
         }
         return list;
     }
@@ -2426,19 +3474,67 @@ public static partial class McpMod
         string entityId = GetStableEntityId(creature);
         bool alive = creature.IsAlive;
 
+        // Attack history is only meaningful relative to the local player, and an
+        // enemy can be exported outside a run (compendium, combat teardown), so the
+        // reference is optional and every block below guards on it.
+        Creature? localCreature = null;
+        try
+        {
+            var runState = RunManager.Instance.DebugOnlyGetState();
+            if (runState != null)
+                localCreature = LocalContext.GetMe(runState)?.Creature;
+        }
+        catch (Exception ex) { Warn("enemy.local_creature", ex); }
+
         var state = new Dictionary<string, object?>
         {
             ["entity_id"] = entityId,
             ["combat_id"] = creature.CombatId,
+            // Which encounter slot this creature occupies. Fixed for its whole
+            // life, and what `GetNextSlot` tests against when a move summons.
+            ["slot_name"] = creature.SlotName,
             ["name"] = SafeGetText(() => monster?.Title),
             // Explicit on every enemy, alive or not: a caller that wants only living
             // targets can filter on one field instead of inferring death from hp == 0.
             ["alive"] = alive,
             ["hp"] = creature.CurrentHp,
             ["max_hp"] = creature.MaxHp,
+            ["hp_infinite"] = creature.HpDisplay.IsInfinite(),
+            // False only for a corpse the fight is holding on to (see the
+            // enemy loop in BuildBattleState). Every other exported creature is
+            // alive, so a client that ignores this reads exactly what it read
+            // before.
+            ["is_alive"] = creature.IsAlive,
+            ["is_performing_move"] = monster?.IsPerformingMove ?? false,
             ["block"] = creature.Block,
             ["status"] = BuildPowersState(creature)
         };
+        try
+        {
+            if (localCreature != null)
+            {
+                var history = CombatManager.Instance.History;
+                state["local_powered_hits_this_turn"] = history.Entries.OfType<DamageReceivedEntry>().Count(en =>
+                    en.HappenedThisTurn(creature.CombatState)
+                    && en.Receiver == creature
+                    && en.Dealer == localCreature
+                    && en.Result.Props.IsPoweredAttack());
+                state["owner_side_powered_hits_this_turn"] = history.Entries.OfType<DamageReceivedEntry>().Count(en =>
+                    en.HappenedThisTurn(creature.CombatState)
+                    && en.Receiver == creature
+                    && en.Dealer != null
+                    && (en.Dealer == localCreature || en.Dealer.PetOwner?.Creature == localCreature)
+                    && en.Result.Props.IsPoweredAttack());
+                state["ally_powered_hits_this_turn"] = history.Entries.OfType<DamageReceivedEntry>().Count(en =>
+                    en.HappenedThisTurn(creature.CombatState)
+                    && en.Receiver == creature
+                    && en.Dealer != null
+                    && en.Dealer != localCreature
+                    && en.Dealer.Side == localCreature.Side
+                    && en.Result.Props.IsPoweredAttack());
+            }
+        }
+        catch { }
 
         if (!alive)
         {
@@ -2450,58 +3546,42 @@ public static partial class McpMod
         // Intents
         if (monster?.NextMove is MoveState moveState)
         {
-            var intents = new List<Dictionary<string, object?>>();
-            bool stunned = false;
-            foreach (var intent in moveState.Intents)
-            {
-                // A stunned creature performs no logic on its stunned turn
-                // (CreatureCmd.Stun), but nothing in the emitted state said so:
-                // clients could only guess from IntentType, and would treat the
-                // enemy as a live threat. Report it from the intent's own type,
-                // which can't be misread the way a label can.
-                bool isStun = intent is StunIntent;
-                stunned |= isStun;
-
-                var intentData = new Dictionary<string, object?>
-                {
-                    ["type"] = intent.IntentType.ToString(),
-                    // The concrete class is always available and never throws,
-                    // so clients can recognise intents whose label or type is
-                    // unhelpful.
-                    ["intent_class"] = intent.GetType().Name,
-                    ["is_stun"] = isStun
-                };
-
-                var targets = creature.CombatState?.PlayerCreatures;
-                if (targets != null)
-                {
-                    // Label and hover tip are fetched separately: StunIntent's
-                    // hover tip is documented to throw ObjectDisposedException
-                    // after a room transition (PRG-7151), and sharing one try
-                    // meant that also discarded a perfectly good label.
-                    try
-                    {
-                        string label = intent.GetIntentLabel(targets, creature).GetFormattedText();
-                        intentData["label"] = StripRichTextTags(label);
-                    }
-                    catch { /* some intents have no meaningful label */ }
-
-                    try
-                    {
-                        var hoverTip = intent.GetHoverTip(targets, creature);
-                        if (hoverTip.Title != null)
-                            intentData["title"] = StripRichTextTags(hoverTip.Title);
-                        if (hoverTip.Description != null)
-                            intentData["description"] = StripRichTextTags(hoverTip.Description);
-                    }
-                    catch { /* see PRG-7151 above */ }
-                }
-
-                intents.Add(intentData);
-            }
-            state["intents"] = intents;
-            state["stunned"] = stunned;
+            state["intents"] = BuildIntentList(moveState.Intents, creature);
+            // A stunned creature performs no logic on its stunned turn
+            // (CreatureCmd.Stun); report it here so a client does not treat the
+            // enemy as a live threat.
+            state["stunned"] = moveState.Intents.Any(intent => intent is StunIntent);
+            state["move_id"] = moveState.Id;
+            // What the move actually does, read from its lambda's IL (see
+            // McpMod.MoveEffects.cs): which powers it applies to whom and how
+            // much, block gained, the status card class it shuffles in.
+            var moveFx = GetMoveEffects(monster, moveState);
+            if (moveFx != null)
+                state["move_effects"] = moveFx;
         }
+
+        // Numeric design stats declared on the concrete monster class
+        // (SeaKickDamage, BubbleBlock, BubbleStr, IncantationAmount, ...).
+        // Property names are the move id in CamelCase + an effect suffix, so
+        // consumers can resolve what a Buff/Defend/Heal move actually does.
+        if (monster != null)
+        {
+            var stats = BuildMonsterStats(monster);
+            if (stats != null)
+                state["model_stats"] = stats;
+        }
+
+        // Complete move graph plus its live cursor/history and the shared
+        // MonsterAi RNG position. Consumers can advance this for any horizon.
+        var intentMachine = BuildIntentMachine(creature);
+        if (intentMachine != null)
+            state["intent_machine"] = intentMachine;
+
+        // This creature's own monster-local RNG stream, assigned at creation
+        // from the run seed + map coordinate. See McpMod.RngStreams.cs.
+        var monsterRng = BuildMonsterRng(creature);
+        if (monsterRng != null)
+            state["rng"] = monsterRng;
 
         return state;
     }
@@ -2631,6 +3711,168 @@ public static partial class McpMod
         return null;
     }
 
+    private static readonly Dictionary<Type, PropertyInfo[]> _monsterStatProps = new();
+
+    private static Dictionary<string, object?>? BuildMonsterStats(MonsterModel monster)
+    {
+        try
+        {
+            var t = monster.GetType();
+            if (!_monsterStatProps.TryGetValue(t, out var props))
+            {
+                // NonPublic too: move-stat getters (SeaKickDamage, BubbleBlock,
+                // ...) are typically protected — only the move definitions
+                // read them.
+                props = t.GetProperties(BindingFlags.Public | BindingFlags.NonPublic
+                                        | BindingFlags.Instance | BindingFlags.DeclaredOnly)
+                    .Where(p => p.PropertyType == typeof(int) && p.CanRead
+                                && p.GetIndexParameters().Length == 0)
+                    .ToArray();
+                _monsterStatProps[t] = props;
+            }
+            if (props.Length == 0)
+                return null;
+            var stats = new Dictionary<string, object?>();
+            foreach (var p in props)
+            {
+                try { stats[p.Name] = (int)p.GetValue(monster)!; }
+                catch { /* a getter may depend on combat state */ }
+            }
+            return stats.Count > 0 ? stats : null;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    // AbstractIntent.IntentLabelFormat is protected, so reach it once by reflection
+    // and cache it. There is no public unpowered label renderer to call instead.
+    private static readonly PropertyInfo? _intentLabelFormat =
+        typeof(AbstractIntent).GetProperty(
+            "IntentLabelFormat",
+            BindingFlags.Instance
+                | BindingFlags.NonPublic
+                | BindingFlags.Public);
+
+    /// <summary>
+    /// Reproduces SingleAttackIntent.GetIntentLabel / MultiAttackIntent.GetIntentLabel
+    /// against the raw DamageCalc, i.e. without the Hook.ModifyDamage pass those go
+    /// through. Returns null when the label cannot be rebuilt, in which case the
+    /// caller keeps the game's own (powered) label and does NOT claim it is unbaked -
+    /// a wrong claim is worse for a consumer than a baked number it expects.
+    /// </summary>
+    private static string? UnpoweredAttackLabel(AttackIntent attack)
+    {
+        try
+        {
+            var calc = attack.DamageCalc;
+            if (calc == null || _intentLabelFormat == null)
+                return null;
+            if (_intentLabelFormat.GetValue(attack) is not LocString format)
+                return null;
+
+            format.Add("Damage", Math.Max(0, (int)calc()));
+            format.Add("Repeat", attack.Repeats);
+            return format.GetFormattedText();
+        }
+        catch { return null; }
+    }
+
+    private static List<Dictionary<string, object?>> BuildIntentList(
+        IEnumerable<AbstractIntent> moveIntents, Creature creature)
+    {
+        var intents = new List<Dictionary<string, object?>>();
+        foreach (var intent in moveIntents)
+        {
+            var intentData = new Dictionary<string, object?>
+            {
+                ["type"] = intent.IntentType.ToString(),
+                // The concrete class is always available and never throws, so
+                // clients can recognise intents whose label or type is unhelpful.
+                ["intent_class"] = intent.GetType().Name,
+                // A stunned creature performs no logic on its stunned turn
+                // (CreatureCmd.Stun); nothing else in the payload says so.
+                ["is_stun"] = intent is StunIntent
+            };
+            // Structured effect numbers straight off the intent object —
+            // exact, no label parsing needed downstream.
+            try
+            {
+                if (intent is AttackIntent atk)
+                {
+                    var calc = atk.DamageCalc;
+                    if (calc != null)
+                        intentData["damage"] = (int)calc();
+                    intentData["hits"] = Math.Max(1, atk.Repeats);
+                    // Powers of the attacker's own that the damage calculation
+                    // reads, so a consumer knows which of its in-sim changes
+                    // move this number (see PowersScalingDamage).
+                    var scaling = PowersScalingDamage(calc);
+                    if (scaling != null)
+                        intentData["scales_with"] = scaling;
+                }
+                else if (intent is StatusIntent status)
+                {
+                    intentData["card_count"] = status.CardCount;
+                }
+            }
+            catch { /* damage calc may fail outside combat */ }
+            try
+            {
+                var targets = creature.CombatState?.PlayerCreatures;
+                if (targets != null)
+                {
+                    // AttackIntent.GetSingleDamage runs the label's number through
+                    // Hook.ModifyDamage, which bakes in attacker Strength/Weak, target
+                    // Vulnerable and the Back Attack x1.5. In unpowered mode rebuild the
+                    // label from the raw DamageCalc instead. Nothing else bakes: the
+                    // Defend/Debuff/Buff labels carry no numbers at all.
+                    string? label = UnpoweredValues && intent is AttackIntent attack
+                        ? UnpoweredAttackLabel(attack)
+                        : null;
+                    if (label != null)
+                        intentData["unbaked"] = true;
+                    else
+                        label = intent.GetIntentLabel(targets, creature).GetFormattedText();
+                    intentData["label"] = StripRichTextTags(label);
+
+                    var hoverTip = intent.GetHoverTip(targets, creature);
+                    if (hoverTip.Title != null)
+                        intentData["title"] = StripRichTextTags(hoverTip.Title);
+                    if (hoverTip.Description != null)
+                        intentData["description"] = StripRichTextTags(hoverTip.Description);
+                }
+            }
+            catch { /* intent label may fail for some types */ }
+            intents.Add(intentData);
+        }
+        return intents;
+    }
+
+    // True while an event room is loaded and still needs the player: either live
+    // dialogue to advance (ancient events) or at least one option that hasn't been
+    // chosen yet. Used to report "event" over a lingering-visible map, without
+    // deadlocking once the event has fully resolved (no buttons / all chosen).
+    private static bool EventHasPendingAction()
+    {
+        var uiRoom = NEventRoom.Instance;
+        if (uiRoom == null)
+            return false;
+
+        // Ancient-event dialogue phase (may precede any option buttons).
+        var ancientLayout = FindFirst<NAncientEventLayout>(uiRoom);
+        if (ancientLayout != null)
+        {
+            var hitbox = ancientLayout.GetNodeOrNull<NClickableControl>("%DialogueHitbox");
+            if (hitbox != null && hitbox.Visible && hitbox.IsEnabled)
+                return true;
+        }
+
+        // Any option still choosable (not already resolved).
+        return FindAll<NEventOptionButton>(uiRoom).Any(b => !b.Option.WasChosen);
+    }
+
     private static Dictionary<string, object?> BuildEventState(EventRoom eventRoom, RunState runState)
     {
         var state = new Dictionary<string, object?>();
@@ -2640,6 +3882,10 @@ public static partial class McpMod
         state["event_id"] = eventModel.Id.Entry;
         state["event_name"] = SafeGetText(() => eventModel.Title);
         state["is_ancient"] = isAncient;
+        // Repeated Linger pages reuse the option key while damage keeps rising.
+        // Read the local mutable copy: CanonicalEvent always has base damage.
+        if (eventModel.Id.Entry == "ABYSSAL_BATHS")
+            state["next_damage"] = eventRoom.LocalMutableEvent.DynamicVars.Damage.BaseValue;
 
         // Check dialogue state for ancients
         bool inDialogue = false;
@@ -2658,6 +3904,28 @@ public static partial class McpMod
         // Event body text
         state["body"] = SafeGetText(() => eventModel.Description);
 
+        // A run transition in flight makes ExecuteChooseEventOption refuse EVERY
+        // option, so the options must not be advertised as clickable during it -
+        // otherwise a client re-picks the same option on every poll and gets one
+        // API error per tick until the transition lands. The window is not just
+        // the "option body is still resolving" case the action gate was written
+        // for: it also covers entry into the event room itself, and that window
+        // is wide open with Instant Mode, which draws the interactive event
+        // immediately while the game's own room fade still runs (RoomFadeIn only
+        // special-cases Fast, so Instant falls into the 0.8s branch).
+        // Deliberately the same call the action uses, so the state can never
+        // advertise an option the action would then refuse.
+        bool transitionInFlight = IsRunTransitionInFlight();
+        state["transition_in_flight"] = transitionInFlight;
+        // The two halves of IsMapScreenOpenOrVisible(), separately, because the
+        // difference between them decides whether a room behind a lingering map
+        // is masked or reported as "map" — and when that goes wrong the symptom
+        // is a room the client never sees at all, with nothing in the state
+        // saying why. Close() clears IsOpen and only then animates out, so
+        // screen_open false with screen_visible true IS the arrival window.
+        state["screen_open"] = NMapScreen.Instance?.IsOpen == true;
+        state["screen_visible"] = NMapScreen.Instance != null && IsNodeVisible(NMapScreen.Instance);
+
         // Options from UI
         var options = new List<Dictionary<string, object?>>();
         if (uiRoom != null)
@@ -2666,23 +3934,45 @@ public static partial class McpMod
             int index = 0;
             foreach (var button in buttons)
             {
-                var opt = button.Option;
-                var optData = new Dictionary<string, object?>
+                // Choosing a non-shared option clears the option container
+                // (RemoveChildSafely + QueueFreeSafely), so a poll landing on
+                // that frame can meet a button that is already gone. Skip it
+                // rather than letting ObjectDisposedException fail the whole
+                // state build - the index still advances so it keeps lining up
+                // with what choose_event_option sees.
+                try
                 {
-                    ["index"] = index,
-                    ["title"] = SafeGetText(() => opt.Title),
-                    ["description"] = SafeGetText(() => opt.Description),
-                    ["is_locked"] = opt.IsLocked,
-                    ["is_proceed"] = opt.IsProceed,
-                    ["was_chosen"] = opt.WasChosen
-                };
-                if (opt.Relic != null)
-                {
-                    optData["relic_name"] = SafeGetText(() => opt.Relic.Title);
-                    optData["relic_description"] = SafeGetText(() => opt.Relic.DynamicDescription);
+                    var opt = button.Option;
+                    var optData = new Dictionary<string, object?>
+                    {
+                        ["index"] = index,
+                        // The option's stable, language-independent id
+                        // ("SELF_HELP_BOOK.pages.INITIAL.options.READ_THE_BACK").
+                        // Title and description are localized display text, so
+                        // matching on them would break on a reworded or
+                        // translated option; this does not.
+                        ["option_key"] = opt.TextKey,
+                        ["title"] = SafeGetText(() => opt.Title),
+                        ["description"] = SafeGetText(() => opt.Description),
+                        ["is_locked"] = opt.IsLocked,
+                        ["is_proceed"] = opt.IsProceed,
+                        ["was_chosen"] = opt.WasChosen,
+                        // False while a choice is executing (DisableOptionButtons)
+                        // or while a room transition is resolving.
+                        // choose_event_option rejects the option in both windows,
+                        // so clients must not re-pick it.
+                        ["is_enabled"] = button.IsEnabled && !transitionInFlight
+                    };
+                    if (opt.Relic != null)
+                    {
+                        optData["relic_id"] = opt.Relic.Id.Entry;
+                        optData["relic_name"] = SafeGetText(() => opt.Relic.Title);
+                        optData["relic_description"] = SafeGetText(() => opt.Relic.DynamicDescription);
+                    }
+                    optData["keywords"] = BuildHoverTips(opt.HoverTips);
+                    options.Add(optData);
                 }
-                optData["keywords"] = BuildHoverTips(opt.HoverTips);
-                options.Add(optData);
+                catch (ObjectDisposedException) { }
                 index++;
             }
         }
@@ -2714,6 +4004,7 @@ public static partial class McpMod
             state["shop"] = new Dictionary<string, object?>
             {
                 ["items"] = new List<Dictionary<string, object?>>(),
+                ["inventory_open"] = false,
                 ["can_proceed"] = true
             };
             state["message"] = "The fake merchant has been defeated. Proceed to map.";
@@ -2738,7 +4029,7 @@ public static partial class McpMod
         var shopState = BuildFakeMerchantShopItems(fakeMerchant.Inventory);
         bool isOpen = fakeMerchantNode != null
             && FindFirst<NMerchantInventory>(fakeMerchantNode)?.IsOpen == true;
-        shopState["is_open"] = isOpen;
+        shopState["inventory_open"] = isOpen;
 
         // Proceed button
         if (fakeMerchantNode != null)
@@ -2805,13 +4096,22 @@ public static partial class McpMod
         int index = 0;
         foreach (var opt in restSiteRoom.Options)
         {
+            // RestSiteOption.IsEnabled is a static property of the option (HEAL
+            // is unconditionally true); the room's button carries the live gate,
+            // which DisableOptions() takes down for as long as a chosen option is
+            // resolving - and a heal that offers rewards (Tiny Mailbox's potions)
+            // stays in the option list for that whole window. Report the stricter
+            // of the two so no client reads an option as actionable while another
+            // is mid-flight. The buttons are rebuilt, enabled, once it finishes;
+            // while the room UI has not built them yet, the model stands alone.
+            var button = uiRoom?.GetButtonForOption(opt);
             options.Add(new Dictionary<string, object?>
             {
                 ["index"] = index,
                 ["id"] = opt.OptionId,
                 ["name"] = SafeGetText(() => opt.Title),
                 ["description"] = SafeGetText(() => opt.Description),
-                ["is_enabled"] = opt.IsEnabled,
+                ["is_enabled"] = opt.IsEnabled && (button?.IsEnabled ?? true),
                 // A model option with no button is exactly the case where counting
                 // buttons positionally would have pressed the wrong option.
                 ["has_button"] = uiRoom != null && FindRestSiteButton(uiRoom, opt) != null
@@ -2820,6 +4120,7 @@ public static partial class McpMod
         }
         state["options"] = options;
 
+        state["room_open"] = uiRoom != null;
         var proceedButton = uiRoom?.ProceedButton;
         state["can_proceed"] = proceedButton?.IsEnabled ?? false;
 
@@ -2844,6 +4145,7 @@ public static partial class McpMod
         if (inventory == null)
         {
             state["items"] = new List<Dictionary<string, object?>>();
+            state["inventory_open"] = NMerchantRoom.Instance?.Inventory?.IsOpen ?? false;
             state["can_proceed"] = NMerchantRoom.Instance?.ProceedButton?.IsEnabled ?? false;
             state["error"] =
                 "Shop inventory is not ready yet (null). Often happens right after entering the merchant from the map; retry in a moment.";
@@ -2876,6 +4178,9 @@ public static partial class McpMod
                 item["card_rarity"] = cardInfo["rarity"];
                 item["card_description"] = cardInfo["description"];
                 item["keywords"] = cardInfo["keywords"];
+                item["is_upgraded"] = cardInfo["is_upgraded"];
+                item["enchantment"] = cardInfo["enchantment"];
+                item["enchantment_state"] = cardInfo["enchantment_state"];
             }
             items.Add(item);
             index++;
@@ -2963,7 +4268,9 @@ public static partial class McpMod
                 state["sellable_potions"] = sellable;
         }
 
-        var proceedButton = NMerchantRoom.Instance?.ProceedButton;
+        var merchantRoomUi = NMerchantRoom.Instance;
+        state["inventory_open"] = merchantRoomUi?.Inventory?.IsOpen ?? false;
+        var proceedButton = merchantRoomUi?.ProceedButton;
         state["can_proceed"] = proceedButton?.IsEnabled ?? false;
 
         return state;
@@ -2987,6 +4294,50 @@ public static partial class McpMod
                     : "Leave the shop room and return to the map."
             }
         };
+    }
+
+    // The travelable next-node options read from the live map UI. Shared by
+    // BuildMapState and the masked-shop state (the bot leaves a masked shop by
+    // travelling to the next node, since the merchant ProceedButton isn't enabled
+    // while the map lingers over the shop).
+    private static List<Dictionary<string, object?>> BuildMapNextOptions(
+        IReadOnlyDictionary<(int, int), List<string>>? marks = null)
+    {
+        var nextOptions = new List<Dictionary<string, object?>>();
+        var mapScreen = NMapScreen.Instance;
+        if (mapScreen == null)
+            return nextOptions;
+
+        var travelable = GetTravelableMapPoints(mapScreen);
+
+        int index = 0;
+        foreach (var nmp in travelable)
+        {
+            var pt = nmp.Point;
+            var option = new Dictionary<string, object?>
+            {
+                ["index"] = index,
+                ["col"] = pt.coord.col,
+                ["row"] = pt.coord.row,
+                ["type"] = pt.PointType.ToString()
+            };
+            AddMapNodeMarks(option, pt, marks);
+
+            // 1-level lookahead
+            var children = pt.Children
+                .OrderBy(c => c.coord.col)
+                .Select(c => new Dictionary<string, object?>
+                {
+                    ["col"] = c.coord.col, ["row"] = c.coord.row,
+                    ["type"] = c.PointType.ToString()
+                }).ToList();
+            if (children.Count > 0)
+                option["leads_to"] = children;
+
+            nextOptions.Add(option);
+            index++;
+        }
+        return nextOptions;
     }
 
     private static Dictionary<string, object?> BuildMapState(RunState runState)
@@ -3032,56 +4383,37 @@ public static partial class McpMod
         }
         state["visited"] = visited;
 
-        // Next options - read travelable state from UI nodes
-        var nextOptions = new List<Dictionary<string, object?>>();
+        // What each visited point actually resolved into. `visited` above only
+        // carries the map-point TYPE, so this is the only place a "?" reports
+        // the room it became.
+        state["point_history"] = BuildMapPointHistory(runState);
+
+        // Next options - read travelable state from UI nodes. Empty whenever the
+        // current room is unfinished or a travel is already resolving, so the
+        // two flags below say WHY rather than leaving a client guessing.
+        state["next_options"] = BuildMapNextOptions(marks);
         var mapScreen = NMapScreen.Instance;
-        if (mapScreen != null)
-        {
-            var travelable = FindAll<NMapPoint>(mapScreen)
-                .Where(mp => mp.State == MapPointState.Travelable && mp.Point != null)
-                .OrderBy(mp => mp.Point!.coord.col)
-                .ToList();
+        state["travel_enabled"] = mapScreen != null && mapScreen.IsTravelEnabled;
+        state["travel_in_flight"] = IsMapTravelInFlight();
+        // Third reason for an empty next_options: an act change is still
+        // resolving behind this map. See GetTravelableMapPoints.
+        state["transition_in_flight"] = IsRunTransitionInFlight();
+        state["drawing_coordinate_space"] = BuildMapDrawingCoordinateSpace();
 
-            int index = 0;
-            foreach (var nmp in travelable)
-            {
-                var pt = nmp.Point;
-                var option = new Dictionary<string, object?>
-                {
-                    ["index"] = index,
-                    ["col"] = pt.coord.col,
-                    ["row"] = pt.coord.row,
-                    ["type"] = pt.PointType.ToString()
-                };
-                AddMapNodeMarks(option, pt, marks);
-
-                // 1-level lookahead
-                var children = pt.Children
-                    .OrderBy(c => c.coord.col)
-                    .Select(c => new Dictionary<string, object?>
-                    {
-                        ["col"] = c.coord.col, ["row"] = c.coord.row,
-                        ["type"] = c.PointType.ToString()
-                    }).ToList();
-                if (children.Count > 0)
-                    option["leads_to"] = children;
-
-                nextOptions.Add(option);
-                index++;
-            }
-        }
-        state["next_options"] = nextOptions;
+        // Map-point layout includes per-run jitter. Expose the live visual
+        // anchors in the same normalized coordinate space accepted by map_draw.
+        var drawingNodePositions = BuildMapDrawingNodePositions(mapScreen);
 
         // Full map - all nodes organized for planning
         var nodes = new List<Dictionary<string, object?>>();
 
         // Starting point
         var start = map.StartingMapPoint;
-        nodes.Add(BuildMapNode(start, marks));
+        nodes.Add(BuildMapNode(start, marks, drawingNodePositions));
 
         // Grid nodes
         foreach (var pt in map.GetAllMapPoints())
-            nodes.Add(BuildMapNode(pt, marks));
+            nodes.Add(BuildMapNode(pt, marks, drawingNodePositions));
 
         // Boss identity comes from the live act's EncounterModel — BossEncounter
         // throws if the act hasn't finished setup yet, so guard the access.
@@ -3092,7 +4424,7 @@ public static partial class McpMod
 
         var primaryBossId = bossEncounter?.Id?.Entry;
         var primaryBossName = SafeGetText(() => bossEncounter?.Title);
-        var bossNode = BuildMapNode(map.BossMapPoint, marks);
+        var bossNode = BuildMapNode(map.BossMapPoint, marks, drawingNodePositions);
         AddBossIdentity(bossNode, primaryBossId, primaryBossName);
         nodes.Add(bossNode);
 
@@ -3101,7 +4433,7 @@ public static partial class McpMod
         {
             var secondBossId = secondBossEncounter?.Id?.Entry;
             var secondBossName = SafeGetText(() => secondBossEncounter?.Title);
-            var secondBossNode = BuildMapNode(map.SecondBossMapPoint, marks);
+            var secondBossNode = BuildMapNode(map.SecondBossMapPoint, marks, drawingNodePositions);
             AddBossIdentity(secondBossNode, secondBossId, secondBossName);
             nodes.Add(secondBossNode);
             secondBoss = BuildBossInfo(map.SecondBossMapPoint, secondBossId, secondBossName);
@@ -3285,7 +4617,10 @@ public static partial class McpMod
             target["name"] = bossName;
     }
 
-    private static Dictionary<string, object?> BuildMapNode(MapPoint pt, IReadOnlyDictionary<(int, int), List<string>>? marks = null)
+    private static Dictionary<string, object?> BuildMapNode(
+        MapPoint pt,
+        IReadOnlyDictionary<(int, int), List<string>>? marks = null,
+        IReadOnlyDictionary<(int col, int row), Vector2>? drawingNodePositions = null)
     {
         var node = new Dictionary<string, object?>
         {
@@ -3299,6 +4634,9 @@ public static partial class McpMod
         };
 
         AddMapNodeMarks(node, pt, marks);
+
+        if (drawingNodePositions?.TryGetValue((pt.coord.col, pt.coord.row), out var drawPosition) == true)
+            node["draw_position"] = BuildMapDrawingPoint(drawPosition);
         return node;
     }
 
@@ -3380,6 +4718,186 @@ public static partial class McpMod
         return marks;
     }
 
+    private static FieldInfo? _rewardsSetField;
+    private static FieldInfo? _crystalSphereEntityField;
+    private static FieldInfo? _crystalSphereCompletionField;
+    private static FieldInfo? _cardRewardCompletionField;
+    private static FieldInfo? _rewardsIsTerminalField;
+
+    /// <summary>
+    /// True while the run is still blocked on this rewards screen's set.
+    /// </summary>
+    /// <remarks>
+    /// Lets the state builder tell a LIVE rewards screen from one that merely
+    /// lingers on the overlay stack after the player proceeded (the reason the
+    /// rewards branch otherwise defers to a visible map screen). The
+    /// synchronizer is the authority: a set is marked completed only once every
+    /// reward has been taken or the whole set was skipped, and until then
+    /// whatever awaited <c>RewardsSet.Offer</c> - a combat room end, or the
+    /// rest-site heal Tiny Mailbox hangs its potions off - cannot continue.
+    ///
+    /// A TERMINAL screen is excluded, because for it "outstanding" does not mean
+    /// "blocking" and the two conditions deadlock: proceeding from a post-combat
+    /// screen runs <c>RunManager.ProceedFromTerminalRewardsScreen</c>, which only
+    /// OPENS THE MAP - the set is not completed until the run leaves the room,
+    /// which needs a map click. So a set holding any declined reward (a potion
+    /// refused into a full belt, a skipped card) stays outstanding, masks the map
+    /// that would release it, and - since <c>AfterOverlayHidden</c> disables the
+    /// proceed button once the map opens on top - leaves a screen with nothing
+    /// claimable and can_proceed false, forever. Only a non-terminal set (a
+    /// mid-room OfferCustom) is one the run genuinely waits on.
+    ///
+    /// Both fields are private on the screen; if a game update renames either we
+    /// report false, which is exactly the pre-fix behaviour (defer to the map).
+    /// Only the top-of-stack screen is inspected, so a card-reward selection
+    /// opened FROM a live set is not covered - no known relic or event offers a
+    /// card reward this way.
+    /// </remarks>
+    private static bool RewardsSetIsOutstanding(NRewardsScreen screen)
+    {
+        try
+        {
+            _rewardsIsTerminalField ??= typeof(NRewardsScreen)
+                .GetField("_isTerminal", BindingFlags.NonPublic | BindingFlags.Instance);
+            if (_rewardsIsTerminalField?.GetValue(screen) is not bool isTerminal || isTerminal)
+                return false;
+
+            _rewardsSetField ??= typeof(NRewardsScreen)
+                .GetField("_rewardsSet", BindingFlags.NonPublic | BindingFlags.Instance);
+            if (_rewardsSetField?.GetValue(screen) is not RewardsSet set)
+                return false;
+            return !RunManager.Instance.RewardsSetSynchronizer.IsRewardsSetCompleted(set);
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Names what is blocking a map that cannot be travelled.
+    /// </summary>
+    /// <remarks>
+    /// The map fallback is the only branch reachable while the run is provably
+    /// stuck, and it had no guard of its own: every "is this screen actionable"
+    /// test above it is per-screen, so a screen nobody thought to guard falls
+    /// through to a map with `travel_enabled: false` and no `next_options` -
+    /// which is honest about the map and says nothing about the room that is
+    /// still awaiting an answer. Three separate stalls reached the client that
+    /// way (Tiny Mailbox's potions, Brain Leech's card reward, and the Crystal
+    /// Sphere), each costing an investigation to attribute.
+    ///
+    /// This does not fix the masking - only the missing per-screen guard can -
+    /// but it turns the next occurrence from a silent hang into a state that
+    /// names the room and the overlay responsible. An empty `next_options` with
+    /// nothing in flight means `GetTravelableMapPoints` found nothing because
+    /// the current room is unfinished, so anything here is a real blocker.
+    /// </remarks>
+    private static void AddBlockedMapDiagnostics(
+        Dictionary<string, object?> result,
+        AbstractRoom? currentRoom,
+        object? topOverlay)
+    {
+        try
+        {
+            if (result["map"] is not Dictionary<string, object?> map)
+                return;
+            if (map["travel_enabled"] is not false)
+                return;
+            if (map["travel_in_flight"] is true || map["transition_in_flight"] is true)
+                return;
+
+            map["blocked"] = true;
+            map["blocked_room"] = currentRoom?.GetType().Name;
+            map["blocked_overlay"] = topOverlay?.GetType().Name;
+            map["blocked_reason"] =
+                "The map is not travelable and nothing is in flight, so the current room has not "
+                + "finished. Some screen it is awaiting is not being reported; `blocked_overlay` "
+                + "names the overlay on top, if any.";
+        }
+        catch
+        {
+            // Diagnostics must never be able to break a state read.
+        }
+    }
+
+    /// <summary>
+    /// Whether a Crystal Sphere minigame is still being played.
+    /// </summary>
+    /// <remarks>
+    /// The third of the "answered yet?" checks, and the same rule as the other
+    /// two: `CrystalSphere.UncoverFuture` and `PaymentPlan` both await
+    /// `PlayMinigame()` before `SetEventFinished`, and that await IS the
+    /// minigame's own `_completionSource`. The screen holds the minigame in
+    /// `_entity`, so the signal is two private fields down; any reflection
+    /// failure answers false and leaves the mask as it behaved before.
+    /// </remarks>
+    private static bool CrystalSphereIsOutstanding(NCrystalSphereScreen screen)
+    {
+        try
+        {
+            _crystalSphereEntityField ??= typeof(NCrystalSphereScreen)
+                .GetField("_entity", BindingFlags.NonPublic | BindingFlags.Instance);
+            var minigame = _crystalSphereEntityField?.GetValue(screen);
+            if (minigame == null)
+                return false;
+            _crystalSphereCompletionField ??= minigame.GetType()
+                .GetField("_completionSource", BindingFlags.NonPublic | BindingFlags.Instance);
+            if (_crystalSphereCompletionField?.GetValue(minigame) is not TaskCompletionSource completion)
+                return false;
+            return !completion.Task.IsCompleted;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Whether a card reward screen is still waiting for the run to pick.
+    /// </summary>
+    /// <remarks>
+    /// The twin of <see cref="RewardsSetIsOutstanding" />, and it exists for the
+    /// same reason: the screen lingers on the overlay stack after it is answered,
+    /// so the map is allowed to win THEN - but a pick the run is blocked on must
+    /// win over the map, or the state reports a map that cannot be travelled.
+    ///
+    /// `_completionSource` is the await the screen resolves: non-null and
+    /// incomplete means nobody has chosen yet. Any reflection failure answers
+    /// false, which leaves the mask exactly as it behaved before.
+    /// </remarks>
+    private static bool CardRewardIsOutstanding(NCardRewardSelectionScreen screen)
+    {
+        try
+        {
+            _cardRewardCompletionField ??= typeof(NCardRewardSelectionScreen)
+                .GetField("_completionSource", BindingFlags.NonPublic | BindingFlags.Instance);
+            if (_cardRewardCompletionField?.GetValue(screen) is not TaskCompletionSource<int?> completion)
+                return false;
+            return !completion.Task.IsCompleted;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private static readonly FieldInfo? SpecialRewardCardField = typeof(SpecialCardReward).GetField("_card", BindingFlags.NonPublic | BindingFlags.Instance);
+
+    private static Dictionary<string, object?> BuildSpecialCardReward(SpecialCardReward reward)
+    {
+        var card = SpecialRewardCardField?.GetValue(reward) as CardModel
+            ?? throw new InvalidOperationException("A populated SpecialCardReward must expose its exact card");
+        var saved = reward.ToSerializable();
+        return new Dictionary<string, object?>
+        {
+            ["type"] = "special_card",
+            ["card_reference"] = GetCardObjectIdentity(card),
+            ["card"] = BuildCardInfo(card),
+            ["encounter_source"] = saved.CustomDescriptionEncounterSourceId.Entry
+        };
+    }
+
     private static Dictionary<string, object?> BuildRewardsState(NRewardsScreen rewardsScreen, RunState runState)
     {
         var state = new Dictionary<string, object?>();
@@ -3401,7 +4919,12 @@ public static partial class McpMod
             item["description"] = SafeGetText(() => reward.Description);
 
             // Type-specific details
-            if (reward is GoldReward goldReward)
+            if (reward is SpecialCardReward specialCardReward)
+            {
+                foreach (var pair in BuildSpecialCardReward(specialCardReward))
+                    item[pair.Key] = pair.Value;
+            }
+            else if (reward is GoldReward goldReward)
                 item["gold_amount"] = goldReward.Amount;
             else if (reward is PotionReward potionReward && potionReward.Potion != null)
             {
@@ -3544,7 +5067,13 @@ public static partial class McpMod
 
         // Cards in the grid (sorted by visual position - MoveToFront can reorder children)
         var cardHolders = FindAllSortedByPosition<NGridCardHolder>(screen);
-        var selectedCards = GetInstanceFieldValue(screen, "_selectedCards") as HashSet<CardModel>;
+        // Which cards the screen already holds selected. `select_card` TOGGLES a
+        // holder, so a client that cannot see this cannot converge on a
+        // multi-pick screen: re-sending a pick turns it back off. Every grid
+        // selection screen keeps its own private set; nothing public exposes it,
+        // which is why the game's own AutoSlay handler tracks a local list
+        // instead. Read it so a client can see its own progress.
+        var selectedCards = SelectedCardModels(screen);
         state["selection_observable"] = selectedCards != null;
         var selectedIndices = new List<int>();
         var cards = new List<Dictionary<string, object?>>();
@@ -3605,6 +5134,8 @@ public static partial class McpMod
             // over the deck, so a selected card can be outside `cards[]`.
             state["selected_outside_grid"] = selection.Count - selectedInGrid;
         }
+
+        AddCardSelectionContext(state);
 
         // Preview container showing? (selection complete, awaiting confirm)
         // The subclasses each name theirs differently; FindCardSelectPreviewContainers
@@ -3692,6 +5223,41 @@ public static partial class McpMod
         return state;
     }
 
+    /// <summary>
+    /// The cards a grid selection screen currently holds selected, or null when
+    /// the screen keeps no such set.
+    /// </summary>
+    /// <remarks>
+    /// Every `NCardGridSelectionScreen` subclass that allows more than one pick
+    /// keeps its own `private readonly HashSet&lt;CardModel&gt; _selectedCards`
+    /// (see `NDeckEnchantSelectScreen`), and nothing public exposes it — the
+    /// game's own AutoSlay handlers track a local list rather than read it. A
+    /// client needs it because `select_card` TOGGLES a holder: without knowing
+    /// what is already selected it cannot converge on a screen that wants three
+    /// picks, since re-sending one turns it back off.
+    ///
+    /// The field name is matched rather than the declaring type, so a new screen
+    /// with the same shape is covered without another entry here. A screen that
+    /// has no such field answers null, which is reported as no selection rather
+    /// than as an empty one.
+    /// </remarks>
+    private static HashSet<CardModel>? SelectedCardModels(object screen)
+    {
+        try
+        {
+            var field = screen.GetType().GetField(
+                "_selectedCards",
+                BindingFlags.NonPublic | BindingFlags.Instance);
+            return field?.GetValue(screen) as HashSet<CardModel>;
+        }
+        catch (Exception)
+        {
+            // Reflection into game internals is best-effort: a renamed or
+            // retyped field must degrade to "unknown", never break the state.
+            return null;
+        }
+    }
+
     private static Dictionary<string, object?> BuildChooseCardState(NChooseACardSelectionScreen screen, RunState runState)
     {
         var state = new Dictionary<string, object?>();
@@ -3713,15 +5279,59 @@ public static partial class McpMod
             index++;
         }
         state["cards"] = cards;
+        AddCardSelectionContext(state);
 
         var skipButton = screen.GetNodeOrNull<NClickableControl>("SkipButton");
         state["can_skip"] = skipButton?.IsEnabled == true && skipButton.Visible;
         state["preview_showing"] = false;
         state["can_confirm"] = false;
         state["can_cancel"] = state["can_skip"];
+        state["can_select"] = ChooseCardScreenAcceptsInput(screen);
 
         return state;
     }
+
+    /// <summary>
+    /// Whether `NChooseACardSelectionScreen.SelectHolder` would act on a press
+    /// right now, rather than swallow it.
+    /// </summary>
+    /// <remarks>
+    /// The screen opens with a 350 ms deadzone — `SelectHolder` returns without
+    /// touching its `TaskCompletionSource` unless
+    /// `Time.GetTicksMsec() - _openedTicks > 350` — so that a click still in
+    /// flight when the overlay animates in cannot pick a card the player never
+    /// saw. Nothing about the press fails: the signal fires, the handler runs,
+    /// and it simply does nothing.
+    ///
+    /// That is invisible to a client, and silently fatal to one: `select_card`
+    /// reports `ok` either way, so an engine that keys the observation it acted
+    /// on then waits forever for a state that will never change. A bot polling
+    /// ten times a second answers the FIRST observation of the screen by
+    /// construction, which is always inside the deadzone — so every
+    /// choose-a-card screen (Knowledge Demon's Curse of Knowledge, Attack
+    /// Potion, Discovery, Toolbox) wedged the run rather than occasionally
+    /// missing.
+    ///
+    /// Reporting readiness rather than refusing the action is what makes this
+    /// race-free: the flag only ever goes from false to true, so a state read
+    /// just before the deadline and acted on just after it still lands.
+    /// </remarks>
+    private static bool ChooseCardScreenAcceptsInput(NChooseACardSelectionScreen screen)
+    {
+        try
+        {
+            if (GetInstanceFieldValue(screen, "_openedTicks") is not ulong openedTicks)
+                return true;
+            return Godot.Time.GetTicksMsec() - openedTicks > ChooseCardScreenInputDeadzoneMsec;
+        }
+        catch (Exception)
+        {
+            return true;
+        }
+    }
+
+    /// <summary>`NChooseACardSelectionScreen._noSelectionTimeMsec`.</summary>
+    private const ulong ChooseCardScreenInputDeadzoneMsec = 350uL;
 
     private static Dictionary<string, object?> BuildBundleSelectState(NChooseABundleSelectionScreen screen, RunState runState)
     {
@@ -3753,6 +5363,7 @@ public static partial class McpMod
             index++;
         }
         state["bundles"] = bundles;
+        AddCardSelectionContext(state);
 
         var previewContainer = screen.GetNodeOrNull<Godot.Control>("%BundlePreviewContainer");
         bool previewShowing = previewContainer?.Visible == true;
@@ -3843,6 +5454,7 @@ public static partial class McpMod
             index++;
         }
         state["cards"] = selectableCards;
+        AddCardSelectionContext(state);
 
         // Already-selected cards. NPlayerHand has two separate selection code paths --
         // SelectCardInSimpleMode() (used by "simple_select": discard/exhaust-one prompts)
@@ -3861,11 +5473,27 @@ public static partial class McpMod
             foreach (var card in selectedCardModels)
             {
                 if (card == null) continue;
-                selectedCards.Add(new Dictionary<string, object?>
+                int handIndex = -1;
+                var handCards = card.Owner.PlayerCombatState?.Hand.Cards;
+                if (handCards != null)
                 {
-                    ["index"] = selIdx,
-                    ["name"] = SafeGetText(() => card.Title)
-                });
+                    for (int position = 0; position < handCards.Count; position++)
+                    {
+                        if (ReferenceEquals(handCards[position], card))
+                        {
+                            handIndex = position;
+                            break;
+                        }
+                    }
+                }
+                if (handIndex < 0)
+                    throw new InvalidOperationException("Selected Hand card is absent from its combat Hand pile.");
+                var selectedInfo = BuildCardState(card, handIndex);
+                // index addresses the selected UI container; hand_index names
+                // the physical card in player.hand, including identical copies.
+                selectedInfo["index"] = selIdx;
+                selectedInfo["hand_index"] = handIndex;
+                selectedCards.Add(selectedInfo);
                 selIdx++;
             }
             if (selectedCards.Count > 0)
@@ -4034,7 +5662,39 @@ public static partial class McpMod
 
         state["can_proceed"] = FindCrystalSphereProceedButton(screen) != null;
 
+        var minigame = BuildCrystalSphereTrace(screen);
+        if (minigame != null)
+            state["minigame"] = minigame;
+
         return state;
+    }
+
+    // True while a treasure room is loaded and still has something to do: an
+    // unopened chest, or a relic left to pick. Side-effect-free (unlike
+    // BuildTreasureState, which auto-opens the chest) so it can safely gate the
+    // state-type decision. Used to report "treasure" over a lingering-visible map
+    // without deadlocking once the chest is opened and relics are taken.
+    private static bool TreasureHasPendingAction()
+    {
+        var treasureUI = FindFirst<NTreasureRoom>(
+            ((Godot.SceneTree)Godot.Engine.GetMainLoop()).Root);
+        if (treasureUI == null)
+            return false;
+
+        // Chest not yet opened.
+        var chestButton = treasureUI.GetNodeOrNull<NClickableControl>("Chest");
+        if (chestButton is { IsEnabled: true })
+            return true;
+
+        // A relic is still available to pick.
+        var relicCollection = treasureUI.GetNodeOrNull<NTreasureRoomRelicCollection>("%RelicCollection");
+        if (relicCollection?.Visible == true)
+        {
+            return FindAll<NTreasureRoomRelicHolder>(relicCollection)
+                .Any(h => h.IsEnabled && h.Visible);
+        }
+
+        return false;
     }
 
     private static Dictionary<string, object?> BuildTreasureState(TreasureRoom treasureRoom, RunState runState)
@@ -4108,18 +5768,40 @@ public static partial class McpMod
         var powers = new List<Dictionary<string, object?>>();
         foreach (var power in creature.Powers)
         {
-            // IsVisible is a UI concern (it hides zero-stack and internal bookkeeping
-            // powers from the HUD). A power with a live stack is always reported, even
-            // when the HUD would hide it, because callers compute damage from this list.
+            // The planner needs every power instance, including hidden tracker
+            // powers. Identity, lifecycle state, and instance links are read
+            // without touching localization so a broken hover tip cannot erase
+            // mechanically relevant state.
             bool isVisible;
             try { isVisible = power.IsVisible; }
             catch (Exception ex) { Warn("status.is_visible", ex); isVisible = true; }
-            if (!isVisible && !HasLiveStack(power)) continue;
+            var entry = new Dictionary<string, object?>
+            {
+                ["id"] = power.Id.Entry,
+                ["amount"] = power.Amount,
+                ["display_amount"] = power.DisplayAmount,
+                ["amount_on_turn_start"] = power.AmountOnTurnStart,
+                ["skip_next_duration_tick"] = power.SkipNextDurationTick,
+                ["type"] = power.TypeForCurrentAmount.ToString(),
+                ["instance_type"] = power.InstanceType.ToString(),
+                ["applier_combat_id"] = power.Applier?.CombatId,
+                ["target_combat_id"] = power.Target?.CombatId,
+                ["is_visible"] = isVisible,
+                ["vars"] = power.DynamicVars.ToDictionary(
+                    pair => pair.Key,
+                    pair => (object?)new Dictionary<string, object?>
+                    {
+                        ["base"] = pair.Value.BaseValue,
+                        ["enchanted"] = pair.Value.EnchantedValue,
+                        ["preview"] = pair.Value.PreviewValue,
+                        ["rendered"] = pair.Value.ToString()
+                    }),
+                ["runtime"] = BuildPowerRuntimeState(power)
+            };
+            powers.Add(entry);
 
-            // Per-power try/catch: HoverTips getter calls into game engine code
-            // (LocString resolution, DynamicVars, virtual ExtraHoverTips) that can
-            // throw during state transitions. Skip the power rather than fail the
-            // entire state query.
+            // Localization and hover tips are advisory. Keep the exact power
+            // instance above even when game UI code throws mid-transition.
             try
             {
                 var allTips = power.HoverTips.ToList();
@@ -4139,63 +5821,20 @@ public static partial class McpMod
                 }
                 resolvedDesc ??= SafeGetText(() => power.SmartDescription);
 
-                // "amount" is the stack count that is actually in effect.
-                // DisplayAmount is a UI-facing override: TenderPower, for example,
-                // returns "cards played so far this turn", which reads as 0 at the
-                // start of the very turn the debuff is live. Reporting that as the
-                // stack count made "(0)" look like "expired". Keep the UI number
-                // under display_amount for anyone who needs the on-screen value.
-                int amount = power.Amount;
-                int displayAmount = power.DisplayAmount;
-                var entry = new Dictionary<string, object?>
-                {
-                    ["id"] = power.Id.Entry,
-                    ["name"] = SafeGetText(() => power.Title),
-                    ["amount"] = amount,
-                    ["type"] = power.Type.ToString(),
-                    ["description"] = resolvedDesc,
-                    ["keywords"] = BuildHoverTips(extraTips)
-                };
-                if (displayAmount != amount)
-                    entry["display_amount"] = displayAmount;
+                entry["name"] = SafeGetText(() => power.Title);
+                entry["description"] = resolvedDesc;
+                entry["keywords"] = BuildHoverTips(extraTips);
                 if (!isVisible)
                     entry["hidden_in_ui"] = true;
-                powers.Add(entry);
             }
             catch (Exception ex)
             {
                 // HoverTips / SmartDescription reach deep into engine code and can throw
-                // mid-transition. Dropping the power silently used to make debuffs
-                // disappear from state while they were plainly still in effect, leaving
-                // "why did my damage drop?" to be reverse-engineered from card text.
-                // Emit what can be read without the engine instead.
+                // mid-transition. The exact mechanical fields above are already reported.
                 Warn("status.description", ex);
-                powers.Add(BuildMinimalPowerState(power));
             }
         }
         return powers;
-    }
-
-    /// <summary>Fallback entry for a power whose description could not be resolved.</summary>
-    private static Dictionary<string, object?> BuildMinimalPowerState(PowerModel power)
-    {
-        var entry = new Dictionary<string, object?>
-        {
-            ["id"] = SafeGetText(() => power.Id.Entry) ?? "unknown",
-            ["name"] = SafeGetText(() => power.Title),
-            ["amount"] = SafeGetInt(() => power.Amount),
-            ["type"] = SafeGetText(() => power.Type.ToString()),
-            ["description"] = null,
-            ["description_unavailable"] = true,
-            ["keywords"] = new List<string>()
-        };
-        return entry;
-    }
-
-    private static bool HasLiveStack(PowerModel power)
-    {
-        try { return power.Amount != 0; }
-        catch (Exception ex) { Warn("status.amount", ex); return false; }
     }
 
     // Left silent on purpose: its callers use it to probe alternatives (PreviewValue,
@@ -4205,6 +5844,97 @@ public static partial class McpMod
     {
         try { return getter(); }
         catch { return null; }
+    }
+
+    private static Dictionary<string, object?> BuildPowerRuntimeState(PowerModel power)
+    {
+        var runtime = new Dictionary<string, object?>();
+        var seen = new HashSet<object>(ReferenceEqualityComparer.Instance);
+
+        // Concrete and intermediate power classes contain state such as
+        // counters, selected cards, and facing. Base PowerModel lifecycle state
+        // is exported explicitly by BuildPowersState and is not duplicated.
+        for (Type? type = power.GetType(); type != null && type != typeof(PowerModel); type = type.BaseType)
+        {
+            foreach (var field in type.GetFields(BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public | BindingFlags.DeclaredOnly))
+            {
+                if (field.IsStatic || field.IsLiteral)
+                    continue;
+                runtime[field.Name] = SerializePowerRuntimeValue(field.GetValue(power), seen, 0);
+            }
+        }
+
+        // PowerModel owns each subclass's InitInternalData result in a private
+        // field, so it must be read from the base class explicitly.
+        var internalDataField = typeof(PowerModel).GetField("_internalData", BindingFlags.Instance | BindingFlags.NonPublic);
+        runtime["_internalData"] = SerializePowerRuntimeValue(internalDataField?.GetValue(power), seen, 0);
+        return runtime;
+    }
+
+    private static object? SerializePowerRuntimeValue(object? value, HashSet<object> seen, int depth)
+    {
+        if (value == null)
+            return null;
+        if (value is string or bool or byte or sbyte or short or ushort or int or uint or long or ulong
+            or float or double or decimal)
+            return value;
+        if (value is Enum enumValue)
+            return enumValue.ToString();
+        if (value is Creature creature)
+            return new Dictionary<string, object?> { ["kind"] = "creature", ["combat_id"] = creature.CombatId };
+        if (value is CardPlay cardPlay)
+            return new Dictionary<string, object?>
+            {
+                ["kind"] = "card_play",
+                ["play_id"] = GetCardPlayIdentity(cardPlay),
+                ["card"] = BuildCardInfo(cardPlay.Card),
+                ["play_index"] = cardPlay.PlayIndex,
+                ["play_count"] = cardPlay.PlayCount
+            };
+        if (value is CardModel card)
+        {
+            var cardState = BuildCardInfo(card);
+            cardState["kind"] = "card";
+            cardState["pile"] = card.Pile?.Type.ToString();
+            cardState["play_index"] = card.CurrentPlayIndex;
+            // A stolen combat face can have temporary upgrades/costs. Only the
+            // independently saved DeckVersion is the eventual fixed reward.
+            cardState["deck_version"] = card.DeckVersion == null ? null : BuildCardInfo(card.DeckVersion);
+            return cardState;
+        }
+        if (value is AbstractModel model)
+            return new Dictionary<string, object?> { ["kind"] = "model", ["id"] = model.Id.Entry };
+        if (depth >= 5 || !seen.Add(value))
+            return new Dictionary<string, object?> { ["kind"] = "reference", ["type"] = value.GetType().FullName };
+
+        if (value is IDictionary dictionary)
+        {
+            var entries = new List<Dictionary<string, object?>>();
+            foreach (DictionaryEntry pair in dictionary)
+            {
+                entries.Add(new Dictionary<string, object?>
+                {
+                    ["key"] = SerializePowerRuntimeValue(pair.Key, seen, depth + 1),
+                    ["value"] = SerializePowerRuntimeValue(pair.Value, seen, depth + 1)
+                });
+            }
+            return entries;
+        }
+        if (value is IEnumerable enumerable)
+        {
+            var items = new List<object?>();
+            foreach (var item in enumerable)
+                items.Add(SerializePowerRuntimeValue(item, seen, depth + 1));
+            return items;
+        }
+
+        var result = new Dictionary<string, object?> { ["kind"] = "object", ["type"] = value.GetType().FullName };
+        foreach (var field in value.GetType().GetFields(BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public))
+        {
+            if (!field.IsStatic && !field.IsLiteral)
+                result[field.Name] = SerializePowerRuntimeValue(field.GetValue(value), seen, depth + 1);
+        }
+        return result;
     }
 
     private static List<Dictionary<string, object?>> BuildPetsState(Player player)
@@ -4220,6 +5950,7 @@ public static partial class McpMod
             pets.Add(new Dictionary<string, object?>
             {
                 ["id"] = osty.Monster?.Id.Entry ?? "OSTY",
+                ["combat_id"] = osty.CombatId,
                 ["name"] = SafeGetText(() => osty.Monster?.Title) ?? "Otsy",
                 ["alive"] = osty.IsAlive,
                 ["hp"] = osty.CurrentHp,
