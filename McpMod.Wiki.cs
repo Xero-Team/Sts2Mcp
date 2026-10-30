@@ -40,9 +40,11 @@ public static partial class McpMod
         string scope = "discovered")
     {
         var listing = string.IsNullOrWhiteSpace(query);
-        var normalized = limit.HasValue
-            ? NormalizeWikiLimit(limit.Value, listing)
-            : (listing ? MaxWikiListLimit : DefaultWikiSearchLimit);
+        int normalized;
+        if (limit.HasValue)
+            normalized = NormalizeWikiLimit(limit.Value, listing);
+        else
+            normalized = listing ? MaxWikiListLimit : DefaultWikiSearchLimit;
         return BuildWikiSearch(query, itemType, normalized, scope);
     }
 
@@ -248,16 +250,16 @@ public static partial class McpMod
     {
         var card = candidate.Card!;
         var upgraded = SafeBuildUpgradedCardPreview(card);
-        var upgradedVariant = upgraded != null
-            ? BuildWikiCardVariant(upgraded, "upgraded")
-            : card.IsUpgradable
-                ? new Dictionary<string, object?>(StringComparer.Ordinal)
-                {
-                    ["variant"] = "upgraded",
-                    ["description"] = SafeGetCardUpgradePreviewDescription(card),
-                    ["preview_available"] = false
-                }
-                : null;
+        Dictionary<string, object?>? upgradedVariant = null;
+        if (upgraded != null)
+            upgradedVariant = BuildWikiCardVariant(upgraded, "upgraded");
+        else if (card.IsUpgradable)
+            upgradedVariant = new Dictionary<string, object?>(StringComparer.Ordinal)
+            {
+                ["variant"] = "upgraded",
+                ["description"] = SafeGetCardUpgradePreviewDescription(card),
+                ["preview_available"] = false
+            };
 
         var result = new Dictionary<string, object?>(StringComparer.Ordinal)
         {

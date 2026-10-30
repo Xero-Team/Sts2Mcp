@@ -755,7 +755,11 @@ internal static class CombatRecorder
         }
         // "paused" / "not_paused" are both observations: tracking reads the queue when it starts and
         // follows every pause and resume after that.
-        data["pause_state"] = t.Paused == null ? "not_paused" : t.PausedUnseen ? "paused_since_before_tracking" : "paused";
+        data["pause_state"] = "paused";
+        if (t.Paused == null)
+            data["pause_state"] = "not_paused";
+        else if (t.PausedUnseen)
+            data["pause_state"] = "paused_since_before_tracking";
         data["paused_action"] = t.Paused == null ? null : RecordObserve.DescribeAction(t.Paused, KeyOf(t.Paused));
         data["pending_choice_ids"] = PendingChoices(s);
         return data;
@@ -832,7 +836,14 @@ internal static class CombatRecorder
                 var data = RecordObserve.DescribeAction(action, action.Id);
                 data["origin"] = OriginOf(action);
                 var cm = CombatManager.Instance;
-                data["phase"] = cm.IsInProgress ? "in_progress" : cm.IsStarting ? "starting" : cm.IsEnding ? "ending" : "outside";
+                string phase = "outside";
+                if (cm.IsInProgress)
+                    phase = "in_progress";
+                else if (cm.IsStarting)
+                    phase = "starting";
+                else if (cm.IsEnding)
+                    phase = "ending";
+                data["phase"] = phase;
                 if (cm.IsInProgress && _rec.Writer?.IsEnabled == true)
                 {
                     _rec.Faults.Add($"enqueue_unrecorded:{action.Id}");
@@ -1140,7 +1151,13 @@ internal static class CombatRecorder
                 // Only two callers stop the replay: CombatManager.EndCombatInternal (won; the
                 // CombatWon / CombatEnded events fire after this) and RunManager.CleanUp (after a
                 // loss, or leaving mid-combat: save and quit, closing the window).
-                string reason = !_inCleanup ? "combat_won" : _rec.LossOutcome != null ? "combat_lost" : "cleanup";
+                string reason;
+                if (!_inCleanup)
+                    reason = "combat_won";
+                else if (_rec.LossOutcome != null)
+                    reason = "combat_lost";
+                else
+                    reason = "cleanup";
                 CloseRecord(reason, replay);
                 if (_inCleanup)
                     Writer.Drain(1000); // the window may be closing (CleanUp(graceful: false))
@@ -1181,11 +1198,15 @@ internal static class CombatRecorder
         int checksBefore = replay?.checksumData.Count ?? 0;
         var room = run.CurrentRoom;
         bool eventRoom = (room as CombatRoom)?.ParentEventId != null || run.CurrentRoomCount > 1;
-        string boundary = eventRoom
-            ? "event_room"
-            : pending != null && eventsBefore == 0 && checksBefore == 0
-                ? "room_entry"
-                : CombatManager.Instance.IsInProgress ? "mid_combat" : "mid_room";
+        string boundary;
+        if (eventRoom)
+            boundary = "event_room";
+        else if (pending != null && eventsBefore == 0 && checksBefore == 0)
+            boundary = "room_entry";
+        else if (CombatManager.Instance.IsInProgress)
+            boundary = "mid_combat";
+        else
+            boundary = "mid_room";
 
         long startTime = pending?.StartTime ?? RecorderPatches.RunStartTime();
         int act = pending?.Act ?? run.CurrentActIndex;
@@ -1214,7 +1235,17 @@ internal static class CombatRecorder
         var pausedAtOpen = _track.Paused;
         // Inputs the game's replay cannot reproduce: "complete" only when the recorder was installed
         // before any run (it saw every console command of this process) and there were none.
-        string inputs = ConsoleInProcess.Count > 0 ? "tainted" : string.Equals(_installedAt, "startup", StringComparison.Ordinal) ? "complete" : "unknown";
+        string inputs;
+        if (ConsoleInProcess.Count > 0)
+            inputs = "tainted";
+        else if (string.Equals(_installedAt, "startup", StringComparison.Ordinal))
+            inputs = "complete";
+        else
+            inputs = "unknown";
+
+        string initialState = "missing";
+        if (replay != null)
+            initialState = pending != null ? "room_entry" : "read_back";
 
         Emit("record_open", new JsonObject
         {
@@ -1248,7 +1279,7 @@ internal static class CombatRecorder
                 ["boundary"] = boundary,
                 // The game's replay starts at the room's entry either way; whether this record
                 // copied that start itself (room_entry) or read it back from the game later.
-                ["initial_state"] = replay != null ? (pending != null ? "room_entry" : "read_back") : "missing",
+                ["initial_state"] = initialState,
                 ["game_events_before_open"] = eventsBefore,
                 ["checksums_before_open"] = checksBefore,
                 ["game_writer_enabled"] = writer?.IsEnabled,

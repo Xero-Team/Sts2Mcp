@@ -1132,10 +1132,17 @@ public static partial class McpMod
                 // itself only when it came from its own `Creature`. Everything
                 // else — a loop variable over the move's targets, a teammate
                 // picked out of a filtered list — is an honest unknown.
-                string? side = collection
-                    ? (scan.TargetWasOwnSide ? "allies" : "player")
-                    : (scan.TargetWasSelf ? "self" : scan.TargetWasTarget ? "player"
-                        : scan.TargetWasAlly ? "ally" : null);
+                string? side;
+                if (collection)
+                    side = scan.TargetWasOwnSide ? "allies" : "player";
+                else if (scan.TargetWasSelf)
+                    side = "self";
+                else if (scan.TargetWasTarget)
+                    side = "player";
+                else if (scan.TargetWasAlly)
+                    side = "ally";
+                else
+                    side = null;
                 scan.Applies.Add(new Dictionary<string, object?>(StringComparer.Ordinal)
                 {
                     ["power"] = powerName,
@@ -1177,11 +1184,17 @@ public static partial class McpMod
             // carries no amount to sample at. The non-generic `Remove(power)`
             // overload takes a runtime instance and stays unreadable, which is
             // silence rather than a guess.
+            string removeTarget = "unknown";
+            if (creatureWasSelf)
+                removeTarget = "self";
+            else if (creatureWasTarget)
+                removeTarget = "player";
+            else if (creatureWasAlly)
+                removeTarget = "ally";
             scan.Removes.Add(new Dictionary<string, object?>(StringComparer.Ordinal)
             {
                 ["power"] = removeMi.GetGenericArguments().FirstOrDefault()?.Name,
-                ["target"] = creatureWasSelf ? "self" : creatureWasTarget ? "player"
-                    : creatureWasAlly ? "ally" : "unknown",
+                ["target"] = removeTarget,
             });
         }
         else if (string.Equals(owner, "CreatureCmd", StringComparison.Ordinal) && string.Equals(mm.Name, "Add", StringComparison.Ordinal) && mm is MethodInfo addMi

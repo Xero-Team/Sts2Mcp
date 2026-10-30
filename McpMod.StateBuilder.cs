@@ -2431,17 +2431,22 @@ public static partial class McpMod
         var relics = new List<Dictionary<string, object?>>();
         foreach (var relic in player.Relics)
         {
+            // Golden Compass hides its counter in the UI but the act it was
+            // picked up in decides whether every "?" this act is an Event,
+            // so a client predicting them needs it.
+            int? counter;
+            if (relic is GoldenCompass compass)
+                counter = compass.GoldenPathAct;
+            else if (relic.ShowCounter)
+                counter = relic.DisplayAmount;
+            else
+                counter = null;
             relics.Add(new Dictionary<string, object?>(StringComparer.Ordinal)
             {
                 ["id"] = relic.Id.Entry,
                 ["name"] = SafeGetText(() => relic.Title),
                 ["description"] = SafeGetText(() => relic.DynamicDescription),
-                // Golden Compass hides its counter in the UI but the act it was
-                // picked up in decides whether every "?" this act is an Event,
-                // so a client predicting them needs it.
-                ["counter"] = relic is GoldenCompass compass
-                    ? compass.GoldenPathAct
-                    : (relic.ShowCounter ? relic.DisplayAmount : (int?)null),
+                ["counter"] = counter,
                 ["used_up"] = relic.IsUsedUp,
                 ["melted"] = relic.IsMelted,
                 ["status"] = relic.Status.ToString(),
@@ -5831,7 +5836,12 @@ public static partial class McpMod
         bool bigActive = bigButton?.GetNodeOrNull<Godot.Control>("%Outline")?.Visible == true;
         bool smallActive = smallButton?.GetNodeOrNull<Godot.Control>("%Outline")?.Visible == true;
 
-        state["tool"] = bigActive ? "big" : smallActive ? "small" : "none";
+        string tool = "none";
+        if (bigActive)
+            tool = "big";
+        else if (smallActive)
+            tool = "small";
+        state["tool"] = tool;
         state["can_use_big_tool"] = bigUsable;
         state["can_use_small_tool"] = smallUsable;
 

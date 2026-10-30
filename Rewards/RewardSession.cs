@@ -15,16 +15,24 @@ internal sealed class RewardSession
         internal string? LastSelection { get; set; }
         internal string? LastOptionId { get; set; }
         internal bool Resolving { get; set; }
-        internal Dictionary<string, object?> Describe(bool claimable) => new(StringComparer.Ordinal)
+        internal Dictionary<string, object?> Describe(bool claimable)
         {
-            ["reward_id"] = Id,
-            ["selection_state"] = SelectionState,
-            ["claimable"] = claimable,
-            ["skipped"] = string.Equals(SelectionState, "skipped", StringComparison.Ordinal),
-            ["reward_consumed"] = string.Equals(SelectionState, "claimed", StringComparison.Ordinal) ? true : string.Equals(SelectionState, "skipped", StringComparison.Ordinal) ? false : null,
-            ["last_selection"] = LastSelection,
-            ["last_option_id"] = LastOptionId
-        };
+            bool? consumed = null;
+            if (string.Equals(SelectionState, "claimed", StringComparison.Ordinal))
+                consumed = true;
+            else if (string.Equals(SelectionState, "skipped", StringComparison.Ordinal))
+                consumed = false;
+            return new(StringComparer.Ordinal)
+            {
+                ["reward_id"] = Id,
+                ["selection_state"] = SelectionState,
+                ["claimable"] = claimable,
+                ["skipped"] = string.Equals(SelectionState, "skipped", StringComparison.Ordinal),
+                ["reward_consumed"] = consumed,
+                ["last_selection"] = LastSelection,
+                ["last_option_id"] = LastOptionId
+            };
+        }
     }
 
     private readonly string _epoch = Guid.NewGuid().ToString("N");
@@ -134,7 +142,11 @@ internal sealed class RewardSession
     internal void Complete(Entry entry, bool consumed)
     {
         if (!Contains(entry)) return;
-        entry.SelectionState = consumed ? "claimed" : string.Equals(entry.LastSelection, "skip", StringComparison.Ordinal) ? "skipped" : "unknown";
+        entry.SelectionState = "unknown";
+        if (consumed)
+            entry.SelectionState = "claimed";
+        else if (string.Equals(entry.LastSelection, "skip", StringComparison.Ordinal))
+            entry.SelectionState = "skipped";
         entry.Resolving = false;
         if (consumed)
         {

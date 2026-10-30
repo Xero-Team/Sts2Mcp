@@ -70,6 +70,19 @@ public static partial class McpMod
         return digest(run);
     }
 
+    /// <summary>
+    /// One element of a serialized list: a short digest when the game can pack it, a bracketed
+    /// list of digests when the element is itself a sequence, otherwise its text.
+    /// </summary>
+    private static string DescribePart(object? value, Func<IPacketSerializable, string> digest)
+    {
+        if (value is IPacketSerializable packable)
+            return digest(packable)[..12];
+        if (value is System.Collections.IEnumerable inner and not string)
+            return "[" + string.Join(",", inner.Cast<object?>().Select(y => y is IPacketSerializable yp ? digest(yp)[..12] : y?.ToString())) + "]";
+        return value?.ToString() ?? "";
+    }
+
     private static JsonObject RunParts(SerializableRun run, Func<IPacketSerializable, string> digest)
     {
         var parts = new JsonObject();
@@ -84,11 +97,7 @@ public static partial class McpMod
             {
                 null => "null",
                 IPacketSerializable ps => digest(ps),
-                System.Collections.IEnumerable seq and not string => string.Join(",", seq.Cast<object?>().Select(x =>
-                    x is IPacketSerializable xp ? digest(xp)[..12]
-                    : x is System.Collections.IEnumerable inner and not string
-                        ? "[" + string.Join(",", inner.Cast<object?>().Select(y => y is IPacketSerializable yp ? digest(yp)[..12] : y?.ToString())) + "]"
-                        : x?.ToString())),
+                System.Collections.IEnumerable seq and not string => string.Join(",", seq.Cast<object?>().Select(x => DescribePart(x, digest))),
                 _ => v.ToString() ?? "",
             };
             // Lists stay item by item (short digests), so the item that differs can be named.

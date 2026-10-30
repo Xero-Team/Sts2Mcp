@@ -1426,11 +1426,14 @@ public static partial class McpMod
                 // The one screen that ignores a press is NSimpleCardSelectScreen once the set
                 // is full; report that instead of a success for a no-op.
                 var limit = GetCardSelectPrefs(gridScreen);
-                return Error(isSelected
-                    ? $"{cardName} is still selected - the screen did not accept the press"
-                    : limit.HasValue
-                        ? $"{cardName} was not selected - at most {limit.Value.MaxSelect} card(s) can be selected, deselect one first"
-                        : $"{cardName} was not selected - the screen did not accept the press");
+                string message;
+                if (isSelected)
+                    message = $"{cardName} is still selected - the screen did not accept the press";
+                else if (limit.HasValue)
+                    message = $"{cardName} was not selected - at most {limit.Value.MaxSelect} card(s) can be selected, deselect one first";
+                else
+                    message = $"{cardName} was not selected - the screen did not accept the press";
+                return Error(message);
             }
 
             var toggled = new Dictionary<string, object?>(StringComparer.Ordinal)

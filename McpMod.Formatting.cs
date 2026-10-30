@@ -394,7 +394,7 @@ public static partial class McpMod
                 var local = p.TryGetValue("is_local", out var l) && l is true ? " (you)" : "";
                 var host = p.TryGetValue("is_host", out var h) && h is true ? " [host]" : "";
                 var ready = p.TryGetValue("is_ready", out var r) && r is true ? " ✓" : "";
-                var connected = p.TryGetValue("is_connected", out var c) ? (c is true ? "" : " (disconnected)") : "";
+                var connected = p.TryGetValue("is_connected", out var c) && c is not true ? " (disconnected)" : "";
                 var name = p.GetValueOrDefault("platform_name")?.ToString();
                 var charName = p.GetValueOrDefault("character")?.ToString()
                                ?? p.GetValueOrDefault("character_id")?.ToString() ?? "?";
@@ -746,7 +746,13 @@ public static partial class McpMod
                 bool proceed = opt["is_proceed"] is true;
                 bool chosen = opt["was_chosen"] is true;
 
-                string tag = locked ? " (LOCKED)" : chosen ? " (CHOSEN)" : proceed ? " (PROCEED)" : "";
+                string tag = "";
+                if (locked)
+                    tag = " (LOCKED)";
+                else if (chosen)
+                    tag = " (CHOSEN)";
+                else if (proceed)
+                    tag = " (PROCEED)";
                 string relic = opt.TryGetValue("relic_name", out var rn) && rn != null ? $" [Relic: {rn}]" : "";
                 sb.AppendLine($"- [{opt["index"]}] **{opt["title"]}**{tag}{relic} - {opt["description"]}");
             }
@@ -1007,24 +1013,30 @@ public static partial class McpMod
     }
 
     private static int ToInt(object? value)
-        => value is int i ? i : (value == null ? 0 : Convert.ToInt32(value, CultureInfo.InvariantCulture));
+    {
+        if (value is int i)
+            return i;
+        return value == null ? 0 : Convert.ToInt32(value, CultureInfo.InvariantCulture);
+    }
 
     private static void FormatMapBossMarkdown(StringBuilder sb, Dictionary<string, object?> map)
     {
-        var bosses = map.TryGetValue("bosses", out var bs) && bs is List<Dictionary<string, object?>> bl && bl.Count > 0
-            ? bl
-            : (map.TryGetValue("boss", out var b) && b is Dictionary<string, object?> bd
-                ? new List<Dictionary<string, object?>> { bd }
-                : null);
+        List<Dictionary<string, object?>>? bosses = null;
+        if (map.TryGetValue("bosses", out var bs) && bs is List<Dictionary<string, object?>> bl && bl.Count > 0)
+            bosses = bl;
+        else if (map.TryGetValue("boss", out var b) && b is Dictionary<string, object?> bd)
+            bosses = new List<Dictionary<string, object?>> { bd };
         if (bosses == null)
             return;
 
         var labels = new List<string>();
         foreach (var boss in bosses)
         {
-            string name = boss.TryGetValue("name", out var n) && n != null
-                ? n.ToString()!
-                : (boss.TryGetValue("id", out var i) && i != null ? i.ToString()! : "Unknown");
+            string name = "Unknown";
+            if (boss.TryGetValue("name", out var n) && n != null)
+                name = n.ToString()!;
+            else if (boss.TryGetValue("id", out var i) && i != null)
+                name = i.ToString()!;
             labels.Add($"{name} ({boss["col"]},{boss["row"]})");
         }
         if (labels.Count == 0)
