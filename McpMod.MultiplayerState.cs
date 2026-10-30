@@ -37,10 +37,45 @@ public static partial class McpMod
         var result = NewStateResult(kind: "multiplayer_state");
         var tree = Engine.GetMainLoop() as SceneTree;
 
-        // Surface blocking FTUE/tutorial/popup prompts before normal run state, so MP
-        // automation gets the same dismissal contract as singleplayer (see #71). Every
-        // FTUE in `Decompiled/src/Core/Nodes/Ftue/` gates only on per-profile flags, not
-        // on run mode, so they are equally reachable in multiplayer runs.
+        var earlyState = BuildMultiplayerPreflightState(result, tree, out var runState);
+        if (earlyState != null)
+            return earlyState;
+
+        AppendMultiplayerMetadata(result, runState, out var localPlayer);
+
+        // Same overlay-first detection logic as singleplayer
+        var topOverlay = NOverlayStack.Instance?.Peek();
+        var currentRoom = runState.CurrentRoom;
+        bool mapIsOpen = IsMapScreenOpenOrVisible();
+        AppendMultiplayerScreenState(result, runState, topOverlay, currentRoom, mapIsOpen);
+
+        if (currentRoom is CombatRoom
+            && CombatManager.Instance.IsInProgress
+            && result.TryGetValue("state_type", out var overlayStateType)
+            && overlayStateType is string overlayType
+            && overlayType is "card_select" or "bundle_select")
+        {
+            result["battle"] = BuildMultiplayerBattleState(runState);
+        }
+
+        AppendMultiplayerRunState(result, runState, localPlayer, fullDetail);
+        return result;
+    }
+
+    /// <summary>
+    /// The answers that come before any state can be read: a blocking FTUE prompt, no run at
+    /// all, an unreadable run, or a run that is not multiplayer.
+    /// </summary>
+    /// <remarks>
+    /// Every FTUE in `Decompiled/src/Core/Nodes/Ftue/` gates only on per-profile flags, not on
+    /// run mode, so they are equally reachable in multiplayer runs. Surfacing them here gives
+    /// MP automation the same dismissal contract as singleplayer (see #71).
+    /// </remarks>
+    private static Dictionary<string, object?>? BuildMultiplayerPreflightState(
+        Dictionary<string, object?> result, SceneTree? tree, out RunState runState)
+    {
+        runState = null!;
+
         if (tree?.Root != null)
         {
             var ftueState = BuildVisibleFtueState(tree.Root);
@@ -55,8 +90,8 @@ public static partial class McpMod
             return result;
         }
 
-        var runState = RunManager.Instance.DebugOnlyGetState();
-        if (runState == null)
+        var currentRun = RunManager.Instance.DebugOnlyGetState();
+        if (currentRun == null)
         {
             result["state_type"] = "unknown";
             return result;
@@ -69,11 +104,17 @@ public static partial class McpMod
             return result;
         }
 
-        // Multiplayer metadata
+        runState = currentRun;
+        return null;
+    }
+
+    private static void AppendMultiplayerMetadata(
+        Dictionary<string, object?> result, RunState runState, out Player? localPlayer)
+    {
         result["game_mode"] = "multiplayer";
         result["net_type"] = RunManager.Instance.NetService.Type.ToString();
         result["player_count"] = runState.Players.Count;
-        var localPlayer = LocalContext.GetMe(runState);
+        localPlayer = LocalContext.GetMe(runState);
         if (localPlayer != null)
         {
             for (int i = 0; i < runState.Players.Count; i++)
@@ -85,53 +126,97 @@ public static partial class McpMod
                 }
             }
         }
+    }
 
-        // Same overlay-first detection logic as singleplayer
-        var topOverlay = NOverlayStack.Instance?.Peek();
-        var currentRoom = runState.CurrentRoom;
-        bool mapIsOpen = IsMapScreenOpenOrVisible();
+    private static void AppendMultiplayerScreenState(
+        Dictionary<string, object?> result,
+        RunState runState,
+        IOverlayScreen? topOverlay,
+        AbstractRoom? currentRoom,
+        bool mapIsOpen)
+    {
+        if (TryAppendMultiplayerOverlayState(result, topOverlay, mapIsOpen))
+            return;
+        AppendMultiplayerRoomState(result, runState, currentRoom);
+    }
 
-        if (topOverlay is NCardGridSelectionScreen cardSelectScreen)
+    /// <summary>The multiplayer overlay ladder, in the same order as the singleplayer one.</summary>
+    private static bool TryAppendMultiplayerOverlayState(
+        Dictionary<string, object?> result, IOverlayScreen? topOverlay, bool mapIsOpen)
+        => TryAppendMultiplayerSelectionOverlay(result, topOverlay)
+           || TryAppendMultiplayerCrystalSphereOverlay(result, topOverlay)
+           || TryAppendMultiplayerCardRewardOverlay(result, topOverlay, mapIsOpen)
+           || TryAppendMultiplayerRewardsOverlay(result, topOverlay, mapIsOpen)
+           || TryAppendMultiplayerFallbackOverlay(result, topOverlay);
+
+    private static bool TryAppendMultiplayerSelectionOverlay(
+        Dictionary<string, object?> result, IOverlayScreen? topOverlay)
+    {
+        switch (topOverlay)
         {
-            result["state_type"] = "card_select";
-            result["card_select"] = BuildCardSelectState(cardSelectScreen);
+            case NCardGridSelectionScreen cardSelectScreen:
+                result["state_type"] = "card_select";
+                result["card_select"] = BuildCardSelectState(cardSelectScreen);
+                return true;
+            case NChooseACardSelectionScreen chooseCardScreen:
+                result["state_type"] = "card_select";
+                result["card_select"] = BuildChooseCardState(chooseCardScreen);
+                return true;
+            case NChooseABundleSelectionScreen bundleScreen:
+                result["state_type"] = "bundle_select";
+                result["bundle_select"] = BuildBundleSelectState(bundleScreen);
+                return true;
+            case NChooseARelicSelection relicSelectScreen:
+                result["state_type"] = "relic_select";
+                result["relic_select"] = BuildRelicSelectState(relicSelectScreen);
+                return true;
+            default:
+                return false;
         }
-        else if (topOverlay is NChooseACardSelectionScreen chooseCardScreen)
-        {
-            result["state_type"] = "card_select";
-            result["card_select"] = BuildChooseCardState(chooseCardScreen);
-        }
-        else if (topOverlay is NChooseABundleSelectionScreen bundleScreen)
-        {
-            result["state_type"] = "bundle_select";
-            result["bundle_select"] = BuildBundleSelectState(bundleScreen);
-        }
-        else if (topOverlay is NChooseARelicSelection relicSelectScreen)
-        {
-            result["state_type"] = "relic_select";
-            result["relic_select"] = BuildRelicSelectState(relicSelectScreen);
-        }
-        else if (topOverlay is NCrystalSphereScreen crystalSphereScreen)
-        {
-            result["state_type"] = "crystal_sphere";
-            result["crystal_sphere"] = BuildCrystalSphereState(crystalSphereScreen);
-        }
-        else if (!mapIsOpen && topOverlay is NCardRewardSelectionScreen cardRewardScreen)
-        {
-            result["state_type"] = "card_reward";
-            result["card_reward"] = BuildCardRewardState(cardRewardScreen);
-        }
-        else if (topOverlay is NRewardsScreen rewardsScreen
-                 && (!mapIsOpen || RewardsSetIsOutstanding(rewardsScreen)))
-        {
-            // Mirrors the singleplayer builder: a rewards set the run is still
-            // waiting on outranks a visible map screen, or a set offered from
-            // inside a room action (Tiny Mailbox's rest-site potions) is masked
-            // as the room it came from and nobody can act on it.
-            result["state_type"] = "rewards";
-            result["rewards"] = BuildRewardsState(rewardsScreen);
-        }
-        else if (topOverlay is NGameOverScreen)
+    }
+
+    private static bool TryAppendMultiplayerCrystalSphereOverlay(
+        Dictionary<string, object?> result, IOverlayScreen? topOverlay)
+    {
+        if (topOverlay is not NCrystalSphereScreen crystalSphereScreen)
+            return false;
+
+        result["state_type"] = "crystal_sphere";
+        result["crystal_sphere"] = BuildCrystalSphereState(crystalSphereScreen);
+        return true;
+    }
+
+    private static bool TryAppendMultiplayerCardRewardOverlay(
+        Dictionary<string, object?> result, IOverlayScreen? topOverlay, bool mapIsOpen)
+    {
+        if (mapIsOpen || topOverlay is not NCardRewardSelectionScreen cardRewardScreen)
+            return false;
+
+        result["state_type"] = "card_reward";
+        result["card_reward"] = BuildCardRewardState(cardRewardScreen);
+        return true;
+    }
+
+    private static bool TryAppendMultiplayerRewardsOverlay(
+        Dictionary<string, object?> result, IOverlayScreen? topOverlay, bool mapIsOpen)
+    {
+        if (topOverlay is not NRewardsScreen rewardsScreen
+            || (mapIsOpen && !RewardsSetIsOutstanding(rewardsScreen)))
+            return false;
+
+        // Mirrors the singleplayer builder: a rewards set the run is still
+        // waiting on outranks a visible map screen, or a set offered from
+        // inside a room action (Tiny Mailbox's rest-site potions) is masked
+        // as the room it came from and nobody can act on it.
+        result["state_type"] = "rewards";
+        result["rewards"] = BuildRewardsState(rewardsScreen);
+        return true;
+    }
+
+    private static bool TryAppendMultiplayerFallbackOverlay(
+        Dictionary<string, object?> result, IOverlayScreen? topOverlay)
+    {
+        if (topOverlay is NGameOverScreen)
         {
             result["state_type"] = "game_over";
             result["game_over"] = new Dictionary<string, object?>(StringComparer.Ordinal)
@@ -139,65 +224,103 @@ public static partial class McpMod
                 ["message"] = "Run ended.",
                 ["options"] = new List<string> { "main_menu" }
             };
+            return true;
         }
-        else if (topOverlay is IOverlayScreen
-                 && topOverlay is not NRewardsScreen
-                 && topOverlay is not NCardRewardSelectionScreen)
+
+        if (topOverlay is not IOverlayScreen
+            || topOverlay is NRewardsScreen
+            || topOverlay is NCardRewardSelectionScreen)
+            return false;
+
+        result["state_type"] = "overlay";
+        result["overlay"] = new Dictionary<string, object?>(StringComparer.Ordinal)
         {
-            result["state_type"] = "overlay";
-            result["overlay"] = new Dictionary<string, object?>(StringComparer.Ordinal)
+            ["screen_type"] = topOverlay.GetType().Name,
+            ["message"] = $"An overlay ({topOverlay.GetType().Name}) is active. It may require manual interaction in-game."
+        };
+        return true;
+    }
+
+    /// <summary>The room ladder, in the same order as the singleplayer one.</summary>
+    private static void AppendMultiplayerRoomState(
+        Dictionary<string, object?> result, RunState runState, AbstractRoom? currentRoom)
+    {
+        if (TryAppendMultiplayerLoadingCombat(result, currentRoom))
+            return;
+        if (TryAppendMultiplayerCombatRoom(result, runState, currentRoom))
+            return;
+        if (TryAppendMultiplayerEventOrMapRoom(result, runState, currentRoom))
+            return;
+        if (TryAppendMultiplayerShopRoom(result, runState, currentRoom))
+            return;
+        if (TryAppendMultiplayerRestOrTreasureRoom(result, runState, currentRoom))
+            return;
+
+        result["state_type"] = "unknown";
+        result["room_type"] = currentRoom?.GetType().Name;
+    }
+
+    private static bool TryAppendMultiplayerLoadingCombat(
+        Dictionary<string, object?> result, AbstractRoom? currentRoom)
+    {
+        if (currentRoom is not CombatRoom loadingCombat
+            || CombatManager.Instance.IsInProgress
+            || (!CombatManager.Instance.IsStarting
+                && !IsMapTravelInFlight()
+                && !IsRunTransitionInFlight()))
+            return false;
+
+        // Mirrors the singleplayer builder: the combat room is entered but
+        // not started yet, and the map screen is still visible over it. See
+        // the long comment there - reporting "map" here lets a client travel
+        // a second time on top of the travel that is still resolving.
+        result["state_type"] = loadingCombat.RoomType.ToString().ToLowerInvariant();
+        result["combat_starting"] = true;
+        result["message"] = "Combat is starting. Wait for the battle state; do not send actions yet.";
+        return true;
+    }
+
+    private static bool TryAppendMultiplayerCombatRoom(
+        Dictionary<string, object?> result, RunState runState, AbstractRoom? currentRoom)
+    {
+        if (currentRoom is not CombatRoom combatRoom)
+            return false;
+
+        if (CombatManager.Instance.IsInProgress)
+        {
+            var playerHand = NPlayerHand.Instance;
+            if (playerHand != null && playerHand.IsInCardSelection)
             {
-                ["screen_type"] = topOverlay.GetType().Name,
-                ["message"] = $"An overlay ({topOverlay.GetType().Name}) is active. It may require manual interaction in-game."
-            };
-        }
-        else if (currentRoom is CombatRoom loadingCombat
-                 && !CombatManager.Instance.IsInProgress
-                 && (CombatManager.Instance.IsStarting
-                     || IsMapTravelInFlight()
-                     || IsRunTransitionInFlight()))
-        {
-            // Mirrors the singleplayer builder: the combat room is entered but
-            // not started yet, and the map screen is still visible over it. See
-            // the long comment there - reporting "map" here lets a client travel
-            // a second time on top of the travel that is still resolving.
-            result["state_type"] = loadingCombat.RoomType.ToString().ToLowerInvariant();
-            result["combat_starting"] = true;
-            result["message"] = "Combat is starting. Wait for the battle state; do not send actions yet.";
-        }
-        else if (currentRoom is CombatRoom combatRoom)
-        {
-            if (CombatManager.Instance.IsInProgress)
-            {
-                var playerHand = NPlayerHand.Instance;
-                if (playerHand != null && playerHand.IsInCardSelection)
-                {
-                    result["state_type"] = "hand_select";
-                    result["hand_select"] = BuildHandSelectState(playerHand);
-                    result["battle"] = BuildMultiplayerBattleState(runState);
-                }
-                else
-                {
-                    result["state_type"] = combatRoom.RoomType.ToString().ToLowerInvariant();
-                    result["battle"] = BuildMultiplayerBattleState(runState);
-                }
+                result["state_type"] = "hand_select";
+                result["hand_select"] = BuildHandSelectState(playerHand);
+                result["battle"] = BuildMultiplayerBattleState(runState);
             }
             else
             {
-                // After combat ends - reward/card overlays are caught by top-level checks above.
-                if (IsMapScreenOpenOrVisible())
-                {
-                    result["state_type"] = "map";
-                    result["map"] = BuildMultiplayerMapState(runState);
-                }
-                else
-                {
-                    result["state_type"] = combatRoom.RoomType.ToString().ToLowerInvariant();
-                    result["message"] = "Combat ended. Waiting for rewards...";
-                }
+                result["state_type"] = combatRoom.RoomType.ToString().ToLowerInvariant();
+                result["battle"] = BuildMultiplayerBattleState(runState);
             }
+            return true;
         }
-        else if (currentRoom is EventRoom eventRoom)
+
+        // After combat ends - reward/card overlays are caught by top-level checks above.
+        if (IsMapScreenOpenOrVisible())
+        {
+            result["state_type"] = "map";
+            result["map"] = BuildMultiplayerMapState(runState);
+        }
+        else
+        {
+            result["state_type"] = combatRoom.RoomType.ToString().ToLowerInvariant();
+            result["message"] = "Combat ended. Waiting for rewards...";
+        }
+        return true;
+    }
+
+    private static bool TryAppendMultiplayerEventOrMapRoom(
+        Dictionary<string, object?> result, RunState runState, AbstractRoom? currentRoom)
+    {
+        if (currentRoom is EventRoom eventRoom)
         {
             if (IsMapScreenOpenOrVisible())
             {
@@ -214,26 +337,42 @@ public static partial class McpMod
                 result["state_type"] = "event";
                 result["event"] = BuildMultiplayerEventState(eventRoom, runState);
             }
+            return true;
         }
-        else if (currentRoom is MapRoom)
+
+        if (currentRoom is MapRoom)
+        {
+            result["state_type"] = "map";
+            result["map"] = BuildMultiplayerMapState(runState);
+            return true;
+        }
+
+        return false;
+    }
+
+    private static bool TryAppendMultiplayerShopRoom(
+        Dictionary<string, object?> result, RunState runState, AbstractRoom? currentRoom)
+    {
+        if (currentRoom is not MerchantRoom merchantRoom)
+            return false;
+
+        if (IsMapScreenOpenOrVisible())
         {
             result["state_type"] = "map";
             result["map"] = BuildMultiplayerMapState(runState);
         }
-        else if (currentRoom is MerchantRoom merchantRoom)
+        else
         {
-            if (IsMapScreenOpenOrVisible())
-            {
-                result["state_type"] = "map";
-                result["map"] = BuildMultiplayerMapState(runState);
-            }
-            else
-            {
-                result["state_type"] = "shop";
-                result["shop"] = BuildShopState(merchantRoom, runState);
-            }
+            result["state_type"] = "shop";
+            result["shop"] = BuildShopState(merchantRoom, runState);
         }
-        else if (currentRoom is RestSiteRoom restSiteRoom)
+        return true;
+    }
+
+    private static bool TryAppendMultiplayerRestOrTreasureRoom(
+        Dictionary<string, object?> result, RunState runState, AbstractRoom? currentRoom)
+    {
+        if (currentRoom is RestSiteRoom restSiteRoom)
         {
             if (IsMapScreenOpenOrVisible())
             {
@@ -245,8 +384,10 @@ public static partial class McpMod
                 result["state_type"] = "rest_site";
                 result["rest_site"] = BuildRestSiteState(restSiteRoom);
             }
+            return true;
         }
-        else if (currentRoom is TreasureRoom)
+
+        if (currentRoom is TreasureRoom)
         {
             if (IsMapScreenOpenOrVisible())
             {
@@ -258,22 +399,20 @@ public static partial class McpMod
                 result["state_type"] = "treasure";
                 result["treasure"] = BuildMultiplayerTreasureState(runState);
             }
-        }
-        else
-        {
-            result["state_type"] = "unknown";
-            result["room_type"] = currentRoom?.GetType().Name;
+            return true;
         }
 
-        if (currentRoom is CombatRoom
-            && CombatManager.Instance.IsInProgress
-            && result.TryGetValue("state_type", out var overlayStateType)
-            && overlayStateType is string overlayType
-            && overlayType is "card_select" or "bundle_select")
-        {
-            result["battle"] = BuildMultiplayerBattleState(runState);
-        }
+        return false;
+    }
 
+    /// <summary>
+    /// The blocks every multiplayer screen carries: run info and its RNG streams, the act's
+    /// pre-rolled queues, the profile counters, the run context, the roster and the local
+    /// player.
+    /// </summary>
+    private static void AppendMultiplayerRunState(
+        Dictionary<string, object?> result, RunState runState, Player? localPlayer, bool fullDetail)
+    {
         // Common run info
         var runInfo = new Dictionary<string, object?>(StringComparer.Ordinal)
         {
@@ -323,8 +462,6 @@ public static partial class McpMod
         {
             result["player"] = BuildPlayerState(localPlayer);
         }
-
-        return result;
     }
 
     private static Dictionary<string, object?> BuildMultiplayerBattleState(RunState runState)
