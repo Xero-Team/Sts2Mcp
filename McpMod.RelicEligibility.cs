@@ -8,7 +8,7 @@ public static partial class McpMod
 {
     // LastingCandy.IsAllowed reads every player's own UnlockState, while the
     // multiplayer run's shared UnlockState reports the party maximum.
-    private static bool HasFirstRunIronclad(IRunState runState)
+    private static bool HasFirstRunIronclad(RunState runState)
     {
         return runState.Players.Any(player => player?.Character is Ironclad
             && player.UnlockState?.NumberOfRuns == 0);

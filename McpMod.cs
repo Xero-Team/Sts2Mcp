@@ -285,20 +285,6 @@ public static partial class McpMod
         }
     }
 
-    internal static Task<T> RunOnMainThread<T>(Func<T> func)
-    {
-        var tcs = new TaskCompletionSource<T>();
-        _mainThreadQueue.Enqueue(() => CompleteWith(tcs, func));
-        return tcs.Task;
-    }
-
-    internal static Task RunOnMainThread(Action action)
-    {
-        var tcs = new TaskCompletionSource<bool>();
-        _mainThreadQueue.Enqueue(() => CompleteWith(tcs, () => { action(); return true; }));
-        return tcs.Task;
-    }
-
     /// <summary>Per-request flag telling a queued closure that its caller has stopped waiting.</summary>
     private sealed class MainThreadCancellation
     {
@@ -1210,14 +1196,4 @@ public static partial class McpMod
         }
         SendJson(response, result);
     }
-}
-
-/// <summary>
-/// The game's main thread did not run the requested work: the queue was already backed up, or
-/// the wait timed out. Distinct from an action failure so handlers can answer 503 + retry
-/// instead of 500 - nothing was executed, and the same request is safe to send again.
-/// </summary>
-internal sealed class MainThreadUnavailableException : Exception
-{
-    internal MainThreadUnavailableException(string message) : base(message) { }
 }

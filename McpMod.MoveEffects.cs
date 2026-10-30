@@ -299,7 +299,7 @@ public static partial class McpMod
             Operands.Clear();
         }
 
-        internal void Negate()
+        internal void NegateTop()
         {
             if (IntArgs.Count > 0 && IntArgs[^1] == LastInt)
                 IntArgs[^1] = -LastInt;
@@ -812,7 +812,7 @@ public static partial class McpMod
                     scan.PushInt(op - 0x16); i += 1; break;
                 case 0x1F: scan.PushInt((int)(sbyte)il[i + 1]); i += 2; break;      // ldc.i4.s
                 case 0x20: scan.PushInt(BitConverter.ToInt32(il, i + 1)); i += 5; break; // ldc.i4
-                case 0x65: scan.Negate(); i += 1; break;   // neg: `-SpikenAmount` is a steal
+                case 0x65: scan.NegateTop(); i += 1; break;   // neg: `-SpikenAmount` is a steal
                 // Arithmetic is folded when both operands are known, so an
                 // amount computed from monster stats resolves exactly. Anything
                 // it cannot fold poisons the tracked value, which turns a
@@ -1135,29 +1135,28 @@ public static partial class McpMod
                 });
                 return;
             }
+
+            // Apply(ctx, PowerModel power, Creature target, ...) applies an
+            // instance built at runtime. Its target parameter is a single
+            // Creature either way, so who receives it is read from the
+            // expression that produced that creature: the monster's own
+            // `Creature` property means self, anything else (a loop
+            // variable over the move's targets) means the player side.
+            // Every shipped use of this overload does aim at the players.
+            string? runtimePowerName = scan.PendingPower;
+            bool playerSide = !scan.TargetWasSelf;
+            scan.PendingPower = null;
+            if (runtimePowerName == null)
             {
-                // Apply(ctx, PowerModel power, Creature target, ...) applies an
-                // instance built at runtime. Its target parameter is a single
-                // Creature either way, so who receives it is read from the
-                // expression that produced that creature: the monster's own
-                // `Creature` property means self, anything else (a loop
-                // variable over the move's targets) means the player side.
-                // Every shipped use of this overload does aim at the players.
-                string? powerName = scan.PendingPower;
-                bool playerSide = !scan.TargetWasSelf;
-                scan.PendingPower = null;
-                if (powerName == null)
-                {
-                    scan.TakeAmount();
-                    return;
-                }
-                scan.Applies.Add(new Dictionary<string, object?>(StringComparer.Ordinal)
-                {
-                    ["power"] = powerName,
-                    ["target"] = playerSide ? "player" : "self",
-                    ["amount"] = scan.TakeAmount(),
-                });
+                scan.TakeAmount();
+                return;
             }
+            scan.Applies.Add(new Dictionary<string, object?>(StringComparer.Ordinal)
+            {
+                ["power"] = runtimePowerName,
+                ["target"] = playerSide ? "player" : "self",
+                ["amount"] = scan.TakeAmount(),
+            });
         }
         else if (string.Equals(owner, "PowerCmd", StringComparison.Ordinal) && string.Equals(mm.Name, "Remove", StringComparison.Ordinal) && mm is MethodInfo removeMi
                  && removeMi.IsGenericMethod)

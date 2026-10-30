@@ -200,7 +200,7 @@ public static partial class McpMod
 
     private static Dictionary<string, object?>? ParseMapDrawingPoint(
         JsonElement pointElement,
-        IReadOnlyDictionary<(int col, int row), Vector2> nodePositions,
+        Dictionary<(int col, int row), Vector2> nodePositions,
         out Vector2 point)
     {
         point = default;

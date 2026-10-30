@@ -44,6 +44,11 @@ dotnet_diagnostic.CA2101.severity = none
 # members through reflection is the mod's whole mechanism (see McpMod.Il.cs), not a smell.
 dotnet_diagnostic.S3011.severity = none
 
+# CA1707 "underscores in identifiers": the assembly and namespace name STS2_MCP is the mod's
+# shipped identity (mod_manifest.json, the game's mod folder, every documented path) and cannot
+# be renamed. Every other identifier in the tree is underscore-free.
+dotnet_diagnostic.CA1707.severity = none
+
 # Formatting rules below mirror what the tree already does, so `dotnet format` is a no-op on
 # a clean file and only reports real drift.
 

@@ -469,7 +469,7 @@ public static partial class McpMod
         var monsters = new List<Dictionary<string, object?>>();
         foreach (var type in typeof(MonsterModel).Assembly.GetTypes())
         {
-            if (type.IsAbstract || !type.IsSubclassOf(typeof(MonsterModel)) || type.FullName!.Contains("+")) continue;
+            if (type.IsAbstract || !type.IsSubclassOf(typeof(MonsterModel)) || type.FullName!.Contains('+')) continue;
 
             var entry = new Dictionary<string, object?>(StringComparer.Ordinal)
             {
@@ -510,7 +510,7 @@ public static partial class McpMod
         var encounters = new List<Dictionary<string, object?>>();
         foreach (var type in typeof(EncounterModel).Assembly.GetTypes())
         {
-            if (type.IsAbstract || !type.IsSubclassOf(typeof(EncounterModel)) || type.FullName!.Contains("+")) continue;
+            if (type.IsAbstract || !type.IsSubclassOf(typeof(EncounterModel)) || type.FullName!.Contains('+')) continue;
 
             var entry = new Dictionary<string, object?>(StringComparer.Ordinal)
             {

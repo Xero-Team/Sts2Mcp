@@ -182,7 +182,7 @@ public static partial class McpMod
     // includes mod-injected cards.
     // A null `discoveredIds` means scope=all: every card ModelDb defines,
     // whether or not the profile has met it.
-    private static IEnumerable<WikiCandidate> BuildCardWikiCandidates(HashSet<string>? discoveredIds)
+    private static List<WikiCandidate> BuildCardWikiCandidates(HashSet<string>? discoveredIds)
     {
         var byId = new Dictionary<string, WikiCandidate>(StringComparer.OrdinalIgnoreCase);
         foreach (var card in ModelDb.AllCards)
@@ -202,11 +202,11 @@ public static partial class McpMod
                 Discovered: discovered));
         }
 
-        return byId.Values;
+        return byId.Values.ToList();
     }
 
     // Null `discoveredIds` means scope=all, as for cards above.
-    private static IEnumerable<WikiCandidate> BuildRelicWikiCandidates(HashSet<string>? discoveredIds)
+    private static List<WikiCandidate> BuildRelicWikiCandidates(HashSet<string>? discoveredIds)
     {
         var byId = new Dictionary<string, WikiCandidate>(StringComparer.OrdinalIgnoreCase);
         foreach (var relic in ModelDb.AllRelics)
@@ -226,7 +226,7 @@ public static partial class McpMod
                 Discovered: discovered));
         }
 
-        return byId.Values;
+        return byId.Values.ToList();
     }
 
     private static Dictionary<string, object?> BuildWikiResult(WikiCandidate candidate, double score)

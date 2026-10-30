@@ -105,7 +105,7 @@ internal static class CombatRecorder
     {
         internal required string Id;
         internal required string Dir;
-        internal required CombatReplayWriter? Writer;
+        internal required CombatReplayWriter? GameWriter;
         internal required CombatReplay? Replay;
         internal long Seq;
         internal long OpenedMs;
@@ -843,7 +843,7 @@ internal static class CombatRecorder
                 else if (cm.IsEnding)
                     phase = "ending";
                 data["phase"] = phase;
-                if (cm.IsInProgress && _rec.Writer?.IsEnabled == true)
+                if (cm.IsInProgress && _rec.GameWriter?.IsEnabled == true)
                 {
                     _rec.Faults.Add($"enqueue_unrecorded:{action.Id}");
                     Emit("enqueue_unrecorded", data);
@@ -1221,7 +1221,7 @@ internal static class CombatRecorder
         {
             Id = $"{startTime}/{name}",
             Dir = Path.Combine(runDir, name),
-            Writer = writer,
+            GameWriter = writer,
             Replay = replay,
             OpenedMs = Clock.ElapsedMilliseconds,
             GameEventsBeforeOpen = eventsBefore,
@@ -1513,7 +1513,7 @@ internal static class CombatRecorder
         }
     }
 
-    private static JsonNode? SafeAt()
+    private static JsonObject? SafeAt()
     {
         return TryRecord("at", () => RecordObserve.At());
     }

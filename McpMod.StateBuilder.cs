@@ -3441,7 +3441,7 @@ public static partial class McpMod
     /// unwound from the list (CreatureCmd defers removal while its monster is mid-move) is
     /// left out, because it is leaving.
     /// </summary>
-    private static List<Dictionary<string, object?>> BuildEnemyList(ICombatState combatState)
+    private static List<Dictionary<string, object?>> BuildEnemyList(CombatState combatState)
     {
         var enemies = new List<Dictionary<string, object?>>();
         RefreshEntityIdRegistry(combatState);
@@ -4725,7 +4725,7 @@ public static partial class McpMod
     private static Dictionary<string, object?> BuildMapNode(
         MapPoint pt,
         IReadOnlyDictionary<(int, int), List<string>>? marks = null,
-        IReadOnlyDictionary<(int col, int row), Vector2>? drawingNodePositions = null)
+        Dictionary<(int col, int row), Vector2>? drawingNodePositions = null)
     {
         var node = new Dictionary<string, object?>(StringComparer.Ordinal)
         {

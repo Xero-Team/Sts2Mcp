@@ -478,7 +478,7 @@ public static partial class McpMod
         };
     }
 
-    private static Task ApplyPowerAsync(
+    private static Task<bool> ApplyPowerAsync(
         Player player,
         PowerModel power,
         Creature target,

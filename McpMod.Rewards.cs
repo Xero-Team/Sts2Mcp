@@ -141,10 +141,18 @@ public static partial class McpMod
     private static void RewardExecutionTask(NRewardButton __instance, ref Task __result)
     {
         var entry = __instance.Reward == null ? null : _rewardSession.Find(__instance.Reward);
-        if (entry != null) __result = ObserveRewardExecution(__result, entry);
+        if (entry != null) __result = ObserveRewardExecutionAsync(__result, entry);
     }
 
-    private static async Task ObserveRewardExecution(Task task, RewardSession.Entry entry)
+    // The task is the game's own reward execution, and this observer resumes on the main
+    // thread because it reports into the reward session that the UI then reads.
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("Reliability", "VSTHRD003:Avoid awaiting foreign Tasks",
+        Justification = "The task is started by the game's reward button; wrapping it to observe the outcome is the point.")]
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("Reliability", "CA2007:Consider calling ConfigureAwait on the awaited task",
+        Justification = "The catch reports into the reward session, which is main-thread state.")]
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("Usage", "MA0004:Use Task.ConfigureAwait(false)",
+        Justification = "Same as CA2007: the observer must resume on the main thread.")]
+    private static async Task ObserveRewardExecutionAsync(Task task, RewardSession.Entry entry)
     {
         try { await task; }
         catch
@@ -187,18 +195,23 @@ public static partial class McpMod
         // The current task is copied out first: a ref parameter cannot be used in a lambda,
         // and the observer only ever derives a new task from it.
         var current = __result;
-        var observed = TryRead<Task<int?>?>("reward.choice.observation", () =>
-        {
-            _rewardSession.AwaitChoice(entry);
-            var options = GetInstanceFieldValue(__instance, "_options") as System.Collections.ICollection;
-            var alternatives = (GetInstanceFieldValue(__instance, "_extraOptions") as IEnumerable<CardRewardAlternative>)?.ToArray();
-            return ObserveRewardChoice(current, entry, options?.Count, alternatives);
-        });
-        if (observed != null)
-            __result = observed;
+        var optionCount = TryRead<int?>("reward.choice.observation",
+            () => (GetInstanceFieldValue(__instance, "_options") as System.Collections.ICollection)?.Count);
+        var alternatives = TryRead<CardRewardAlternative[]?>("reward.choice.observation",
+            () => (GetInstanceFieldValue(__instance, "_extraOptions") as IEnumerable<CardRewardAlternative>)?.ToArray());
+        _rewardSession.AwaitChoice(entry);
+        __result = ObserveRewardChoiceAsync(current, entry, optionCount, alternatives);
     }
 
-    private static async Task<int?> ObserveRewardChoice(Task<int?> task, RewardSession.Entry entry,
+    // Same reasoning as ObserveRewardExecutionAsync: a game-owned task, and a continuation
+    // that touches the reward session on the main thread.
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("Reliability", "VSTHRD003:Avoid awaiting foreign Tasks",
+        Justification = "The choice task comes from the game's reward screen; wrapping it is the point.")]
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("Reliability", "CA2007:Consider calling ConfigureAwait on the awaited task",
+        Justification = "The catch reports into the reward session, which is main-thread state.")]
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("Usage", "MA0004:Use Task.ConfigureAwait(false)",
+        Justification = "Same as CA2007: the observer must resume on the main thread.")]
+    private static async Task<int?> ObserveRewardChoiceAsync(Task<int?> task, RewardSession.Entry entry,
         int? cardCount, CardRewardAlternative[]? alternatives)
     {
         int? choice;

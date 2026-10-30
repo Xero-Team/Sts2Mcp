@@ -42,7 +42,7 @@ public static partial class McpMod
         var progress = SaveManager.Instance?.Progress;
         var saveManager = SaveManager.Instance;
         if (progress == null || saveManager == null)
-            return new CompendiumSnapshot { Error = "No profile data available.", ErrorCode = "profile_data_unavailable" };
+            return new CompendiumSnapshot { ErrorMessage = "No profile data available.", ErrorCode = "profile_data_unavailable" };
 
         var profileId = saveManager.CurrentProfileId;
         var progressPath = GetProfileProgressPath(profileId);
@@ -107,10 +107,10 @@ public static partial class McpMod
         };
     }
 
-    private static object BuildCompendiumResponse(CompendiumSnapshot snapshot)
+    private static Dictionary<string, object?> BuildCompendiumResponse(CompendiumSnapshot snapshot)
     {
-        if (snapshot.Error != null)
-            return Error(snapshot.Error, snapshot.ErrorCode);
+        if (snapshot.ErrorMessage != null)
+            return Error(snapshot.ErrorMessage, snapshot.ErrorCode);
 
         var runHistory = BuildRunHistorySection(snapshot);
 
@@ -182,7 +182,7 @@ public static partial class McpMod
 
     private sealed class CompendiumSnapshot
     {
-        public string? Error { get; init; }
+        public string? ErrorMessage { get; init; }
         public string? ErrorCode { get; init; }
         public int ProfileId { get; init; }
         public string? ProgressPath { get; init; }

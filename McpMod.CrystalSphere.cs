@@ -111,10 +111,19 @@ public static partial class McpMod
         {
             if (__state == null)
                 return;
-            __result = Settled(__result, __state);
+            __result = SettledAsync(__result, __state);
         }
 
-        private static async Task Settled(Task click, CrystalSphereTrace trace)
+        // The click task belongs to the game and its continuation must resume on the main
+        // thread (it touches the trace and the minigame), so ConfigureAwait(false) is wrong
+        // here even though the analyzer only sees a foreign task.
+        [System.Diagnostics.CodeAnalysis.SuppressMessage("Reliability", "VSTHRD003:Avoid awaiting foreign Tasks",
+            Justification = "The task is the game's own click handler; observing it without starting it is the point.")]
+        [System.Diagnostics.CodeAnalysis.SuppressMessage("Reliability", "CA2007:Consider calling ConfigureAwait on the awaited task",
+            Justification = "The continuation decrements trace state that the game's main thread reads.")]
+        [System.Diagnostics.CodeAnalysis.SuppressMessage("Usage", "MA0004:Use Task.ConfigureAwait(false)",
+            Justification = "Same as CA2007: the continuation belongs on the main thread.")]
+        private static async Task SettledAsync(Task click, CrystalSphereTrace trace)
         {
             try
             {
