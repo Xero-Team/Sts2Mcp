@@ -490,12 +490,10 @@ public static partial class McpMod
             return battle;
         }
 
-        battle["next_creature_id"] = NextCreatureId(combatState);
-        battle["round"] = combatState.RoundNumber;
-        battle["turn"] = combatState.CurrentSide.ToString().ToLowerInvariant();
         // IsCombatPlayPhase() instead of the compiled IsPlayPhase property the fork
-        // used: STS2 0.107 removed that accessor (see McpMod.Helpers.cs).
-        battle["is_play_phase"] = IsCombatPlayPhase();
+        // used: STS2 0.107 removed that accessor (see McpMod.Helpers.cs). AppendBattleCore
+        // carries that decision for both builders now.
+        AppendBattleCore(battle, combatState);
         battle["player_actions_disabled"] = CombatManager.Instance.PlayerActionsDisabled;
         battle["all_players_ready"] = CombatManager.Instance.AllPlayersReadyToEndTurn();
 
@@ -516,22 +514,13 @@ public static partial class McpMod
 
         battle["enemies"] = BuildEnemyList(combatState);
 
-        // Run RNG stream coordinates — the host-synced RunRngSet is shared by
-        // all players in lockstep MP, so the local counters reflect everyone.
-        Dictionary<string, object?>? rngStreams = BuildRngStreams(runState);
-        if (rngStreams != null)
-            battle["rng_streams"] = rngStreams;
+        // The host-synced RunRngSet is shared by all players in lockstep MP, so the local
+        // counters reflect everyone; same for the history, because ActionQueueSynchronizer
+        // replays every peer's actions locally.
+        AppendBattleHistory(battle, combatState, runState);
 
-        // Combat history: every player's card plays + per-player damage dealt
-        // to enemies.  MP combat is lockstep (ActionQueueSynchronizer replays
-        // every peer's actions locally), so the local CombatHistory contains
-        // remote players' plays too.
-        TryDo(() =>
-        {
-            battle["card_plays"] = BuildCardPlaysState(combatState);
-            battle["card_history"] = BuildCardHistoryState(combatState);
-            battle["player_damage"] = BuildPlayerDamageState(runState, combatState.RoundNumber);
-        });
+        // Per-player damage dealt to enemies, which only the co-op payload reports.
+        TryDo(() => { battle["player_damage"] = BuildPlayerDamageState(runState, combatState.RoundNumber); });
         // History unavailable (e.g. combat tearing down) — omit the fields
 
         return battle;

@@ -2281,6 +2281,47 @@ public static partial class McpMod
         }
     }
 
+    /// <summary>
+    /// The opening of every battle payload: the identity the next summoned creature will get, the
+    /// round, whose side it is, and whether the local player can act. Both the singleplayer and
+    /// the co-op builder emitted these four fields, in this order, from the same reads.
+    /// </summary>
+    private static void AppendBattleCore(Dictionary<string, object?> battle, CombatState combatState)
+    {
+        battle["next_creature_id"] = NextCreatureId(combatState);
+        battle["round"] = combatState.RoundNumber;
+        battle["turn"] = combatState.CurrentSide.ToString().ToLowerInvariant();
+        battle["is_play_phase"] = IsCombatPlayPhase();
+    }
+
+    /// <summary>
+    /// The RNG and combat-history blocks both battle payloads carry: the run's stream counters so a
+    /// planner can resolve shuffle and target randomness, every card played (singleplayer exposes
+    /// the same shape co-op does), and where each card went this turn and last.
+    ///
+    /// Each block gets its own <c>TryDo</c>: history can vanish while combat tears down, and the
+    /// co-op builder used to wrap all three in one block, so one failure lost two good fields.
+    /// </summary>
+    private static void AppendBattleHistory(
+        Dictionary<string, object?> battle, CombatState combatState, RunState runState)
+    {
+        // Run RNG stream coordinates (seed/counter per stream). See McpMod.RngStreams.cs.
+        Dictionary<string, object?>? rngStreams = BuildRngStreams(runState);
+        if (rngStreams != null)
+        {
+            battle["rng_streams"] = rngStreams;
+        }
+
+        // Gold Axe and other combat-wide counters include every player's card plays.
+        TryDo(() => { battle["card_plays"] = BuildCardPlaysState(combatState); });
+        /* history unavailable while combat is tearing down */
+
+        // Where every card went this turn and last — drawn/discarded/exhausted/generated, not
+        // just played. See BuildCardHistoryState.
+        TryDo(() => { battle["card_history"] = BuildCardHistoryState(combatState); });
+        /* history unavailable while combat is tearing down */
+    }
+
     private static Dictionary<string, object?> BuildBattleState(RunState runState, CombatRoom combatRoom)
     {
         CombatState? combatState = CombatManager.Instance.DebugOnlyGetState();
@@ -2297,11 +2338,7 @@ public static partial class McpMod
         battle["special_card_rewards"] = localPlayer != null && combatRoom.ExtraRewards.TryGetValue(localPlayer, out List<Reward>? extraRewards)
             ? extraRewards.OfType<SpecialCardReward>().Select(BuildSpecialCardReward).ToList()
             : new List<Dictionary<string, object?>>();
-        battle["next_creature_id"] = NextCreatureId(combatState);
-
-        battle["round"] = combatState.RoundNumber;
-        battle["turn"] = combatState.CurrentSide.ToString().ToLowerInvariant();
-        battle["is_play_phase"] = IsCombatPlayPhase();
+        AppendBattleCore(battle, combatState);
         ApplyBattleReadiness(battle);
 
         battle["enemies"] = BuildEnemyList(combatState);
@@ -2383,17 +2420,7 @@ public static partial class McpMod
                 battle["encounter_slots"] = new List<string>(slots);
         });
 
-        // Run RNG stream coordinates (seed/counter per stream) so the planner
-        // can resolve shuffle/target randomness exactly. See McpMod.RngStreams.cs.
-        Dictionary<string, object?>? rngStreams = BuildRngStreams(runState);
-        if (rngStreams != null)
-            battle["rng_streams"] = rngStreams;
-
-        // Gold Axe and other combat-wide counters include every player's card
-        // plays. Singleplayer now exposes the same history shape as MP.
-        TryDo(() => battle["card_plays"] = BuildCardPlaysState(combatState));
-        TryDo(() => battle["card_history"] = BuildCardHistoryState(combatState));
-        /* both are unavailable while combat is tearing down */
+        AppendBattleHistory(battle, combatState, runState);
     }
 
     /// <summary>
