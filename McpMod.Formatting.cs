@@ -922,83 +922,117 @@ public static partial class McpMod
         // to be JSON-only, which made it invisible to the markdown workflow.
         FormatMapBossMarkdown(sb, map);
 
-        // What this act has already served. NOT what comes next - the game does not show that
-        // before the room is entered, and neither do we (see BuildEncountersSeen).
-        if (map.TryGetValue("encounters_seen", out var esObj) && esObj is Dictionary<string, object?> seen && seen.Count > 0)
-        {
-            var parts = new List<string>();
-            foreach (var key in new[] { "monster", "elite", "event" })
-            {
-                if (seen.GetValueOrDefault(key) is not List<Dictionary<string, object?>> rooms || rooms.Count == 0)
-                    continue;
-                parts.Add($"{key}: " + string.Join(", ", rooms.Select(r =>
-                {
-                    string name = r.TryGetValue("name", out var n) && n != null ? n.ToString()! : r.GetValueOrDefault("id")?.ToString() ?? "?";
-                    string floor = r.TryGetValue("floor", out var f) && f != null ? $" (f{f})" : "";
-                    return $"{name}{floor}";
-                })));
-            }
-            if (parts.Count > 0)
-            {
-                string cycle = seen.GetValueOrDefault("elite_cycle") is int c && c > 0
-                    ? $" - elite pool cycled x{c} (a fought elite can return)" : "";
-                sb.AppendLine("**Fought this act:** " + string.Join(" | ", parts) + cycle);
-                sb.AppendLine();
-            }
-        }
-
-        // Path taken
-        if (map.TryGetValue("visited", out var visitedObj) && visitedObj is List<Dictionary<string, object?>> visited && visited.Count > 0)
-        {
-            sb.AppendLine("## Path Taken");
-            var parts = visited.Select((v, i) => $"{i + 1}. {v["type"]} ({v["col"]},{v["row"]})");
-            sb.AppendLine(string.Join(" → ", parts) + " ← current");
-            sb.AppendLine();
-        }
-
-        if (map.TryGetValue("marked_nodes", out var markedObj)
-            && markedObj is List<Dictionary<string, object?>> markedNodes && markedNodes.Count > 0)
-        {
-            var labels = markedNodes.Select(n =>
-            {
-                var by = n.TryGetValue("marked_by", out var b) && b is List<string> bl ? string.Join("/", bl) : "?";
-                return $"({n["col"]},{n["row"]}) by {by}";
-            });
-            sb.AppendLine($"**Marked rooms:** {string.Join(", ", labels)}");
-            sb.AppendLine();
-        }
+        AppendMapEncountersSeen(sb, map);
+        AppendMapPathTaken(sb, map);
+        AppendMapMarkedNodes(sb, map);
 
         // Build node lookup for path traversal
+        var nodeLookup = BuildMapNodeLookup(map);
+        AppendMapNextOptions(sb, map, nodeLookup);
+
+        FormatMapGraphMarkdown(sb, map);
+    }
+
+    /// <summary>
+    /// What this act has already served. NOT what comes next - the game does not show that
+    /// before the room is entered, and neither do we (see BuildEncountersSeen).
+    /// </summary>
+    private static void AppendMapEncountersSeen(StringBuilder sb, Dictionary<string, object?> map)
+    {
+        if (!map.TryGetValue("encounters_seen", out var esObj)
+            || esObj is not Dictionary<string, object?> seen
+            || seen.Count == 0)
+            return;
+
+        var parts = new List<string>();
+        foreach (var key in new[] { "monster", "elite", "event" })
+        {
+            if (seen.GetValueOrDefault(key) is not List<Dictionary<string, object?>> rooms || rooms.Count == 0)
+                continue;
+            parts.Add($"{key}: " + string.Join(", ", rooms.Select(r =>
+            {
+                string name = r.TryGetValue("name", out var n) && n != null ? n.ToString()! : r.GetValueOrDefault("id")?.ToString() ?? "?";
+                string floor = r.TryGetValue("floor", out var f) && f != null ? $" (f{f})" : "";
+                return $"{name}{floor}";
+            })));
+        }
+        if (parts.Count == 0)
+            return;
+
+        string cycle = seen.GetValueOrDefault("elite_cycle") is int c && c > 0
+            ? $" - elite pool cycled x{c} (a fought elite can return)" : "";
+        sb.AppendLine("**Fought this act:** " + string.Join(" | ", parts) + cycle);
+        sb.AppendLine();
+    }
+
+    private static void AppendMapPathTaken(StringBuilder sb, Dictionary<string, object?> map)
+    {
+        if (!map.TryGetValue("visited", out var visitedObj)
+            || visitedObj is not List<Dictionary<string, object?>> visited
+            || visited.Count == 0)
+            return;
+
+        sb.AppendLine("## Path Taken");
+        var parts = visited.Select((v, i) => $"{i + 1}. {v["type"]} ({v["col"]},{v["row"]})");
+        sb.AppendLine(string.Join(" → ", parts) + " ← current");
+        sb.AppendLine();
+    }
+
+    private static void AppendMapMarkedNodes(StringBuilder sb, Dictionary<string, object?> map)
+    {
+        if (!map.TryGetValue("marked_nodes", out var markedObj)
+            || markedObj is not List<Dictionary<string, object?>> markedNodes
+            || markedNodes.Count == 0)
+            return;
+
+        var labels = markedNodes.Select(n =>
+        {
+            var by = n.TryGetValue("marked_by", out var b) && b is List<string> bl ? string.Join("/", bl) : "?";
+            return $"({n["col"]},{n["row"]}) by {by}";
+        });
+        sb.AppendLine($"**Marked rooms:** {string.Join(", ", labels)}");
+        sb.AppendLine();
+    }
+
+    private static Dictionary<string, Dictionary<string, object?>> BuildMapNodeLookup(
+        Dictionary<string, object?> map)
+    {
         var nodeLookup = new Dictionary<string, Dictionary<string, object?>>(StringComparer.Ordinal);
         if (map.TryGetValue("nodes", out var nodesObj) && nodesObj is List<Dictionary<string, object?>> nodes)
         {
             foreach (var node in nodes)
                 nodeLookup[$"{node["col"]},{node["row"]}"] = node;
         }
+        return nodeLookup;
+    }
 
-        // Next options with future path trees
-        if (map.TryGetValue("next_options", out var optObj) && optObj is List<Dictionary<string, object?>> options && options.Count > 0)
-        {
-            sb.AppendLine("## Choose Next Node");
-            foreach (var opt in options)
-            {
-                string marked = opt.TryGetValue("marked_by", out var mb) && mb is List<string> mbl && mbl.Count > 0
-                    ? $" [marked by {string.Join(", ", mbl)}]" : "";
-                sb.AppendLine($"- [{opt["index"]}] **{opt["type"]}** ({opt["col"]},{opt["row"]}){marked}");
-                string tree = BuildFuturePathTree(opt, nodeLookup);
-                if (tree.Length > 0)
-                    sb.AppendLine($"  Future paths: {tree}");
-            }
-            sb.AppendLine();
-        }
-        else
+    /// <summary>The travelable next nodes, each with the tree of paths it leads to.</summary>
+    private static void AppendMapNextOptions(
+        StringBuilder sb,
+        Dictionary<string, object?> map,
+        Dictionary<string, Dictionary<string, object?>> nodeLookup)
+    {
+        if (!map.TryGetValue("next_options", out var optObj)
+            || optObj is not List<Dictionary<string, object?>> options
+            || options.Count == 0)
         {
             sb.AppendLine("## Map");
             sb.AppendLine("No travelable nodes available.");
             sb.AppendLine();
+            return;
         }
 
-        FormatMapGraphMarkdown(sb, map);
+        sb.AppendLine("## Choose Next Node");
+        foreach (var opt in options)
+        {
+            string marked = opt.TryGetValue("marked_by", out var mb) && mb is List<string> mbl && mbl.Count > 0
+                ? $" [marked by {string.Join(", ", mbl)}]" : "";
+            sb.AppendLine($"- [{opt["index"]}] **{opt["type"]}** ({opt["col"]},{opt["row"]}){marked}");
+            string tree = BuildFuturePathTree(opt, nodeLookup);
+            if (tree.Length > 0)
+                sb.AppendLine($"  Future paths: {tree}");
+        }
+        sb.AppendLine();
     }
 
     /// <summary>
