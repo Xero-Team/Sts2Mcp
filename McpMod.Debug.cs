@@ -312,25 +312,10 @@ public static partial class McpMod
         if (canonical == null)
             return Error($"Unknown enchantment: {wanted}");
 
-        var pileName = data.TryGetValue("pile", out var pileEl) && pileEl.ValueKind == JsonValueKind.String
-            ? pileEl.GetString()!
-            : "hand";
-        if (!Enum.TryParse<PileType>(pileName, ignoreCase: true, out var pileType)
-            || pileType is PileType.None or PileType.Play)
-        {
-            return Error($"Unknown pile: {pileName} (use hand, draw, discard, exhaust or deck)");
-        }
+        var targetError = ResolveDebugCard(player, data, out var pileName, out var index, out var card);
+        if (targetError != null)
+            return targetError;
 
-        var pile = pileType.GetPile(player);
-        if (pile == null)
-            return Error($"No {pileName} pile");
-
-        int index = data.TryGetValue("index", out var idxEl) && idxEl.TryGetInt32(out var i) ? i : 0;
-        var cards = pile.Cards.ToList();
-        if (index < 0 || index >= cards.Count)
-            return Error($"index {index} out of range for {pileName} ({cards.Count} cards)");
-
-        var card = cards[index];
         // The amount is the enchantment's own default unless the caller overrides it --
         // Inky and Swift read vars on themselves and ignore it, which is worth seeing.
         decimal amount = data.TryGetValue("amount", out var amtEl) && amtEl.TryGetDecimal(out var a)
@@ -360,6 +345,37 @@ public static partial class McpMod
                 $"Enchanted {SafeGetText(() => card.Id.Entry)} in {pileName}[{index}] "
                 + $"with {amount} {SafeGetText(() => canonical.Id.Entry)}",
         };
+    }
+
+    private static Dictionary<string, object?>? ResolveDebugCard(
+        Player player,
+        Dictionary<string, JsonElement> data,
+        out string pileName,
+        out int index,
+        out CardModel card)
+    {
+        card = null!;
+        index = 0;
+        pileName = data.TryGetValue("pile", out var pileEl) && pileEl.ValueKind == JsonValueKind.String
+            ? pileEl.GetString()!
+            : "hand";
+        if (!Enum.TryParse<PileType>(pileName, ignoreCase: true, out var pileType)
+            || pileType is PileType.None or PileType.Play)
+        {
+            return Error($"Unknown pile: {pileName} (use hand, draw, discard, exhaust or deck)");
+        }
+
+        var pile = pileType.GetPile(player);
+        if (pile == null)
+            return Error($"No {pileName} pile");
+
+        index = data.TryGetValue("index", out var idxEl) && idxEl.TryGetInt32(out var i) ? i : 0;
+        var cards = pile.Cards.ToList();
+        if (index < 0 || index >= cards.Count)
+            return Error($"index {index} out of range for {pileName} ({cards.Count} cards)");
+
+        card = cards[index];
+        return null;
     }
 
     // {"action":"debug_enter_next_act"}

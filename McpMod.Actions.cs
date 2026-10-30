@@ -56,21 +56,9 @@ public static partial class McpMod
 {
     private static Dictionary<string, object?> ExecuteAction(string action, Dictionary<string, JsonElement> data)
     {
-        if (!RunManager.Instance.IsInProgress)
-            return Error("No run in progress", "run_not_in_progress");
-
-        var runState = RunManager.Instance.DebugOnlyGetState()!;
-        var player = LocalContext.GetMe(runState);
-        if (player == null)
-            return Error("Could not find local player", "local_player_unavailable");
-
-        var tree = (Godot.Engine.GetMainLoop()) as SceneTree;
-        if (tree?.Root != null && IsAnyFtueVisible(tree.Root))
-            return Error("Blocking popup active. Use menu_select with one of the advertised popup options before gameplay actions.", "blocking_popup_active");
-
-        var covered = RunSubmenuBlockingError(tree, action);
-        if (covered != null)
-            return covered;
+        var guard = TryBeginRunAction(action, out var runState, out var player);
+        if (guard != null)
+            return guard;
 
         return action switch
         {
@@ -124,6 +112,31 @@ public static partial class McpMod
             "return_to_main_menu" => ExecuteReturnToMainMenu(),
             _ => Error($"Unknown action: {action}", "unknown_action")
         };
+    }
+
+    /// <summary>
+    /// The preconditions every in-run action shares, or the error that stops the action.
+    /// </summary>
+    private static Dictionary<string, object?>? TryBeginRunAction(
+        string action,
+        out RunState runState,
+        out Player player)
+    {
+        runState = null!;
+        player = null!;
+        if (!RunManager.Instance.IsInProgress)
+            return Error("No run in progress", "run_not_in_progress");
+
+        runState = RunManager.Instance.DebugOnlyGetState()!;
+        player = LocalContext.GetMe(runState);
+        if (player == null)
+            return Error("Could not find local player", "local_player_unavailable");
+
+        var tree = (Godot.Engine.GetMainLoop()) as SceneTree;
+        if (tree?.Root != null && IsAnyFtueVisible(tree.Root))
+            return Error("Blocking popup active. Use menu_select with one of the advertised popup options before gameplay actions.", "blocking_popup_active");
+
+        return RunSubmenuBlockingError(tree, action);
     }
 
     // The in-run pause menu is opened by the richer ExecuteOpenPauseMenu(IRunState) below
@@ -965,7 +978,33 @@ public static partial class McpMod
 
     private static Dictionary<string, object?> ExecuteChooseMapNode(Dictionary<string, JsonElement> data)
     {
-        var mapScreen = NMapScreen.Instance;
+        var guard = TryGetTravelableMap(out var mapScreen, out var travelable);
+        if (guard != null)
+            return guard;
+
+        var targetError = ResolveMapNodeTarget(data, travelable, out var target);
+        if (targetError != null)
+            return targetError;
+
+        var pt = target.Point;
+        mapScreen!.OnMapPointSelectedLocally(target);
+
+        return new Dictionary<string, object?>(StringComparer.Ordinal)
+        {
+            ["status"] = "ok",
+            ["message"] = $"Traveling to {pt.PointType} at ({pt.coord.col},{pt.coord.row})"
+        };
+    }
+
+    /// <summary>
+    /// The map is open and a travel can start right now; otherwise the error to return.
+    /// </summary>
+    private static Dictionary<string, object?>? TryGetTravelableMap(
+        out NMapScreen? mapScreen,
+        out List<NMapPoint> travelable)
+    {
+        travelable = new List<NMapPoint>();
+        mapScreen = NMapScreen.Instance;
         if (mapScreen == null || (!mapScreen.IsOpen && !IsNodeVisible(mapScreen)))
             return Error("Map screen is not open");
 
@@ -985,17 +1024,24 @@ public static partial class McpMod
         if (IsRunTransitionInFlight())
             return Error("A run transition is already resolving - wait for it to finish before travelling");
 
-        var travelable = GetTravelableMapPoints(mapScreen);
-
+        travelable = GetTravelableMapPoints(mapScreen);
         if (travelable.Count == 0)
             return Error("No travelable map nodes available (the current room is not finished yet)");
 
+        return null;
+    }
+
+    private static Dictionary<string, object?>? ResolveMapNodeTarget(
+        Dictionary<string, JsonElement> data,
+        List<NMapPoint> travelable,
+        out NMapPoint target)
+    {
+        target = null!;
         // Coordinates are the safe way to name a node: "index" is a position in the
         // current option list, so it shifts whenever the set of travelable nodes does,
         // and a stale index silently routes the run down the wrong branch.
         bool hasCol = TryGetIntParam(data, out int col, "col");
         bool hasRow = TryGetIntParam(data, out int row, "row");
-        NMapPoint target;
 
         if (hasCol && hasRow)
         {
@@ -1005,28 +1051,17 @@ public static partial class McpMod
                 return Error(
                     $"No travelable node at ({col},{row}). Travelable: "
                     + string.Join(", ", travelable.Select(mp => $"{mp.Point.PointType} ({mp.Point.coord.col},{mp.Point.coord.row})")));
+            return null;
         }
-        else if (hasCol || hasRow)
-        {
+        if (hasCol || hasRow)
             return Error("Provide both 'col' and 'row' to choose a node by coordinate, or 'index' to choose by list position.");
-        }
-        else
-        {
-            if (!TryGetIntParam(data, out int index, "index", "node_index"))
-                return Error("Missing node selector. Provide 'col' and 'row' (preferred, stable), or 'index' (position in next_options).");
-            if (index < 0 || index >= travelable.Count)
-                return Error($"Map node index {index} out of range ({travelable.Count} options available)");
-            target = travelable[index];
-        }
 
-        var pt = target.Point;
-        mapScreen.OnMapPointSelectedLocally(target);
-
-        return new Dictionary<string, object?>(StringComparer.Ordinal)
-        {
-            ["status"] = "ok",
-            ["message"] = $"Traveling to {pt.PointType} at ({pt.coord.col},{pt.coord.row})"
-        };
+        if (!TryGetIntParam(data, out int index, "index", "node_index"))
+            return Error("Missing node selector. Provide 'col' and 'row' (preferred, stable), or 'index' (position in next_options).");
+        if (index < 0 || index >= travelable.Count)
+            return Error($"Map node index {index} out of range ({travelable.Count} options available)");
+        target = travelable[index];
+        return null;
     }
 
     private static Dictionary<string, object?> ExecuteClaimReward(Dictionary<string, JsonElement> data)

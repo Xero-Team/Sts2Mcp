@@ -5,6 +5,8 @@ using System.Linq;
 using System.Net;
 using System.Text.Json;
 using Godot;
+using MegaCrit.Sts2.Core.Achievements;
+using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Nodes.Screens.MainMenu;
 using MegaCrit.Sts2.Core.Nodes.Screens.ProfileScreen;
 using MegaCrit.Sts2.Core.Runs;
@@ -132,62 +134,65 @@ public static partial class McpMod
         if (profileId is < 1 or > 3)
             return Error("profile_id must be 1-3", "invalid_profile_id");
 
-        var normalizedAction = action.Trim().ToLowerInvariant();
-
-        if (string.Equals(normalizedAction, "switch", StringComparison.Ordinal))
+        return action.Trim().ToLowerInvariant() switch
         {
-            if (RunManager.Instance?.IsInProgress == true)
-                return Error("Cannot switch profiles during a run", "run_in_progress");
+            "switch" => ExecuteProfileSwitch(sm, profileId),
+            "delete" => ExecuteProfileDelete(sm, profileId),
+            _ => Error($"Unknown action: {action}. Use: switch, delete", "unknown_profile_action"),
+        };
+    }
 
-            var tree = Engine.GetMainLoop() as SceneTree;
-            if (tree?.Root != null)
+    private static Dictionary<string, object?> ExecuteProfileSwitch(SaveManager sm, int profileId)
+    {
+        if (RunManager.Instance?.IsInProgress == true)
+            return Error("Cannot switch profiles during a run", "run_in_progress");
+
+        var tree = Engine.GetMainLoop() as SceneTree;
+        if (tree?.Root != null)
+        {
+            if (TrySwitchProfileViaOpenScreen(tree.Root, profileId))
             {
-                if (TrySwitchProfileViaOpenScreen(tree.Root, profileId))
+                return new Dictionary<string, object?>(StringComparer.Ordinal)
                 {
-                    return new Dictionary<string, object?>(StringComparer.Ordinal)
-                    {
-                        ["status"] = "ok",
-                        ["message"] = $"Switch requested for profile {profileId} (via UI)",
-                        ["target_profile_id"] = profileId,
-                        ["current_profile_id"] = sm.CurrentProfileId
-                    };
-                }
-
-                var mainMenu = FindFirst<NMainMenu>(tree.Root);
-                if (mainMenu != null && IsNodeVisible(mainMenu))
-                {
-                    mainMenu.OpenProfileScreen();
-                    return new Dictionary<string, object?>(StringComparer.Ordinal)
-                    {
-                        ["status"] = "ok",
-                        ["message"] = "Opened profile screen. Send switch again to select profile."
-                    };
-                }
+                    ["status"] = "ok",
+                    ["message"] = $"Switch requested for profile {profileId} (via UI)",
+                    ["target_profile_id"] = profileId,
+                    ["current_profile_id"] = sm.CurrentProfileId
+                };
             }
 
-            sm.SwitchProfileId(profileId);
-            return new Dictionary<string, object?>(StringComparer.Ordinal)
+            var mainMenu = FindFirst<NMainMenu>(tree.Root);
+            if (mainMenu != null && IsNodeVisible(mainMenu))
             {
-                ["status"] = "ok",
-                ["message"] = $"Switched to profile {profileId} (requires restart)",
-                ["current_profile_id"] = sm.CurrentProfileId
-            };
+                mainMenu.OpenProfileScreen();
+                return new Dictionary<string, object?>(StringComparer.Ordinal)
+                {
+                    ["status"] = "ok",
+                    ["message"] = "Opened profile screen. Send switch again to select profile."
+                };
+            }
         }
 
-        if (string.Equals(normalizedAction, "delete", StringComparison.Ordinal))
+        sm.SwitchProfileId(profileId);
+        return new Dictionary<string, object?>(StringComparer.Ordinal)
         {
-            if (profileId == sm.CurrentProfileId)
-                return Error("Cannot delete the active profile", "active_profile_delete");
+            ["status"] = "ok",
+            ["message"] = $"Switched to profile {profileId} (requires restart)",
+            ["current_profile_id"] = sm.CurrentProfileId
+        };
+    }
 
-            sm.DeleteProfile(profileId);
-            return new Dictionary<string, object?>(StringComparer.Ordinal)
-            {
-                ["status"] = "ok",
-                ["message"] = $"Deleted profile {profileId}"
-            };
-        }
+    private static Dictionary<string, object?> ExecuteProfileDelete(SaveManager sm, int profileId)
+    {
+        if (profileId == sm.CurrentProfileId)
+            return Error("Cannot delete the active profile", "active_profile_delete");
 
-        return Error($"Unknown action: {action}. Use: switch, delete", "unknown_profile_action");
+        sm.DeleteProfile(profileId);
+        return new Dictionary<string, object?>(StringComparer.Ordinal)
+        {
+            ["status"] = "ok",
+            ["message"] = $"Deleted profile {profileId}"
+        };
     }
 
     private static bool TrySwitchProfileViaOpenScreen(Node root, int profileId)
@@ -239,134 +244,170 @@ public static partial class McpMod
         result["save_scope"] = GetSaveScope(profileRoot);
         result["current_run"] = BuildActiveRunContext();
 
-        var characters = new List<Dictionary<string, object?>>();
-        foreach (var kv in progress.CharacterStats.OrderBy(kv => kv.Key.Entry, StringComparer.Ordinal))
+        result["characters"] = BuildCharacterStats(progress.CharacterStats);
+        result["card_stats"] = BuildCardStats(progress.CardStats);
+        result["encounter_stats"] = BuildEncounterStats(progress.EncounterStats);
+        result["enemy_stats"] = BuildEnemyStats(progress.EnemyStats);
+        result["ancient_stats"] = BuildAncientStats(progress.AncientStats);
+        AddDiscoveredIds(result, progress);
+        result["achievements"] = BuildAchievementList(progress.UnlockedAchievements);
+        result["epochs"] = BuildEpochList(progress.Epochs);
+        AddProfileTotals(result, progress);
+        return result;
+    }
+
+    private static List<Dictionary<string, object?>> BuildCharacterStats(
+        IReadOnlyDictionary<ModelId, CharacterStats> stats)
+    {
+        var rows = new List<Dictionary<string, object?>>();
+        foreach (var kv in stats.OrderBy(kv => kv.Key.Entry, StringComparer.Ordinal))
         {
-            var stats = kv.Value;
-            characters.Add(new Dictionary<string, object?>(StringComparer.Ordinal)
+            var row = kv.Value;
+            rows.Add(new Dictionary<string, object?>(StringComparer.Ordinal)
             {
                 ["id"] = kv.Key.Entry,
-                ["max_ascension"] = stats.MaxAscension,
-                ["preferred_ascension"] = stats.PreferredAscension,
-                ["total_wins"] = stats.TotalWins,
-                ["total_losses"] = stats.TotalLosses,
-                ["fastest_win_time"] = stats.FastestWinTime,
-                ["best_win_streak"] = stats.BestWinStreak,
-                ["current_win_streak"] = stats.CurrentWinStreak,
-                ["playtime"] = stats.Playtime
+                ["max_ascension"] = row.MaxAscension,
+                ["preferred_ascension"] = row.PreferredAscension,
+                ["total_wins"] = row.TotalWins,
+                ["total_losses"] = row.TotalLosses,
+                ["fastest_win_time"] = row.FastestWinTime,
+                ["best_win_streak"] = row.BestWinStreak,
+                ["current_win_streak"] = row.CurrentWinStreak,
+                ["playtime"] = row.Playtime
             });
         }
-        result["characters"] = characters;
+        return rows;
+    }
 
-        var cards = new List<Dictionary<string, object?>>();
-        foreach (var kv in progress.CardStats.OrderBy(kv => kv.Key.Entry, StringComparer.Ordinal))
+    private static List<Dictionary<string, object?>> BuildCardStats(
+        IReadOnlyDictionary<ModelId, CardStats> stats)
+    {
+        var rows = new List<Dictionary<string, object?>>();
+        foreach (var kv in stats.OrderBy(kv => kv.Key.Entry, StringComparer.Ordinal))
         {
-            var stats = kv.Value;
-            cards.Add(new Dictionary<string, object?>(StringComparer.Ordinal)
+            var row = kv.Value;
+            rows.Add(new Dictionary<string, object?>(StringComparer.Ordinal)
             {
                 ["id"] = kv.Key.Entry,
-                ["times_picked"] = stats.TimesPicked,
-                ["times_skipped"] = stats.TimesSkipped,
-                ["times_won"] = stats.TimesWon,
-                ["times_lost"] = stats.TimesLost
+                ["times_picked"] = row.TimesPicked,
+                ["times_skipped"] = row.TimesSkipped,
+                ["times_won"] = row.TimesWon,
+                ["times_lost"] = row.TimesLost
             });
         }
-        result["card_stats"] = cards;
+        return rows;
+    }
 
-        var encounters = new List<Dictionary<string, object?>>();
-        foreach (var kv in progress.EncounterStats.OrderBy(kv => kv.Key.Entry, StringComparer.Ordinal))
+    private static List<Dictionary<string, object?>> BuildEncounterStats(
+        IReadOnlyDictionary<ModelId, EncounterStats> stats)
+    {
+        var rows = new List<Dictionary<string, object?>>();
+        foreach (var kv in stats.OrderBy(kv => kv.Key.Entry, StringComparer.Ordinal))
         {
-            var enc = new Dictionary<string, object?>(StringComparer.Ordinal)
-            {
-                ["id"] = kv.Key.Entry,
-                ["total_wins"] = kv.Value.TotalWins,
-                ["total_losses"] = kv.Value.TotalLosses
-            };
-            var fightStats = new List<Dictionary<string, object?>>();
-            foreach (var fs in kv.Value.FightStats)
-            {
-                fightStats.Add(new Dictionary<string, object?>(StringComparer.Ordinal)
-                {
-                    ["character"] = fs.Character.Entry,
-                    ["wins"] = fs.Wins,
-                    ["losses"] = fs.Losses
-                });
-            }
-            if (fightStats.Count > 0)
-                enc["by_character"] = SortDictionaryListByStringField(fightStats, "character");
-            encounters.Add(enc);
+            rows.Add(BuildFightStatGroup(kv.Key.Entry, kv.Value.TotalWins, kv.Value.TotalLosses, kv.Value.FightStats));
         }
-        result["encounter_stats"] = encounters;
+        return rows;
+    }
 
-        var enemies = new List<Dictionary<string, object?>>();
-        foreach (var kv in progress.EnemyStats.OrderBy(kv => kv.Key.Entry, StringComparer.Ordinal))
+    private static List<Dictionary<string, object?>> BuildEnemyStats(
+        IReadOnlyDictionary<ModelId, EnemyStats> stats)
+    {
+        var rows = new List<Dictionary<string, object?>>();
+        foreach (var kv in stats.OrderBy(kv => kv.Key.Entry, StringComparer.Ordinal))
         {
-            var enemy = new Dictionary<string, object?>(StringComparer.Ordinal)
-            {
-                ["id"] = kv.Key.Entry,
-                ["total_wins"] = kv.Value.TotalWins,
-                ["total_losses"] = kv.Value.TotalLosses
-            };
-            var fightStats = new List<Dictionary<string, object?>>();
-            foreach (var fs in kv.Value.FightStats)
-            {
-                fightStats.Add(new Dictionary<string, object?>(StringComparer.Ordinal)
-                {
-                    ["character"] = fs.Character.Entry,
-                    ["wins"] = fs.Wins,
-                    ["losses"] = fs.Losses
-                });
-            }
-            if (fightStats.Count > 0)
-                enemy["by_character"] = SortDictionaryListByStringField(fightStats, "character");
-            enemies.Add(enemy);
+            rows.Add(BuildFightStatGroup(kv.Key.Entry, kv.Value.TotalWins, kv.Value.TotalLosses, kv.Value.FightStats));
         }
-        result["enemy_stats"] = enemies;
+        return rows;
+    }
 
-        var ancients = new List<Dictionary<string, object?>>();
-        foreach (var kv in progress.AncientStats.OrderBy(kv => kv.Key.Entry, StringComparer.Ordinal))
+    private static Dictionary<string, object?> BuildFightStatGroup(
+        string id,
+        int totalWins,
+        int totalLosses,
+        IEnumerable<FightStats> fightStats)
+    {
+        var row = new Dictionary<string, object?>(StringComparer.Ordinal)
         {
-            var anc = new Dictionary<string, object?>(StringComparer.Ordinal)
+            ["id"] = id,
+            ["total_wins"] = totalWins,
+            ["total_losses"] = totalLosses
+        };
+        var byCharacter = new List<Dictionary<string, object?>>();
+        foreach (var fs in fightStats)
+        {
+            byCharacter.Add(new Dictionary<string, object?>(StringComparer.Ordinal)
+            {
+                ["character"] = fs.Character.Entry,
+                ["wins"] = fs.Wins,
+                ["losses"] = fs.Losses
+            });
+        }
+        if (byCharacter.Count > 0)
+            row["by_character"] = SortDictionaryListByStringField(byCharacter, "character");
+        return row;
+    }
+
+    private static List<Dictionary<string, object?>> BuildAncientStats(
+        IReadOnlyDictionary<ModelId, AncientStats> stats)
+    {
+        var rows = new List<Dictionary<string, object?>>();
+        foreach (var kv in stats.OrderBy(kv => kv.Key.Entry, StringComparer.Ordinal))
+        {
+            var row = new Dictionary<string, object?>(StringComparer.Ordinal)
             {
                 ["id"] = kv.Key.Entry,
                 ["total_visits"] = kv.Value.TotalVisits,
                 ["total_wins"] = kv.Value.TotalWins,
                 ["total_losses"] = kv.Value.TotalLosses
             };
-            var charStats = new List<Dictionary<string, object?>>();
+            var byCharacter = new List<Dictionary<string, object?>>();
             foreach (var cs in kv.Value.CharStats)
             {
-                charStats.Add(new Dictionary<string, object?>(StringComparer.Ordinal)
+                byCharacter.Add(new Dictionary<string, object?>(StringComparer.Ordinal)
                 {
                     ["character"] = cs.Character.Entry,
                     ["wins"] = cs.Wins,
                     ["losses"] = cs.Losses
                 });
             }
-            if (charStats.Count > 0)
-                anc["by_character"] = SortDictionaryListByStringField(charStats, "character");
-            ancients.Add(anc);
+            if (byCharacter.Count > 0)
+                row["by_character"] = SortDictionaryListByStringField(byCharacter, "character");
+            rows.Add(row);
         }
-        result["ancient_stats"] = ancients;
+        return rows;
+    }
 
-        result["discovered_cards"] = progress.DiscoveredCards.Select(id => id.Entry).OrderBy(id => id, StringComparer.Ordinal).ToList();
-        result["discovered_relics"] = progress.DiscoveredRelics.Select(id => id.Entry).OrderBy(id => id, StringComparer.Ordinal).ToList();
-        result["discovered_potions"] = progress.DiscoveredPotions.Select(id => id.Entry).OrderBy(id => id, StringComparer.Ordinal).ToList();
-        result["discovered_events"] = progress.DiscoveredEvents.Select(id => id.Entry).OrderBy(id => id, StringComparer.Ordinal).ToList();
-        result["discovered_acts"] = progress.DiscoveredActs.Select(id => id.Entry).OrderBy(id => id, StringComparer.Ordinal).ToList();
+    private static void AddDiscoveredIds(Dictionary<string, object?> result, ProgressState progress)
+    {
+        result["discovered_cards"] = SortedDiscoveredIds(progress.DiscoveredCards);
+        result["discovered_relics"] = SortedDiscoveredIds(progress.DiscoveredRelics);
+        result["discovered_potions"] = SortedDiscoveredIds(progress.DiscoveredPotions);
+        result["discovered_events"] = SortedDiscoveredIds(progress.DiscoveredEvents);
+        result["discovered_acts"] = SortedDiscoveredIds(progress.DiscoveredActs);
+    }
 
-        var achievements = new List<Dictionary<string, object?>>();
-        foreach (var kv in progress.UnlockedAchievements)
+    private static List<string> SortedDiscoveredIds(IReadOnlySet<ModelId> ids)
+        => ids.Select(id => id.Entry)
+            .OrderBy(id => id, StringComparer.Ordinal)
+            .ToList();
+
+    private static List<Dictionary<string, object?>> BuildAchievementList(
+        IReadOnlyDictionary<Achievement, long> unlocked)
+    {
+        var rows = new List<Dictionary<string, object?>>();
+        foreach (var kv in unlocked)
         {
-            achievements.Add(new Dictionary<string, object?>(StringComparer.Ordinal)
+            rows.Add(new Dictionary<string, object?>(StringComparer.Ordinal)
             {
                 ["id"] = kv.Key,
                 ["unlocked_at"] = kv.Value
             });
         }
-        result["achievements"] = SortDictionaryListByStringField(achievements, "id");
+        return SortDictionaryListByStringField(rows, "id");
+    }
 
-        result["epochs"] = progress.Epochs
+    private static List<Dictionary<string, object?>> BuildEpochList(IReadOnlyList<SerializableEpoch> epochs)
+        => epochs
             .OrderBy(e => e.Id?.ToString(), StringComparer.Ordinal)
             .Select(e => new Dictionary<string, object?>(StringComparer.Ordinal)
             {
@@ -375,6 +416,8 @@ public static partial class McpMod
                 ["obtained"] = e.ObtainDate
             }).ToList();
 
+    private static void AddProfileTotals(Dictionary<string, object?> result, ProgressState progress)
+    {
         result["total_playtime"] = progress.TotalPlaytime;
         result["total_unlocks"] = progress.TotalUnlocks;
         result["current_score"] = progress.CurrentScore;
@@ -385,7 +428,5 @@ public static partial class McpMod
         result["fastest_victory"] = progress.FastestVictory;
         result["best_win_streak"] = progress.BestWinStreak;
         result["number_of_runs"] = progress.NumberOfRuns;
-
-        return result;
     }
 }
