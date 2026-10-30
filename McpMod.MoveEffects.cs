@@ -512,30 +512,30 @@ public static partial class McpMod
                 break;
 
             case ("Axebot", "BOOT_UP_MOVE"):
-            {
-                // The scan reads neither half of this move. Its Block amount is
-                // `CreatureCmd.GainBlock(base.Creature, BootUpBlock, Move, null)`
-                // and its buff is
-                // `PowerCmd.Apply<StrengthPower>(.., BootUpStrGain * (2 - StockAmount), ..)`
-                // - arithmetic over live monster state, which the amount tracker
-                // reports as null by design. So the move exported nothing at all,
-                // and every consumer saw an Axebot that telegraphed Defend and
-                // Buff and then did neither: seven live divergences, each missing
-                // exactly 10 Block and 3 or 6 Strength.
-                //
-                // Both inputs are ordinary int design props, read the same way
-                // `model_stats` already reads them. `StockAmount` is fixed for a
-                // creature's lifetime - `StockPower.AfterDeath` gives the
-                // REPLACEMENT `base.Amount - 1` - so the multiplier is 1 for the
-                // encounter's Axebot and 2 for the one that takes its place.
-                int? bootBlock = ReadMonsterInt(monster, "BootUpBlock");
-                if (bootBlock != null)
-                    fx["block"] = bootBlock;
-                int? strengthGain = ReadMonsterInt(monster, "BootUpStrGain");
-                int? stock = ReadMonsterInt(monster, "StockAmount");
-                if (strengthGain != null && stock != null)
                 {
-                    fx["applies"] = new List<Dictionary<string, object?>>
+                    // The scan reads neither half of this move. Its Block amount is
+                    // `CreatureCmd.GainBlock(base.Creature, BootUpBlock, Move, null)`
+                    // and its buff is
+                    // `PowerCmd.Apply<StrengthPower>(.., BootUpStrGain * (2 - StockAmount), ..)`
+                    // - arithmetic over live monster state, which the amount tracker
+                    // reports as null by design. So the move exported nothing at all,
+                    // and every consumer saw an Axebot that telegraphed Defend and
+                    // Buff and then did neither: seven live divergences, each missing
+                    // exactly 10 Block and 3 or 6 Strength.
+                    //
+                    // Both inputs are ordinary int design props, read the same way
+                    // `model_stats` already reads them. `StockAmount` is fixed for a
+                    // creature's lifetime - `StockPower.AfterDeath` gives the
+                    // REPLACEMENT `base.Amount - 1` - so the multiplier is 1 for the
+                    // encounter's Axebot and 2 for the one that takes its place.
+                    int? bootBlock = ReadMonsterInt(monster, "BootUpBlock");
+                    if (bootBlock != null)
+                        fx["block"] = bootBlock;
+                    int? strengthGain = ReadMonsterInt(monster, "BootUpStrGain");
+                    int? stock = ReadMonsterInt(monster, "StockAmount");
+                    if (strengthGain != null && stock != null)
+                    {
+                        fx["applies"] = new List<Dictionary<string, object?>>
                     {
                         new()
                         {
@@ -544,9 +544,9 @@ public static partial class McpMod
                             ["amount"] = strengthGain.Value * (2 - stock.Value),
                         },
                     };
+                    }
+                    break;
                 }
-                break;
-            }
 
             case ("Entomancer", "PHEROMONE_SPIT_MOVE"):
                 // A linear scan sees both arms. The source chooses one from the
@@ -816,12 +816,12 @@ public static partial class McpMod
                     scan.PendingAllyCreature = false;
                     i += 2; break;
                 case 0x72:                  // ldstr: a summon's literal slot name
-                {
-                    int tok = BitConverter.ToInt32(il, i + 1);
-                    try { scan.LastString = module.ResolveString(tok); }
-                    catch { }
-                    i += 5; break;
-                }
+                    {
+                        int tok = BitConverter.ToInt32(il, i + 1);
+                        try { scan.LastString = module.ResolveString(tok); }
+                        catch { }
+                        i += 5; break;
+                    }
                 case 0x7D:                  // stfld: the async rewrite's hoisted local
                     if (scan.PendingTargetCreature)
                         scan.TargetCreatureFields.Add(BitConverter.ToInt32(il, i + 1));
@@ -852,64 +852,65 @@ public static partial class McpMod
                 case (>= 0x2C and <= 0x37) or (>= 0x39 and <= 0x44):
                     scan.PoisonInt(); i += InstructionLength(il, i); break;
                 case 0x7B:                   // ldfld: `_ritualGain`-style counters
-                {
-                    int tok = BitConverter.ToInt32(il, i + 1);
-                    // Only an int field is an operand. Everything else loaded
-                    // this way is a reference — an async state machine reaches
-                    // its monster through `<>4__this`, and its own parameters
-                    // through fields, before nearly every call — so pushing one
-                    // as an unknown int both poisons arithmetic it was never
-                    // part of and shifts the argument list that pile, count and
-                    // position are read out of positionally. A reference is not
-                    // an int-like argument, so it is skipped rather than
-                    // recorded as an unknown one.
-                    if (IsIntField(module, tok))
-                        scan.PushInt(ReadIntField(module, tok, monster));
-                    else if (scan.TargetCreatureFields.Contains(tok))
-                        scan.LastCreatureIsTarget = true;
-                    else if (scan.AllyCreatureFields.Contains(tok))
-                        scan.LastCreatureIsAlly = true;
-                    else if (IsHoistedTargetsField(module, tok))
-                        scan.LastCollectionIsTargets = true;
-                    i += 5; break;
-                }
-                case 0x73:                   // newobj: `2m` is Decimal..ctor(int32)
-                {
-                    int tok = BitConverter.ToInt32(il, i + 1);
-                    if (IsDecimalIntCtor(module, tok))
-                        scan.SetAmount(scan.LastInt);
-                    else
-                        scan.IntArgs.Clear();
-                    i += 5; break;
-                }
-                case 0x28: case 0x6F:       // call / callvirt
-                {
-                    int tok = BitConverter.ToInt32(il, i + 1);
-                    MethodBase? mm = null;
-                    try { mm = module.ResolveMethod(tok); } catch { }
-                    if (mm != null)
-                        HandleCall(mm, monster, scan);
-                    i += 5; break;
-                }
-                case 0x7E:                   // ldsfld: Decimal.One-style constants
-                {                            // load with no op_Implicit conversion
-                    int tok = BitConverter.ToInt32(il, i + 1);
-                    try
                     {
-                        var f = module.ResolveField(tok);
-                        if (f?.DeclaringType == typeof(decimal))
+                        int tok = BitConverter.ToInt32(il, i + 1);
+                        // Only an int field is an operand. Everything else loaded
+                        // this way is a reference — an async state machine reaches
+                        // its monster through `<>4__this`, and its own parameters
+                        // through fields, before nearly every call — so pushing one
+                        // as an unknown int both poisons arithmetic it was never
+                        // part of and shifts the argument list that pile, count and
+                        // position are read out of positionally. A reference is not
+                        // an int-like argument, so it is skipped rather than
+                        // recorded as an unknown one.
+                        if (IsIntField(module, tok))
+                            scan.PushInt(ReadIntField(module, tok, monster));
+                        else if (scan.TargetCreatureFields.Contains(tok))
+                            scan.LastCreatureIsTarget = true;
+                        else if (scan.AllyCreatureFields.Contains(tok))
+                            scan.LastCreatureIsAlly = true;
+                        else if (IsHoistedTargetsField(module, tok))
+                            scan.LastCollectionIsTargets = true;
+                        i += 5; break;
+                    }
+                case 0x73:                   // newobj: `2m` is Decimal..ctor(int32)
+                    {
+                        int tok = BitConverter.ToInt32(il, i + 1);
+                        if (IsDecimalIntCtor(module, tok))
+                            scan.SetAmount(scan.LastInt);
+                        else
+                            scan.IntArgs.Clear();
+                        i += 5; break;
+                    }
+                case 0x28:
+                case 0x6F:       // call / callvirt
+                    {
+                        int tok = BitConverter.ToInt32(il, i + 1);
+                        MethodBase? mm = null;
+                        try { mm = module.ResolveMethod(tok); } catch { }
+                        if (mm != null)
+                            HandleCall(mm, monster, scan);
+                        i += 5; break;
+                    }
+                case 0x7E:                   // ldsfld: Decimal.One-style constants
+                    {                            // load with no op_Implicit conversion
+                        int tok = BitConverter.ToInt32(il, i + 1);
+                        try
                         {
-                            switch (f.Name)
+                            var f = module.ResolveField(tok);
+                            if (f?.DeclaringType == typeof(decimal))
                             {
-                                case "One": scan.SetAmount(1); break;
-                                case "Zero": scan.SetAmount(0); break;
-                                case "MinusOne": scan.SetAmount(-1); break;
+                                switch (f.Name)
+                                {
+                                    case "One": scan.SetAmount(1); break;
+                                    case "Zero": scan.SetAmount(0); break;
+                                    case "MinusOne": scan.SetAmount(-1); break;
+                                }
                             }
                         }
+                        catch { }
+                        i += 5; break;
                     }
-                    catch { }
-                    i += 5; break;
-                }
                 case 0x45:                   // switch: count + count targets
                     i += 5 + 4 * BitConverter.ToInt32(il, i + 1); break;
                 default:

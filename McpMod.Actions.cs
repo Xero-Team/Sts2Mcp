@@ -433,31 +433,31 @@ public static partial class McpMod
         switch (potion.TargetType)
         {
             case TargetType.AnyEnemy:
-            {
-                if (combatState == null)
-                    return Error("No combat state for target resolution");
-
-                string? targetId = TryReadTargetId(data);
-                if (targetId == null)
                 {
-                    // With a single living enemy there is nothing to disambiguate, so
-                    // pick it rather than refusing. Otherwise say so loudly: this used
-                    // to fall through to target = null and the potion was consumed
-                    // against nothing while the call reported success.
-                    var alive = combatState.Enemies.Where(e => e.IsAlive).ToList();
-                    if (alive.Count != 1)
-                        return Error(
-                            $"Potion '{SafeGetText(() => potion.Title)}' requires a target enemy. "
-                            + $"Provide 'target' with an entity_id or combat_id ({alive.Count} enemies alive).");
-                    target = alive[0];
+                    if (combatState == null)
+                        return Error("No combat state for target resolution");
+
+                    string? targetId = TryReadTargetId(data);
+                    if (targetId == null)
+                    {
+                        // With a single living enemy there is nothing to disambiguate, so
+                        // pick it rather than refusing. Otherwise say so loudly: this used
+                        // to fall through to target = null and the potion was consumed
+                        // against nothing while the call reported success.
+                        var alive = combatState.Enemies.Where(e => e.IsAlive).ToList();
+                        if (alive.Count != 1)
+                            return Error(
+                                $"Potion '{SafeGetText(() => potion.Title)}' requires a target enemy. "
+                                + $"Provide 'target' with an entity_id or combat_id ({alive.Count} enemies alive).");
+                        target = alive[0];
+                        break;
+                    }
+
+                    target = ResolveTarget(combatState, targetId);
+                    if (target == null)
+                        return Error($"Target '{targetId}' not found among alive enemies");
                     break;
                 }
-
-                target = ResolveTarget(combatState, targetId);
-                if (target == null)
-                    return Error($"Target '{targetId}' not found among alive enemies");
-                break;
-            }
             case TargetType.Self:
                 // PotionModel.IsValidTarget requires target == owner for Self
                 // (unlike cards, where Self passes no target).
@@ -1276,13 +1276,13 @@ public static partial class McpMod
                 var fmInventory = FindFirst<NMerchantInventory>(fmNode);
                 if (fmInventory is { IsOpen: true })
                 {
-                if (!TryCloseMerchantInventory(fmInventory))
-                    return Error("Fake merchant inventory is open but could not be closed");
-                return new Dictionary<string, object?>
-                {
-                    ["status"] = "ok",
-                    ["message"] = "Closing fake merchant inventory; call proceed again to leave the event"
-                };
+                    if (!TryCloseMerchantInventory(fmInventory))
+                        return Error("Fake merchant inventory is open but could not be closed");
+                    return new Dictionary<string, object?>
+                    {
+                        ["status"] = "ok",
+                        ["message"] = "Closing fake merchant inventory; call proceed again to leave the event"
+                    };
                 }
                 var proceedBtn = FindFirst<NProceedButton>(fmNode);
                 if (proceedBtn != null && IsControlVisibleOrActionable(proceedBtn))

@@ -101,7 +101,8 @@ public static partial class McpMod
                     case 0x01: scan.Comparisons.Add("ceq"); break;
                     case 0x02: case 0x03: scan.Comparisons.Add("cgt"); break;
                     case 0x04: case 0x05: scan.Comparisons.Add("clt"); break;
-                    case 0x06: case 0x07:   // ldftn / ldvirtftn
+                    case 0x06:
+                    case 0x07:   // ldftn / ldvirtftn
                         AddFunctionPointer(module, il, i + 2, scan);
                         break;
                 }
