@@ -3865,59 +3865,139 @@ public static partial class McpMod
                 // (CreatureCmd.Stun); nothing else in the payload says so.
                 ["is_stun"] = intent is StunIntent
             };
-            // Structured effect numbers straight off the intent object —
-            // exact, no label parsing needed downstream.
-            TryDo(() =>
-            {
-                if (intent is AttackIntent atk)
-                {
-                    var calc = atk.DamageCalc;
-                    if (calc != null)
-                        intentData["damage"] = (int)calc();
-                    intentData["hits"] = Math.Max(1, atk.Repeats);
-                    // Powers of the attacker's own that the damage calculation
-                    // reads, so a consumer knows which of its in-sim changes
-                    // move this number (see PowersScalingDamage).
-                    var scaling = PowersScalingDamage(calc);
-                    if (scaling != null)
-                        intentData["scales_with"] = scaling;
-                }
-                else if (intent is StatusIntent status)
-                {
-                    intentData["card_count"] = status.CardCount;
-                }
-            });
-            /* damage calc may fail outside combat */
-            TryDo(() =>
-            {
-                var targets = creature.CombatState?.PlayerCreatures;
-                if (targets != null)
-                {
-                    // AttackIntent.GetSingleDamage runs the label's number through
-                    // Hook.ModifyDamage, which bakes in attacker Strength/Weak, target
-                    // Vulnerable and the Back Attack x1.5. In unpowered mode rebuild the
-                    // label from the raw DamageCalc instead. Nothing else bakes: the
-                    // Defend/Debuff/Buff labels carry no numbers at all.
-                    string? label = UnpoweredValues && intent is AttackIntent attack
-                        ? UnpoweredAttackLabel(attack)
-                        : null;
-                    if (label != null)
-                        intentData["unbaked"] = true;
-                    else
-                        label = intent.GetIntentLabel(targets, creature).GetFormattedText();
-                    intentData["label"] = StripRichTextTags(label);
-
-                    var hoverTip = intent.GetHoverTip(targets, creature);
-                    if (hoverTip.Title != null)
-                        intentData["title"] = StripRichTextTags(hoverTip.Title);
-                    if (hoverTip.Description != null)
-                        intentData["description"] = StripRichTextTags(hoverTip.Description);
-                }
-            });
-            /* intent label may fail for some types */
+            AppendIntentNumbers(intentData, intent);
+            AppendIntentLabel(intentData, intent, creature);
             intents.Add(intentData);
         }
         return intents;
+    }
+
+    /// <summary>
+    /// Structured effect numbers straight off the intent object - exact, no label parsing
+    /// needed downstream. The damage calc can fail outside combat.
+    /// </summary>
+    private static void AppendIntentNumbers(Dictionary<string, object?> intentData, AbstractIntent intent)
+        => TryDo(() =>
+        {
+            if (intent is AttackIntent atk)
+            {
+                var calc = atk.DamageCalc;
+                if (calc != null)
+                    intentData["damage"] = (int)calc();
+                intentData["hits"] = Math.Max(1, atk.Repeats);
+                // Powers of the attacker's own that the damage calculation
+                // reads, so a consumer knows which of its in-sim changes
+                // move this number (see PowersScalingDamage).
+                var scaling = PowersScalingDamage(calc);
+                if (scaling != null)
+                    intentData["scales_with"] = scaling;
+            }
+            else if (intent is StatusIntent status)
+            {
+                intentData["card_count"] = status.CardCount;
+            }
+        });
+
+    /// <summary>The rendered intent text, which some intent types cannot produce.</summary>
+    private static void AppendIntentLabel(
+        Dictionary<string, object?> intentData, AbstractIntent intent, Creature creature)
+        => TryDo(() =>
+        {
+            var targets = creature.CombatState?.PlayerCreatures;
+            if (targets == null)
+                return;
+            // AttackIntent.GetSingleDamage runs the label's number through
+            // Hook.ModifyDamage, which bakes in attacker Strength/Weak, target
+            // Vulnerable and the Back Attack x1.5. In unpowered mode rebuild the
+            // label from the raw DamageCalc instead. Nothing else bakes: the
+            // Defend/Debuff/Buff labels carry no numbers at all.
+            string? label = UnpoweredValues && intent is AttackIntent attack
+                ? UnpoweredAttackLabel(attack)
+                : null;
+            if (label != null)
+                intentData["unbaked"] = true;
+            else
+                label = intent.GetIntentLabel(targets, creature).GetFormattedText();
+            intentData["label"] = StripRichTextTags(label);
+
+            var hoverTip = intent.GetHoverTip(targets, creature);
+            if (hoverTip.Title != null)
+                intentData["title"] = StripRichTextTags(hoverTip.Title);
+            if (hoverTip.Description != null)
+                intentData["description"] = StripRichTextTags(hoverTip.Description);
+        });
+
+    private static void CollectSeenRooms(
+        System.Collections.Generic.IReadOnlyList<MegaCrit.Sts2.Core.Runs.History.MapPointHistoryEntry> entries,
+        List<Dictionary<string, object?>> monsters,
+        List<Dictionary<string, object?>> elites,
+        List<Dictionary<string, object?>> events)
+    {
+        for (int i = 0; i < entries.Count; i++)
+        {
+            var entry = entries[i];
+            if (entry?.Rooms == null)
+                continue;
+
+            // One map point can hold several rooms (an event that turns into a fight), so
+            // walk them all and classify by RoomType - the map point's own type would lose
+            // what a `?` resolved into.
+            bool viaEvent = entry.Rooms.Count > 1;
+            foreach (var room in entry.Rooms)
+            {
+                var target = SeenRoomTarget(room.RoomType, monsters, elites, events);
+                if (target == null)
+                    continue;
+                target.Add(BuildSeenRoomInfo(room, i + 1, viaEvent));
+            }
+        }
+    }
+
+    private static List<Dictionary<string, object?>>? SeenRoomTarget(
+        RoomType roomType,
+        List<Dictionary<string, object?>> monsters,
+        List<Dictionary<string, object?>> elites,
+        List<Dictionary<string, object?>> events)
+        => roomType switch
+        {
+            RoomType.Monster => monsters,
+            RoomType.Elite => elites,
+            RoomType.Event => events,
+            _ => null            // Boss is already in map.boss; Shop/Treasure/RestSite carry nothing
+        };
+
+    private static Dictionary<string, object?> BuildSeenRoomInfo(
+        MegaCrit.Sts2.Core.Runs.History.MapPointRoomHistoryEntry room,
+        int floor,
+        bool viaEvent)
+    {
+        var info = new Dictionary<string, object?>(StringComparer.Ordinal)
+        {
+            ["floor"] = floor,           // 1-based within the act
+            ["id"] = SafeGetText(() => room.ModelId?.Entry)
+        };
+
+        if (room.ModelId != null)
+        {
+            info["name"] = room.RoomType == RoomType.Event
+                ? SafeGetText(() => SaveUtil.EventOrDeprecated(room.ModelId).Title)
+                : SafeGetText(() => SaveUtil.EncounterOrDeprecated(room.ModelId).Title);
+        }
+
+        // The monsters the encounter actually resolved to - random line-ups differ
+        // between two rooms with the same encounter id.
+        if (room.MonsterIds != null && room.MonsterIds.Count > 0)
+        {
+            info["monsters"] = room.MonsterIds
+                .Select(id => SafeGetText(() => SaveUtil.MonsterOrDeprecated(id).Title)
+                              ?? SafeGetText(() => id.Entry) ?? "?")
+                .ToList();
+        }
+
+        if (viaEvent && room.RoomType != RoomType.Event)
+            info["via_event"] = true;
+
+        return info;
     }
 
     // True while an event room is loaded and still needs the player: either live
@@ -4067,11 +4147,9 @@ public static partial class McpMod
         state["event_name"] = SafeGetText(() => fakeMerchant.Title);
         state["started_fight"] = fakeMerchant.StartedFight;
 
-        // Find the NFakeMerchant UI node
-        var uiRoom = NEventRoom.Instance;
-        NFakeMerchant? fakeMerchantNode = null;
-        if (uiRoom != null)
-            fakeMerchantNode = FindFirst<NFakeMerchant>(uiRoom);
+        var fakeMerchantNode = NEventRoom.Instance is { } uiRoom
+            ? FindFirst<NFakeMerchant>(uiRoom)
+            : null;
 
         if (fakeMerchant.StartedFight)
         {
@@ -4086,48 +4164,55 @@ public static partial class McpMod
             return state;
         }
 
-        // Auto-open the inventory if the merchant button is still available
-        if (fakeMerchantNode != null)
-        {
-            var inventoryUI = FindFirst<NMerchantInventory>(fakeMerchantNode);
-            if (inventoryUI != null && !inventoryUI.IsOpen)
-            {
-                // ForceClick the merchant button to go through the proper signal chain
-                // (disables proceed button, wires InventoryClosed callback, etc.)
-                var merchantButton = fakeMerchantNode.MerchantButton;
-                if (!_passiveRead && merchantButton != null && merchantButton.Visible && merchantButton.IsEnabled)
-                    merchantButton.ForceClick();
-            }
-        }
+        AutoOpenFakeMerchantInventory(fakeMerchantNode);
+        state["shop"] = BuildFakeMerchantShop(fakeMerchant, fakeMerchantNode);
+        return state;
+    }
 
+    /// <summary>
+    /// ForceClick the merchant button so the proper signal chain runs (disables proceed,
+    /// wires the InventoryClosed callback), unless the caller asked for a passive read.
+    /// </summary>
+    private static void AutoOpenFakeMerchantInventory(NFakeMerchant? fakeMerchantNode)
+    {
+        if (fakeMerchantNode == null)
+            return;
+        var inventoryUI = FindFirst<NMerchantInventory>(fakeMerchantNode);
+        if (inventoryUI == null || inventoryUI.IsOpen)
+            return;
+        var merchantButton = fakeMerchantNode.MerchantButton;
+        if (!_passiveRead && merchantButton != null && merchantButton.Visible && merchantButton.IsEnabled)
+            merchantButton.ForceClick();
+    }
+
+    private static Dictionary<string, object?> BuildFakeMerchantShop(
+        FakeMerchant fakeMerchant, NFakeMerchant? fakeMerchantNode)
+    {
         // Build shop inventory from the FakeMerchant model
         var shopState = BuildFakeMerchantShopItems(fakeMerchant.Inventory);
         bool isOpen = fakeMerchantNode != null
             && FindFirst<NMerchantInventory>(fakeMerchantNode)?.IsOpen == true;
         shopState["inventory_open"] = isOpen;
 
-        // Proceed button
-        if (fakeMerchantNode != null)
-        {
-            var inventoryUI = FindFirst<NMerchantInventory>(fakeMerchantNode);
-            var backButton = FindFirst<NBackButton>(fakeMerchantNode);
-            var proceedButton = FindFirst<NProceedButton>(fakeMerchantNode);
-            var inventoryOpen = inventoryUI?.IsOpen == true;
-            var canCloseInventory = inventoryOpen && IsControlVisibleOrActionable(backButton);
-            shopState["inventory_open"] = inventoryOpen;
-            shopState["can_close_inventory"] = canCloseInventory;
-            shopState["can_proceed"] = IsControlVisibleOrActionable(proceedButton) || canCloseInventory;
-        }
-        else
+        if (fakeMerchantNode == null)
         {
             shopState["inventory_open"] = false;
             shopState["can_close_inventory"] = false;
             shopState["can_proceed"] = false;
         }
+        else
+        {
+            var inventoryUI = FindFirst<NMerchantInventory>(fakeMerchantNode);
+            var proceedButton = FindFirst<NProceedButton>(fakeMerchantNode);
+            var inventoryOpen = inventoryUI?.IsOpen == true;
+            var canCloseInventory = inventoryOpen
+                && IsControlVisibleOrActionable(FindFirst<NBackButton>(fakeMerchantNode));
+            shopState["inventory_open"] = inventoryOpen;
+            shopState["can_close_inventory"] = canCloseInventory;
+            shopState["can_proceed"] = IsControlVisibleOrActionable(proceedButton) || canCloseInventory;
+        }
         shopState["available_actions"] = BuildShopAvailableActions(isOpen);
-
-        state["shop"] = shopState;
-        return state;
+        return shopState;
     }
 
     private static Dictionary<string, object?> BuildFakeMerchantShopItems(MerchantInventory? inventory)
@@ -4599,59 +4684,7 @@ public static partial class McpMod
         var monsters = new List<Dictionary<string, object?>>();
         var elites = new List<Dictionary<string, object?>>();
         var events = new List<Dictionary<string, object?>>();
-
-        var entries = history[act];
-        for (int i = 0; i < entries.Count; i++)
-        {
-            var entry = entries[i];
-            if (entry?.Rooms == null)
-                continue;
-
-            // One map point can hold several rooms (an event that turns into a fight), so
-            // walk them all and classify by RoomType - the map point's own type would lose
-            // what a `?` resolved into.
-            bool viaEvent = entry.Rooms.Count > 1;
-            foreach (var room in entry.Rooms)
-            {
-                var target = room.RoomType switch
-                {
-                    RoomType.Monster => monsters,
-                    RoomType.Elite => elites,
-                    RoomType.Event => events,
-                    _ => null            // Boss is already in map.boss; Shop/Treasure/RestSite carry nothing
-                };
-                if (target == null)
-                    continue;
-
-                var info = new Dictionary<string, object?>(StringComparer.Ordinal)
-                {
-                    ["floor"] = i + 1,           // 1-based within the act
-                    ["id"] = SafeGetText(() => room.ModelId?.Entry)
-                };
-
-                if (room.ModelId != null)
-                {
-                    info["name"] = room.RoomType == RoomType.Event
-                        ? SafeGetText(() => SaveUtil.EventOrDeprecated(room.ModelId).Title)
-                        : SafeGetText(() => SaveUtil.EncounterOrDeprecated(room.ModelId).Title);
-                }
-
-                // The monsters the encounter actually resolved to - random line-ups differ
-                // between two rooms with the same encounter id.
-                if (room.MonsterIds != null && room.MonsterIds.Count > 0)
-                {
-                    info["monsters"] = room.MonsterIds
-                        .Select(id => SafeGetText(() => SaveUtil.MonsterOrDeprecated(id).Title)
-                                      ?? SafeGetText(() => id.Entry) ?? "?")
-                        .ToList();
-                }
-
-                if (viaEvent && room.RoomType != RoomType.Event)
-                    info["via_event"] = true;
-
-                target.Add(info);
-            }
-        }
+        CollectSeenRooms(history[act], monsters, elites, events);
 
         if (monsters.Count > 0) result["monster"] = monsters;
         if (elites.Count > 0) result["elite"] = elites;
@@ -5000,46 +5033,7 @@ public static partial class McpMod
         var items = new List<Dictionary<string, object?>>();
         int index = 0;
         foreach (var button in rewardButtons)
-        {
-            var reward = button.Reward!;
-
-            var item = _rewardSession.Find(reward)!.Describe(claimable: true);
-            item["index"] = index;
-            item["type"] = GetRewardTypeName(reward);
-            item["description"] = SafeGetText(() => reward.Description);
-            item["is_visible"] = true;
-            item["can_claim"] = true;
-
-            // Type-specific details
-            if (reward is SpecialCardReward specialCardReward)
-            {
-                foreach (var pair in BuildSpecialCardReward(specialCardReward))
-                    item[pair.Key] = pair.Value;
-            }
-            else if (reward is GoldReward goldReward)
-                item["gold_amount"] = goldReward.Amount;
-            else if (reward is PotionReward potionReward && potionReward.Potion != null)
-            {
-                item["potion_id"] = potionReward.Potion.Id.Entry;
-                item["potion_name"] = SafeGetText(() => potionReward.Potion.Title);
-                item["potion_description"] = SafeGetText(() => potionReward.Potion.DynamicDescription);
-                item["potion_rarity"] = potionReward.Potion.Rarity.ToString();
-                item["potion_target_type"] = potionReward.Potion.TargetType.ToString();
-                item["potion_usage"] = potionReward.Potion.Usage.ToString();
-                item["keywords"] = BuildHoverTips(potionReward.Potion.ExtraHoverTips);
-            }
-            else if (reward is RelicReward relicReward && GetRelicRewardModel(relicReward) is { } relic)
-            {
-                item["relic_id"] = relic.Id.Entry;
-                item["relic_name"] = SafeGetText(() => relic.Title);
-                item["relic_description"] = SafeGetText(() => relic.DynamicDescription);
-                item["relic_rarity"] = relic.Rarity.ToString();
-                item["keywords"] = BuildHoverTips(relic.HoverTipsExcludingRelic);
-            }
-
-            items.Add(item);
-            index++;
-        }
+            items.Add(BuildRewardItem(button.Reward!, index++));
         state["items"] = items;
         // Completed rewards stay out of legacy items. This session-local history retains only
         // identities and observed UI outcomes, not hidden reward contents.
@@ -5051,6 +5045,53 @@ public static partial class McpMod
         state["can_proceed"] = IsControlVisibleOrActionable(proceedButton);
 
         return state;
+    }
+
+    private static Dictionary<string, object?> BuildRewardItem(Reward reward, int index)
+    {
+        var item = _rewardSession.Find(reward)!.Describe(claimable: true);
+        item["index"] = index;
+        item["type"] = GetRewardTypeName(reward);
+        item["description"] = SafeGetText(() => reward.Description);
+        item["is_visible"] = true;
+        item["can_claim"] = true;
+        AppendRewardDetails(item, reward);
+        return item;
+    }
+
+    /// <summary>The fields that depend on what kind of reward this is.</summary>
+    private static void AppendRewardDetails(Dictionary<string, object?> item, Reward reward)
+    {
+        if (reward is SpecialCardReward specialCardReward)
+        {
+            foreach (var pair in BuildSpecialCardReward(specialCardReward))
+                item[pair.Key] = pair.Value;
+            return;
+        }
+        if (reward is GoldReward goldReward)
+        {
+            item["gold_amount"] = goldReward.Amount;
+            return;
+        }
+        if (reward is PotionReward { Potion: { } potion })
+        {
+            item["potion_id"] = potion.Id.Entry;
+            item["potion_name"] = SafeGetText(() => potion.Title);
+            item["potion_description"] = SafeGetText(() => potion.DynamicDescription);
+            item["potion_rarity"] = potion.Rarity.ToString();
+            item["potion_target_type"] = potion.TargetType.ToString();
+            item["potion_usage"] = potion.Usage.ToString();
+            item["keywords"] = BuildHoverTips(potion.ExtraHoverTips);
+            return;
+        }
+        if (reward is RelicReward relicReward && GetRelicRewardModel(relicReward) is { } relic)
+        {
+            item["relic_id"] = relic.Id.Entry;
+            item["relic_name"] = SafeGetText(() => relic.Title);
+            item["relic_description"] = SafeGetText(() => relic.DynamicDescription);
+            item["relic_rarity"] = relic.Rarity.ToString();
+            item["keywords"] = BuildHoverTips(relic.HoverTipsExcludingRelic);
+        }
     }
 
     private static RelicModel? GetRelicRewardModel(RelicReward reward)
@@ -5949,37 +5990,42 @@ public static partial class McpMod
                 ["runtime"] = BuildPowerRuntimeState(power)
             };
             powers.Add(entry);
-
-            // Localization and hover tips are advisory. Keep the exact power
-            // instance above even when game UI code throws mid-transition.
-            TryDo("status.description", () =>
-            {
-                var allTips = power.HoverTips.ToList();
-                string? resolvedDesc = null;
-                var extraTips = new List<IHoverTip>();
-                foreach (var tip in allTips)
-                {
-                    if (string.Equals(tip.Id, power.Id.ToString(), StringComparison.Ordinal))
-                    {
-                        if (tip is HoverTip ht && ht.Description != null)
-                            resolvedDesc = StripRichTextTags(ht.Description);
-                    }
-                    else
-                    {
-                        extraTips.Add(tip);
-                    }
-                }
-                resolvedDesc ??= SafeGetText(() => power.SmartDescription);
-
-                entry["name"] = SafeGetText(() => power.Title);
-                entry["description"] = resolvedDesc;
-                entry["keywords"] = BuildHoverTips(extraTips);
-                if (!isVisible)
-                    entry["hidden_in_ui"] = true;
-            });
+            AppendPowerText(entry, power, isVisible);
         }
         return powers;
     }
+
+    /// <summary>
+    /// Localization and hover tips are advisory. The exact power instance is already in the
+    /// entry, so a throw from game UI code mid-transition only costs the text.
+    /// </summary>
+    private static void AppendPowerText(
+        Dictionary<string, object?> entry, PowerModel power, bool isVisible)
+        => TryDo("status.description", () =>
+        {
+            var allTips = power.HoverTips.ToList();
+            string? resolvedDesc = null;
+            var extraTips = new List<IHoverTip>();
+            foreach (var tip in allTips)
+            {
+                if (string.Equals(tip.Id, power.Id.ToString(), StringComparison.Ordinal))
+                {
+                    if (tip is HoverTip ht && ht.Description != null)
+                        resolvedDesc = StripRichTextTags(ht.Description);
+                }
+                else
+                {
+                    extraTips.Add(tip);
+                }
+            }
+            resolvedDesc ??= SafeGetText(() => power.SmartDescription);
+
+            entry["name"] = SafeGetText(() => power.Title);
+            entry["description"] = resolvedDesc;
+            entry["keywords"] = BuildHoverTips(extraTips);
+            if (!isVisible)
+                entry["hidden_in_ui"] = true;
+        });
 
     // Left silent on purpose: its callers use it to probe alternatives (PreviewValue,
     // then IntValue), so a throw here is an expected step, not a missing field. The
@@ -6051,27 +6097,44 @@ public static partial class McpMod
             return new Dictionary<string, object?>(StringComparer.Ordinal) { ["kind"] = "reference", ["type"] = value.GetType().FullName };
 
         if (value is IDictionary dictionary)
-        {
-            var entries = new List<Dictionary<string, object?>>();
-            foreach (DictionaryEntry pair in dictionary)
-            {
-                entries.Add(new Dictionary<string, object?>(StringComparer.Ordinal)
-                {
-                    ["key"] = SerializePowerRuntimeValue(pair.Key, seen, depth + 1),
-                    ["value"] = SerializePowerRuntimeValue(pair.Value, seen, depth + 1)
-                });
-            }
-            return entries;
-        }
+            return SerializeDictionary(dictionary, seen, depth);
         if (value is IEnumerable enumerable)
-        {
-            var items = new List<object?>();
-            foreach (var item in enumerable)
-                items.Add(SerializePowerRuntimeValue(item, seen, depth + 1));
-            return items;
-        }
+            return SerializeEnumerable(enumerable, seen, depth);
+        return SerializeObjectFields(value, seen, depth);
+    }
 
-        var result = new Dictionary<string, object?>(StringComparer.Ordinal) { ["kind"] = "object", ["type"] = value.GetType().FullName };
+    private static List<Dictionary<string, object?>> SerializeDictionary(
+        IDictionary dictionary, HashSet<object> seen, int depth)
+    {
+        var entries = new List<Dictionary<string, object?>>();
+        foreach (DictionaryEntry pair in dictionary)
+        {
+            entries.Add(new Dictionary<string, object?>(StringComparer.Ordinal)
+            {
+                ["key"] = SerializePowerRuntimeValue(pair.Key, seen, depth + 1),
+                ["value"] = SerializePowerRuntimeValue(pair.Value, seen, depth + 1)
+            });
+        }
+        return entries;
+    }
+
+    private static List<object?> SerializeEnumerable(
+        IEnumerable enumerable, HashSet<object> seen, int depth)
+    {
+        var items = new List<object?>();
+        foreach (var item in enumerable)
+            items.Add(SerializePowerRuntimeValue(item, seen, depth + 1));
+        return items;
+    }
+
+    private static Dictionary<string, object?> SerializeObjectFields(
+        object value, HashSet<object> seen, int depth)
+    {
+        var result = new Dictionary<string, object?>(StringComparer.Ordinal)
+        {
+            ["kind"] = "object",
+            ["type"] = value.GetType().FullName
+        };
         foreach (var field in value.GetType().GetFields(BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public))
         {
             if (!field.IsStatic && !field.IsLiteral)
