@@ -679,9 +679,6 @@ public static partial class McpMod
         return progressPath;
     }
 
-    private static string? ResolveCurrentRunPath(CompendiumSnapshot snapshot)
-        => ResolveCurrentRunPath(snapshot.ProgressPath, snapshot.ProfileRoot);
-
     private static string? ResolveCurrentRunPath(string? progressPath, string profileRoot)
     {
         var saveDirectory = GetSaveDirectoryFromProgressPath(progressPath);

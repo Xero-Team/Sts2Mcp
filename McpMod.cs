@@ -1328,15 +1328,6 @@ public static partial class McpMod
         }
     }
 
-    private static void SendActionError(HttpListenerResponse response, string prefix, Exception ex)
-    {
-        var statusCode = ex is InvalidOperationException or FormatException or OverflowException
-            ? 400
-            : 500;
-        var errorCode = statusCode == 400 ? "invalid_action_payload" : "action_failed";
-        SendError(response, statusCode, $"{prefix}: {ex.Message}", errorCode);
-    }
-
     private static void SendActionResultJson(HttpListenerResponse response, Dictionary<string, object?> result)
     {
         if (result.TryGetValue("status", out var status) && string.Equals(status as string, "error", StringComparison.Ordinal))

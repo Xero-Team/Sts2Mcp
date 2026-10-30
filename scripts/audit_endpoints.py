@@ -3,6 +3,11 @@
 
 This script intentionally uses only the Python standard library so it can run
 from a checkout without installing the MCP package.
+
+The checks read the C# sources as text. Two spellings of a string equality are
+supported everywhere (`x == "v"` and `string.Equals(x, "v", ...)`), because the
+analyzer gate rewrites the first into the second: a refactor must not be able to
+silently disable the audit (see the MA0006 sweep in 20dfb67).
 """
 
 from __future__ import annotations

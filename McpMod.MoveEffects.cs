@@ -289,10 +289,6 @@ public static partial class McpMod
         private int? _pendingDecimal;
         private bool _hasPendingDecimal;
 
-        internal bool IsEmpty =>
-            Applies.Count == 0 && Removes.Count == 0 && Summons.Count == 0 && Block == null
-            && AllyBlock.Count == 0 && Heal == null && StatusCards.Count == 0;
-
         internal void PushInt(int? value)
         {
             LastInt = value;

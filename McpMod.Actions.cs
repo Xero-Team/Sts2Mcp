@@ -2499,17 +2499,6 @@ public static partial class McpMod
         return Error("Not on a menu screen", "not_on_menu");
     }
 
-    private static Dictionary<string, object?> TimelineUnlocksNeedManualRevealFromOpenTimeline(List<string> unrevealedEpochs)
-    {
-        return new Dictionary<string, object?>(StringComparer.Ordinal)
-        {
-            ["status"] = "ok",
-            ["message"] = "Timeline has obtained epochs without visible slots; no revealable epoch slot is available through automation",
-            ["pending_epoch_ids"] = unrevealedEpochs,
-            ["manual_action_required"] = true,
-            ["done"] = true
-        };
-    }
 
     private static Dictionary<string, object?> ExecutePopupOption(
         List<(string Name, NClickableControl Button)> options,
