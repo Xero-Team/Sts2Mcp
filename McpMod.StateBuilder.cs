@@ -1315,18 +1315,51 @@ public static partial class McpMod
 
         var lobby = GetInstanceFieldValue(screen, "_lobby") as StartRunLobby;
 
-        // Seed — custom run only, gated on the screen owning a seed input. The lobby is
-        // what the run actually uses and both directions flow through it (SetSeed ->
-        // SeedChanged -> _seedInput.Text, and a human submitting the field -> SetSeed),
-        // so read it from there rather than off the LineEdit.
+        AppendSeed(result, screen, lobby);
+        var selectedModifiers = AppendRunModifiers(result, options, screen);
+        AppendAscensionState(result, options, screen);
+        AddStartRunButtons(options, screen, confirmField);
+
+        // MP lobby block — surfaces roster / ready state / ascension when this screen
+        // is part of a host or client lobby. SP runs leave the field absent.
+        AppendLobbyBlock(result, options, screen, lobby);
+
+        var selected = new Dictionary<string, object?>(StringComparer.Ordinal)
+        {
+            ["character"] = GetSelectedCharacterId(buttons)
+        };
+        if (selectedModifiers.Count > 0)
+            selected["modifiers"] = selectedModifiers;
+        result["selected"] = selected;
+
+        if (options.Count > 0)
+            result["options"] = options;
+    }
+
+    /// <summary>
+    /// Seed — custom run only, gated on the screen owning a seed input. The lobby is what
+    /// the run actually uses and both directions flow through it (SetSeed -> SeedChanged
+    /// -> _seedInput.Text, and a human submitting the field -> SetSeed), so read it from
+    /// there rather than off the LineEdit.
+    /// </summary>
+    private static void AppendSeed(
+        Dictionary<string, object?> result, Node screen, StartRunLobby? lobby)
+    {
         if (GetInstanceFieldValue(screen, "_seedInput") != null && !string.IsNullOrWhiteSpace(lobby?.Seed))
             result["seed"] = lobby.Seed;
+    }
 
-        // Run modifiers — custom run only. Each is a tickbox; surface it as read info
-        // (id, title, description, ticked) plus a toggle option named "modifier_<key>",
-        // which menu_select flips via ForceClick. `key` is the id except for the
-        // per-character "character cards" modifiers, which all share one id — see
-        // GetRunModifierEntries.
+    /// <summary>
+    /// Run modifiers — custom run only. Each is a tickbox; surface it as read info (id,
+    /// title, description, ticked) plus a toggle option named "modifier_&lt;key&gt;", which
+    /// menu_select flips via ForceClick. `key` is the id except for the per-character
+    /// "character cards" modifiers, which all share one id — see GetRunModifierEntries.
+    /// </summary>
+    private static List<string> AppendRunModifiers(
+        Dictionary<string, object?> result,
+        List<Dictionary<string, object?>> options,
+        Node screen)
+    {
         var selectedModifiers = new List<string>();
         var modifiers = new List<Dictionary<string, object?>>();
         var modifierEntries = GetRunModifierEntries(screen);
@@ -1359,34 +1392,46 @@ public static partial class McpMod
         }
         if (modifiers.Count > 0)
             result["modifiers"] = modifiers;
+        return selectedModifiers;
+    }
 
-        // Ascension. The panel is shared by both screens and drives the run's ascension
-        // level in SP as well as MP (the MP `lobby` block carries the synced value).
-        // The arrows hide themselves at the ends of the range and for MP clients, so
-        // their visibility is what says whether the level can still be changed.
-        var ascensionPanel = GetInstanceFieldValue(screen, "_ascensionPanel") as NAscensionPanel;
-        if (ascensionPanel != null)
+    /// <summary>
+    /// Ascension. The panel is shared by both screens and drives the run's ascension level
+    /// in SP as well as MP (the MP `lobby` block carries the synced value). The arrows hide
+    /// themselves at the ends of the range and for MP clients, so their visibility is what
+    /// says whether the level can still be changed.
+    /// </summary>
+    private static void AppendAscensionState(
+        Dictionary<string, object?> result,
+        List<Dictionary<string, object?>> options,
+        Node screen)
+    {
+        if (GetInstanceFieldValue(screen, "_ascensionPanel") is not NAscensionPanel ascensionPanel)
+            return;
+
+        TryDo(() =>
         {
-            TryDo(() =>
+            // Flat fields, as documented in docs/raw-full.md: `ascension` is the level
+            // the run will start at, `max_ascension` the unlocked cap, and
+            // `ascension_selectable` says whether the panel is on screen right now.
+            result["ascension"] = ascensionPanel.Ascension;
+            if (GetInstanceFieldValue(ascensionPanel, "_maxAscension") is int maxAsc)
+                result["max_ascension"] = maxAsc;
+
+            bool selectable = IsNodeVisible(ascensionPanel);
+            result["ascension_selectable"] = selectable;
+
+            if (selectable)
             {
-                // Flat fields, as documented in docs/raw-full.md: `ascension` is the level
-                // the run will start at, `max_ascension` the unlocked cap, and
-                // `ascension_selectable` says whether the panel is on screen right now.
-                result["ascension"] = ascensionPanel.Ascension;
-                if (GetInstanceFieldValue(ascensionPanel, "_maxAscension") is int maxAsc)
-                    result["max_ascension"] = maxAsc;
+                AddAscensionArrowOption(options, ascensionPanel, "_rightArrow", "ascension_up");
+                AddAscensionArrowOption(options, ascensionPanel, "_leftArrow", "ascension_down");
+            }
+        });
+    }
 
-                bool selectable = IsNodeVisible(ascensionPanel);
-                result["ascension_selectable"] = selectable;
-
-                if (selectable)
-                {
-                    AddAscensionArrowOption(options, ascensionPanel, "_rightArrow", "ascension_up");
-                    AddAscensionArrowOption(options, ascensionPanel, "_leftArrow", "ascension_down");
-                }
-            });
-        }
-
+    private static void AddStartRunButtons(
+        List<Dictionary<string, object?>> options, Node screen, string confirmField)
+    {
         var confirmBtn = GetInstanceFieldValue(screen, confirmField);
         if (confirmBtn is NClickableControl confirmClickable && IsNodeVisible(confirmClickable))
         {
@@ -1415,9 +1460,18 @@ public static partial class McpMod
                 ["enabled"] = backClickable.IsEnabled
             });
         }
+    }
 
-        // MP lobby block — surfaces roster / ready state / ascension when this screen
-        // is part of a host or client lobby. SP runs leave the field absent.
+    /// <summary>
+    /// Reports the lobby block when this screen belongs to a host or client lobby, and
+    /// adds the "unready" option then.
+    /// </summary>
+    private static void AppendLobbyBlock(
+        Dictionary<string, object?> result,
+        List<Dictionary<string, object?>> options,
+        Node screen,
+        StartRunLobby? lobby)
+    {
         bool isMp = false;
         TryDo(() =>
         {
@@ -1442,17 +1496,6 @@ public static partial class McpMod
                 });
             }
         }
-
-        var selected = new Dictionary<string, object?>(StringComparer.Ordinal)
-        {
-            ["character"] = GetSelectedCharacterId(buttons)
-        };
-        if (modifiers.Count > 0)
-            selected["modifiers"] = selectedModifiers;
-        result["selected"] = selected;
-
-        if (options.Count > 0)
-            result["options"] = options;
     }
 
     // NAscensionPanel hides an arrow when that direction is unavailable (either end of
