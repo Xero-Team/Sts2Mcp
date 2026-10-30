@@ -149,7 +149,7 @@ public static partial class McpMod
                         var modeFields = new[] { ("_standardButton", "standard"), ("_dailyButton", "daily"), ("_customButton", "custom") };
                         foreach (var (fieldName, label) in modeFields)
                         {
-                            try
+                            TryDo($"menu.singleplayer.options.{label}", () =>
                             {
                                 var btn = GetInstanceFieldValue(spSubmenu, fieldName);
                                 if (btn is Control ctrl && IsNodeVisible(ctrl))
@@ -161,8 +161,7 @@ public static partial class McpMod
                                         ["enabled"] = isEnabled ?? true
                                     });
                                 }
-                            }
-                            catch (Exception ex) { Warn($"menu.singleplayer.options.{label}", ex); }
+                            });
                         }
                         AddMenuOptionIfVisible(modeOptions, spSubmenu, "_backButton", "back");
                         result["options"] = modeOptions;
@@ -180,7 +179,7 @@ public static partial class McpMod
                             var modeFields = new[] { ("_standardButton", "standard"), ("_dailyButton", "daily"), ("_customButton", "custom") };
                             foreach (var (fieldName, label) in modeFields)
                             {
-                                try
+                                TryDo($"menu.multiplayer_host.options.{label}", () =>
                                 {
                                     var btn = GetInstanceFieldValue(mpHostSubmenu, fieldName);
                                     if (btn is Control ctrl && IsNodeVisible(ctrl))
@@ -192,8 +191,7 @@ public static partial class McpMod
                                             ["enabled"] = isEnabled ?? true
                                         });
                                     }
-                                }
-                                catch (Exception ex) { Warn($"menu.multiplayer_host.options.{label}", ex); }
+                                });
                             }
                             AddMenuOptionIfVisible(modeOptions, mpHostSubmenu, "_backButton", "back");
                             result["options"] = modeOptions;
@@ -211,7 +209,7 @@ public static partial class McpMod
                                 var mpFields = new[] { ("_hostButton", "host"), ("_joinButton", "join"), ("_loadButton", "load"), ("_abandonButton", "abandon") };
                                 foreach (var (fieldName, label) in mpFields)
                                 {
-                                    try
+                                    TryDo($"menu.multiplayer.options.{label}", () =>
                                     {
                                         var btn = GetInstanceFieldValue(mpSubmenu, fieldName);
                                         if (btn is Control ctrl && IsNodeVisible(ctrl))
@@ -223,8 +221,7 @@ public static partial class McpMod
                                                 ["enabled"] = isEnabled ?? true
                                             });
                                         }
-                                    }
-                                    catch (Exception ex) { Warn($"menu.multiplayer.options.{label}", ex); }
+                                    });
                                 }
                                 AddMenuOptionIfVisible(mpOptions, mpSubmenu, "_backButton", "back");
                                 result["options"] = mpOptions;
@@ -412,7 +409,7 @@ public static partial class McpMod
                                     var unrevealedEpochs = GetProgressEpochIdsByState("Obtained", "ObtainedNoSlot");
                                     for (int i = 0; i < fields.Length; i++)
                                     {
-                                        try
+                                        TryDo($"menu.main.options.{labels[i]}", () =>
                                         {
                                             var btn = GetInstanceFieldValue(mainMenu, fields[i]);
                                             if (btn is NClickableControl clickable &&
@@ -422,8 +419,7 @@ public static partial class McpMod
                                             {
                                                 options.Add(labels[i]);
                                             }
-                                        }
-                                        catch (Exception ex) { Warn($"menu.main.options.{labels[i]}", ex); }
+                                        });
                                     }
                                     if (options.Count > 0)
                                         result["options"] = options;
@@ -925,17 +921,16 @@ public static partial class McpMod
     {
         var reasons = new List<string>();
 
-        try
+        TryDo("is_resolving.action_queue", () =>
         {
             var synchronizer = RunManager.Instance.ActionQueueSynchronizer;
             var queueSet = GetInstanceFieldValue(synchronizer, "_actionQueueSet");
             if (queueSet != null && GetPropertyValue(queueSet, "IsEmpty") is bool isEmpty && !isEmpty
                 && !IsActionQueueWaitingForPlayer(queueSet))
                 reasons.Add("action_queue_not_empty");
-        }
-        catch (Exception ex) { Warn("is_resolving.action_queue", ex); }
+        });
 
-        try
+        TryDo("is_resolving.combat", () =>
         {
             var combat = CombatManager.Instance;
             if (combat.IsInProgress)
@@ -944,16 +939,14 @@ public static partial class McpMod
                 if (combat.IsStarting) reasons.Add("combat_starting");
                 if (combat.IsOverOrEnding) reasons.Add("combat_ending");
             }
-        }
-        catch (Exception ex) { Warn("is_resolving.combat", ex); }
+        });
 
-        try
+        TryDo("is_resolving.card_play", () =>
         {
             var hand = NPlayerHand.Instance;
             if (hand != null && hand.InCardPlay)
                 reasons.Add("card_still_being_played");
-        }
-        catch (Exception ex) { Warn("is_resolving.card_play", ex); }
+        });
 
         // A screen that is waiting for the player is not "resolving", whatever the
         // queue says: the action sitting in the queue is the one paused on this very
@@ -1727,8 +1720,7 @@ public static partial class McpMod
                 if (child is NJoinFriendButton friendBtn)
                 {
                     string? name = null;
-                    try { name = PlatformUtil.GetPlayerName(PlatformUtil.PrimaryPlatform, friendBtn.PlayerId); }
-                    catch (Exception ex) { Warn("menu.multiplayer_join.friends.name", ex); }
+                    TryDo("menu.multiplayer_join.friends.name", () => { name = PlatformUtil.GetPlayerName(PlatformUtil.PrimaryPlatform, friendBtn.PlayerId); });
 
                     friends.Add(new Dictionary<string, object?>(StringComparer.Ordinal)
                     {
@@ -1805,7 +1797,7 @@ public static partial class McpMod
                 ["floor"] = lobby.Run?.VisitedMapCoords?.Count ?? 0
             };
 
-            try
+            TryDo("menu.multiplayer_load_lobby.local_player", () =>
             {
                 var localPlayer = lobby.Run?.Players?.FirstOrDefault(p => p.NetId == lobby.NetService.NetId);
                 if (localPlayer != null)
@@ -1815,8 +1807,7 @@ public static partial class McpMod
                     info["max_hp"] = localPlayer.MaxHp;
                     info["gold"] = localPlayer.Gold;
                 }
-            }
-            catch (Exception ex) { Warn("menu.multiplayer_load_lobby.local_player", ex); }
+            });
 
             HashSet<ulong> connectedPlayerIds;
             try { connectedPlayerIds = lobby.PlayerIds.ToHashSet(); }
@@ -1829,8 +1820,7 @@ public static partial class McpMod
             // answer and keep the "every run player is connected and ready" test as a
             // fallback for a build where the method is missing or throws.
             bool aboutToBegin = false;
-            try { aboutToBegin = lobby.IsAboutToBeginGame(); }
-            catch (Exception ex) { Warn("menu.multiplayer_load_lobby.is_about_to_begin", ex); }
+            TryDo("menu.multiplayer_load_lobby.is_about_to_begin", () => { aboutToBegin = lobby.IsAboutToBeginGame(); });
 
             if (!aboutToBegin)
             {
@@ -1848,7 +1838,7 @@ public static partial class McpMod
 
             // Per-player ready/connected breakdown
             var players = new List<Dictionary<string, object?>>();
-            try
+            TryDo("menu.multiplayer_load_lobby.players", () =>
             {
                 if (lobby.Run?.Players != null)
                 {
@@ -1869,8 +1859,7 @@ public static partial class McpMod
                         });
                     }
                 }
-            }
-            catch (Exception ex) { Warn("menu.multiplayer_load_lobby.players", ex); }
+            });
             info["players"] = players;
 
             result["lobby"] = info;
@@ -3137,7 +3126,7 @@ public static partial class McpMod
             {
                 if (!enemy.IsAlive) continue;
 
-                try
+                TryDo("card.vs_targets", () =>
                 {
                     card.UpdateDynamicVarPreview(CardPreviewMode.Normal, enemy, card.DynamicVars);
 
@@ -3179,17 +3168,14 @@ public static partial class McpMod
 
                     preview["description"] = SafeGetTargetedCardDescription(card, enemy);
                     previews.Add(preview);
-                }
-                catch (Exception ex) { Warn("card.vs_targets", ex); }
+                });
             }
         }
         finally
         {
             // Always hand the card back the way it was found.
-            try { card.DynamicVars.ClearPreview(); }
-            catch (Exception ex) { Warn("card.vs_targets.clear_preview", ex); }
-            try { card.UpdateDynamicVarPreview(CardPreviewMode.Normal, null, card.DynamicVars); }
-            catch (Exception ex) { Warn("card.vs_targets.restore_preview", ex); }
+            TryDo("card.vs_targets.clear_preview", () => { card.DynamicVars.ClearPreview(); });
+            TryDo("card.vs_targets.restore_preview", () => { card.UpdateDynamicVarPreview(CardPreviewMode.Normal, null, card.DynamicVars); });
         }
 
         return previews;
@@ -3206,7 +3192,7 @@ public static partial class McpMod
     private static Dictionary<string, object?> ReadDynamicVarValues(CardModel card)
     {
         var values = new Dictionary<string, object?>(StringComparer.Ordinal);
-        try
+        TryDo("card.values", () =>
         {
             foreach (var (name, dynamicVar) in card.DynamicVars)
             {
@@ -3218,8 +3204,7 @@ public static partial class McpMod
                 else
                     Warn($"card.values.{name}", "neither PreviewValue nor IntValue could be read");
             }
-        }
-        catch (Exception ex) { Warn("card.values", ex); }
+        });
         return values;
     }
 
@@ -3601,13 +3586,12 @@ public static partial class McpMod
         // enemy can be exported outside a run (compendium, combat teardown), so the
         // reference is optional and every block below guards on it.
         Creature? localCreature = null;
-        try
+        TryDo("enemy.local_creature", () =>
         {
             var runState = RunManager.Instance.DebugOnlyGetState();
             if (runState != null)
                 localCreature = LocalContext.GetMe(runState)?.Creature;
-        }
-        catch (Exception ex) { Warn("enemy.local_creature", ex); }
+        });
 
         var state = new Dictionary<string, object?>(StringComparer.Ordinal)
         {
@@ -4591,8 +4575,7 @@ public static partial class McpMod
         // Boss identity comes from the live act's EncounterModel — BossEncounter
         // throws if the act hasn't finished setup yet, so guard the access.
         EncounterModel? bossEncounter = null;
-        try { bossEncounter = runState.Act.BossEncounter; }
-        catch (Exception ex) { Warn("map.boss", ex); }
+        TryDo("map.boss", () => { bossEncounter = runState.Act.BossEncounter; });
         var secondBossEncounter = runState.Act.SecondBossEncounter;
 
         var primaryBossId = bossEncounter?.Id?.Entry;
@@ -4827,7 +4810,7 @@ public static partial class McpMod
         if (marks != null && marks.TryGetValue((pt.coord.col, pt.coord.row), out var markedBy))
             node["marked_by"] = new List<string>(markedBy);
 
-        try
+        TryDo("map.nodes.quests", () =>
         {
             var quests = pt.Quests;
             if (quests != null && quests.Count > 0)
@@ -4836,8 +4819,7 @@ public static partial class McpMod
                     .Select(q => SafeGetText(() => q.Id.Entry) ?? "unknown")
                     .ToList();
             }
-        }
-        catch (Exception ex) { Warn("map.nodes.quests", ex); }
+        });
 
         if (pt.CanBeModified)
             node["can_be_modified"] = true;
@@ -5215,7 +5197,7 @@ public static partial class McpMod
         var buttons = FindAll<NCardRewardAlternativeButton>(cardScreen);
 
         var optionIds = new List<string>();
-        try
+        TryDo("card_reward.alternatives.option_id", () =>
         {
             if (GetInstanceFieldValue(cardScreen, "_extraOptions") is System.Collections.IEnumerable options)
             {
@@ -5225,8 +5207,7 @@ public static partial class McpMod
                     optionIds.Add(id ?? "");
                 }
             }
-        }
-        catch (Exception ex) { Warn("card_reward.alternatives.option_id", ex); }
+        });
 
         for (int i = 0; i < buttons.Count; i++)
         {
@@ -6038,7 +6019,7 @@ public static partial class McpMod
 
             // Localization and hover tips are advisory. Keep the exact power
             // instance above even when game UI code throws mid-transition.
-            try
+            TryDo("status.description", () =>
             {
                 var allTips = power.HoverTips.ToList();
                 string? resolvedDesc = null;
@@ -6062,13 +6043,7 @@ public static partial class McpMod
                 entry["keywords"] = BuildHoverTips(extraTips);
                 if (!isVisible)
                     entry["hidden_in_ui"] = true;
-            }
-            catch (Exception ex)
-            {
-                // HoverTips / SmartDescription reach deep into engine code and can throw
-                // mid-transition. The exact mechanical fields above are already reported.
-                Warn("status.description", ex);
-            }
+            });
         }
         return powers;
     }

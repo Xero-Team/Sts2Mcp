@@ -663,7 +663,7 @@ public static partial class McpMod
         var state = BuildMapState(runState);
 
         // Add per-player vote data
-        try
+        TryDo("map.votes", () =>
         {
             var mapSync = RunManager.Instance.MapSelectionSynchronizer;
             var votes = new List<Dictionary<string, object?>>();
@@ -683,12 +683,7 @@ public static partial class McpMod
 
             state["votes"] = votes;
             state["all_voted"] = votes.All(v => v["voted"] is true);
-        }
-        catch (Exception ex)
-        {
-            // MapSelectionSynchronizer may not be available in all contexts
-            Warn("map.votes", ex);
-        }
+        });
 
         // All players summary
         state["players"] = BuildAllPlayersState(runState);
@@ -702,7 +697,7 @@ public static partial class McpMod
         var state = BuildEventState(eventRoom);
 
         // Add multiplayer-specific event data
-        try
+        TryDo("event.votes", () =>
         {
             var eventSync = RunManager.Instance.EventSynchronizer;
             bool isShared = false;
@@ -728,12 +723,7 @@ public static partial class McpMod
                 state["votes"] = votes;
                 state["all_voted"] = votes.All(v => v["voted"] is true);
             }
-        }
-        catch (Exception ex)
-        {
-            // EventSynchronizer may not be available
-            Warn("event.votes", ex);
-        }
+        });
 
         // All players summary
         state["players"] = BuildAllPlayersState(runState);
@@ -750,7 +740,7 @@ public static partial class McpMod
         var state = BuildTreasureState();
 
         // Add per-player bid data
-        try
+        TryDo("treasure.bids", () =>
         {
             var treasureSync = RunManager.Instance.TreasureRoomRelicSynchronizer;
             var currentRelics = treasureSync.CurrentRelics;
@@ -774,12 +764,7 @@ public static partial class McpMod
                 state["bids"] = bids;
                 state["all_bid"] = bids.All(b => b["voted"] is true);
             }
-        }
-        catch (Exception ex)
-        {
-            // TreasureRoomRelicSynchronizer may not be available
-            Warn("treasure.bids", ex);
-        }
+        });
 
         // All players summary
         state["players"] = BuildAllPlayersState(runState);

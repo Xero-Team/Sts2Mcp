@@ -114,11 +114,16 @@ public static partial class McpMod
     /// Callers must not wrap this in another try/catch: the whole point is that the catch lives
     /// here, once, instead of at every read.
     /// </summary>
-    [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1031:Do not catch general exception types",
-        Justification = "The mod's read path is a compatibility boundary; a renamed game member is expected, not exceptional.")]
     internal static T? TryRead<T>(Func<T> read,
         [CallerMemberName] string member = "",
         [CallerLineNumber] int line = 0)
+        => TryRead($"{member}:{line}", read);
+
+    /// <summary>The same read with a hand-written context, for a builder whose field name is
+    /// more useful to a support report than the method it happens to live in.</summary>
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1031:Do not catch general exception types",
+        Justification = "The mod's read path is a compatibility boundary; a renamed game member is expected, not exceptional.")]
+    internal static T? TryRead<T>(string context, Func<T> read)
     {
         try
         {
@@ -126,7 +131,7 @@ public static partial class McpMod
         }
         catch (Exception ex)
         {
-            Warn($"{member}:{line}", ex);
+            Warn(context, ex);
             return default;
         }
     }
@@ -135,11 +140,15 @@ public static partial class McpMod
     /// <see cref="TryRead{T}"/> for a read whose only outcome the caller needs is "it worked".
     /// Returns false when the action threw, so the caller can <c>continue</c> or fall back.
     /// </summary>
-    [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1031:Do not catch general exception types",
-        Justification = "The mod's read path is a compatibility boundary; a renamed game member is expected, not exceptional.")]
     internal static bool TryDo(Action action,
         [CallerMemberName] string member = "",
         [CallerLineNumber] int line = 0)
+        => TryDo($"{member}:{line}", action);
+
+    /// <summary>The same action with a hand-written context.</summary>
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1031:Do not catch general exception types",
+        Justification = "The mod's read path is a compatibility boundary; a renamed game member is expected, not exceptional.")]
+    internal static bool TryDo(string context, Action action)
     {
         try
         {
@@ -148,7 +157,7 @@ public static partial class McpMod
         }
         catch (Exception ex)
         {
-            Warn($"{member}:{line}", ex);
+            Warn(context, ex);
             return false;
         }
     }
@@ -473,7 +482,7 @@ public static partial class McpMod
         string fieldName,
         string label)
     {
-        try
+        TryDo($"options.{label}", () =>
         {
             var btn = GetInstanceFieldValue(owner, fieldName);
             if (btn is Control ctrl && IsNodeVisible(ctrl))
@@ -485,8 +494,7 @@ public static partial class McpMod
                     ["enabled"] = isEnabled ?? true
                 });
             }
-        }
-        catch (Exception ex) { Warn($"options.{label}", ex); }
+        });
     }
 
     // ---- Grid card selection (NCardGridSelectionScreen and its subclasses) -------------
