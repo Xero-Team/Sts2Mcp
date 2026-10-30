@@ -6,7 +6,8 @@ using Sts2Mcp.Rewards;
 int checks = 0;
 void Check(bool condition, string name)
 {
-    if (!condition) throw new Exception(name);
+    if (!condition)
+        throw new Exception(name);
     checks++;
 }
 var session = new RewardSession();
@@ -45,7 +46,8 @@ session.Complete(c, false);
 Check(c.SelectionState == "skipped" && !c.Resolving && session.Claimable.Contains(c), "skip keeps parent claimable");
 Check(c2.SelectionState == "unopened", "another card reward was not skipped");
 revision = session.Revision;
-for (int i = 0; i < 5; i++) session.Sync(new[] { card, otherCard });
+for (int i = 0; i < 5; i++)
+    session.Sync(new[] { card, otherCard });
 Check(session.Revision == revision && c.SelectionState == "skipped", "GET enumeration preserves skip and revision");
 var item = c.Describe(true);
 Check(item["reward_consumed"] is false && item["skipped"] is true, "skip serializer meaning");
@@ -107,7 +109,8 @@ foreach (var path in args)
     using var doc = JsonDocument.Parse(File.ReadAllText(path));
     foreach (var section in new[] { "rewards", "card_reward" })
     {
-        if (!doc.RootElement.TryGetProperty(section, out var data)) continue;
+        if (!doc.RootElement.TryGetProperty(section, out var data))
+            continue;
         var state = (Dictionary<string, object?>)ConvertJson(data)!;
         var markdown = section == "rewards" ? McpMod.RewardsMarkdown(state) : McpMod.CardMarkdown(state);
         Check(markdown.Length > 0 && !data.TryGetProperty("parent_reward_id", out _) && !data.TryGetProperty("screen_revision", out _),

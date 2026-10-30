@@ -36,7 +36,8 @@ internal static class Program
         {
             McpMod.TestBuild(true, () =>
             {
-                if (!swallowInner) return McpMod.TestDescription(card);
+                if (!swallowInner)
+                    return McpMod.TestDescription(card);
                 try { return McpMod.TestDescription(card); }
                 catch { return "partial state from a best-effort DTO builder"; }
             });
@@ -45,8 +46,10 @@ internal static class Program
         Restored(card);
         Equal(McpMod.TestValueMode, false, "request value mode restored on failure");
         Equal(card.FallbackReads, 0, "unpowered request never reads powered fallback description");
-        if (error == null) throw new InvalidOperationException("an invalid unpowered state was published");
-        if (!error.ToString().Contains("injected")) throw new InvalidOperationException("the original preview failure was lost");
+        if (error == null)
+            throw new InvalidOperationException("an invalid unpowered state was published");
+        if (!error.ToString().Contains("injected"))
+            throw new InvalidOperationException("the original preview failure was lost");
     }
 
     private static int Main()
@@ -133,9 +136,11 @@ namespace MegaCrit.Sts2.Core.Localization.DynamicVars
         { _intrinsic = enchanted; EnchantedValue = enchanted; PreviewValue = preview; }
         public void UpdateCardPreview(CardModel card, CardPreviewMode mode, object? target, bool runGlobalHooks)
         {
-            if (runGlobalHooks) throw new InvalidOperationException("global hooks must be disabled");
+            if (runGlobalHooks)
+                throw new InvalidOperationException("global hooks must be disabled");
             EnchantedValue = _intrinsic; PreviewValue = _intrinsic;
-            if (ThrowPreview) throw new InvalidOperationException("injected dynamic variable failure");
+            if (ThrowPreview)
+                throw new InvalidOperationException("injected dynamic variable failure");
         }
     }
     public class DynamicVarSet
@@ -162,7 +167,8 @@ namespace MegaCrit.Sts2.Core.Models
         public string GetDescriptionForPile(PileType pile)
         {
             DuringDescription?.Invoke();
-            if (ThrowDescription) throw new InvalidOperationException("injected card formatting failure");
+            if (ThrowDescription)
+                throw new InvalidOperationException("injected card formatting failure");
             return string.Join(",", DynamicVars.Values.Select(variable => variable.PreviewValue));
         }
     }

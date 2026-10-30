@@ -242,7 +242,8 @@ public static partial class McpMod
         foreach (Player player in runState.Players)
         {
             CardPoolModel? pool = player.Character?.CardPool;
-            if (pool == null) continue;
+            if (pool == null)
+                continue;
             string poolName = SafeGetText(() => pool.Title) ?? "Unknown";
             AddCardsFromPool(pool, poolName, result, seen);
         }
@@ -259,7 +260,8 @@ public static partial class McpMod
         foreach (CardModel card in pool.AllCards)
         {
             string id = card.Id.Entry;
-            if (seen.Contains(id)) continue;
+            if (seen.Contains(id))
+                continue;
             seen.Add(id);
 
             CardModel? upgradedPreview = SafeBuildUpgradedCardPreview(card);
@@ -303,7 +305,8 @@ public static partial class McpMod
 
         foreach (CharacterModel? character in runState.Players.Select(player => player.Character))
         {
-            if (character == null || character.RelicPool == null) continue;
+            if (character == null || character.RelicPool == null)
+                continue;
             RelicPoolModel pool = character.RelicPool;
             string poolName = SafeGetText(() => character.Title) ?? "Unknown";
             AddRelicsFromPool(pool, poolName, result, seen);
@@ -321,7 +324,8 @@ public static partial class McpMod
         foreach (RelicModel relic in pool.AllRelics)
         {
             string id = relic.Id.Entry;
-            if (seen.Contains(id)) continue;
+            if (seen.Contains(id))
+                continue;
             seen.Add(id);
 
             result.Add(new Dictionary<string, object?>(StringComparer.Ordinal)
@@ -353,7 +357,8 @@ public static partial class McpMod
 
         foreach (CharacterModel? character in runState.Players.Select(player => player.Character))
         {
-            if (character == null || character.PotionPool == null) continue;
+            if (character == null || character.PotionPool == null)
+                continue;
             PotionPoolModel pool = character.PotionPool;
             string poolName = SafeGetText(() => character.Title) ?? "Unknown";
             AddPotionsFromPool(pool, poolName, result, seen);
@@ -371,7 +376,8 @@ public static partial class McpMod
         foreach (PotionModel potion in pool.AllPotions)
         {
             string id = potion.Id.Entry;
-            if (seen.Contains(id)) continue;
+            if (seen.Contains(id))
+                continue;
             seen.Add(id);
 
             result.Add(new Dictionary<string, object?>(StringComparer.Ordinal)
@@ -496,7 +502,8 @@ public static partial class McpMod
         var monsters = new List<Dictionary<string, object?>>();
         foreach (Type type in typeof(MonsterModel).Assembly.GetTypes())
         {
-            if (type.IsAbstract || !type.IsSubclassOf(typeof(MonsterModel)) || type.FullName!.Contains('+')) continue;
+            if (type.IsAbstract || !type.IsSubclassOf(typeof(MonsterModel)) || type.FullName!.Contains('+'))
+                continue;
 
             Dictionary<string, object?> entry = BestiaryEntry(type);
 
@@ -505,8 +512,10 @@ public static partial class McpMod
                 object instance = RuntimeHelpers.GetUninitializedObject(type);
                 object? minHp = type.GetProperty("MinInitialHp")?.GetValue(instance);
                 object? maxHp = type.GetProperty("MaxInitialHp")?.GetValue(instance);
-                if (minHp != null) entry["min_hp"] = minHp;
-                if (maxHp != null) entry["max_hp"] = maxHp;
+                if (minHp != null)
+                    entry["min_hp"] = minHp;
+                if (maxHp != null)
+                    entry["max_hp"] = maxHp;
             });
 
             var moves = new List<string>();
@@ -534,7 +543,8 @@ public static partial class McpMod
         var encounters = new List<Dictionary<string, object?>>();
         foreach (Type type in typeof(EncounterModel).Assembly.GetTypes())
         {
-            if (type.IsAbstract || !type.IsSubclassOf(typeof(EncounterModel)) || type.FullName!.Contains('+')) continue;
+            if (type.IsAbstract || !type.IsSubclassOf(typeof(EncounterModel)) || type.FullName!.Contains('+'))
+                continue;
 
             Dictionary<string, object?> entry = BestiaryEntry(type);
 
@@ -545,10 +555,14 @@ public static partial class McpMod
                 object? isWeak = type.GetProperty("IsWeak")?.GetValue(instance);
                 object? minGold = type.GetProperty("MinGoldReward")?.GetValue(instance);
                 object? maxGold = type.GetProperty("MaxGoldReward")?.GetValue(instance);
-                if (roomType != null) entry["room_type"] = roomType.ToString();
-                if (isWeak != null) entry["is_weak"] = isWeak;
-                if (minGold != null) entry["min_gold"] = minGold;
-                if (maxGold != null) entry["max_gold"] = maxGold;
+                if (roomType != null)
+                    entry["room_type"] = roomType.ToString();
+                if (isWeak != null)
+                    entry["is_weak"] = isWeak;
+                if (minGold != null)
+                    entry["min_gold"] = minGold;
+                if (maxGold != null)
+                    entry["max_gold"] = maxGold;
             });
 
             string baseName = type.Name.Replace("Normal", "").Replace("Weak", "").Replace("Elite", "").Replace("Boss", "");

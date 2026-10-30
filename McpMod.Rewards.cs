@@ -41,7 +41,8 @@ public static partial class McpMod
         RefreshRewardRun();
         s_rewardSession.Open(screen, RunManager.Instance.DebugOnlyGetState());
         List<NRewardButton> buttons = FindAll<NRewardButton>(screen).Where(b => b.Reward != null).ToList();
-        foreach (NRewardButton? button in buttons) s_rewardSession.Register(button.Reward!, fresh && s_rewardTrackingAvailable);
+        foreach (NRewardButton? button in buttons)
+            s_rewardSession.Register(button.Reward!, fresh && s_rewardTrackingAvailable);
         List<NRewardButton> enabled = buttons.Where(b => b.IsEnabled).ToList();
         s_rewardSession.Sync(enabled.Select(b => (object)b.Reward!));
         return enabled.Where(b => !string.Equals(s_rewardSession.Find(b.Reward!)?.SelectionState, "claimed", StringComparison.Ordinal)).ToList();
@@ -50,25 +51,29 @@ public static partial class McpMod
     private static RewardSession.Entry? GetCardRewardParent(NCardRewardSelectionScreen screen)
     {
         RefreshRewardRun();
-        if (s_cardRewardParents.TryGetValue(screen, out RewardSession.Entry? entry) && s_rewardSession.Contains(entry)) return entry;
+        if (s_cardRewardParents.TryGetValue(screen, out RewardSession.Entry? entry) && s_rewardSession.Contains(entry))
+            return entry;
         // CardReward.OnSelect assigns this UI screen before awaiting OptionSelected. Only correlate
         // the already displayed screen; never inspect Cards, generation options, or future rewards.
         entry = s_rewardSession.Entries.FirstOrDefault(e => e.Key is CardReward reward
             && ReferenceEquals(GetInstanceFieldValue(reward, "_currentlyShownScreen"), screen));
-        if (entry != null) s_cardRewardParents[screen] = entry;
+        if (entry != null)
+            s_cardRewardParents[screen] = entry;
         return entry;
     }
 
     private static void CloseRewardSession(NRewardsScreen screen)
     {
-        if (!s_rewardSession.IsScreen(screen)) return;
+        if (!s_rewardSession.IsScreen(screen))
+            return;
         s_rewardSession.Clear();
         s_cardRewardParents.Clear();
     }
 
     private static void ObserveRewardResult(NRewardsScreen screen, Control button, bool consumed)
     {
-        if (!s_rewardSession.IsScreen(screen) || button is not NRewardButton { Reward: { } reward }) return;
+        if (!s_rewardSession.IsScreen(screen) || button is not NRewardButton { Reward: { } reward })
+            return;
         RewardSession.Entry? entry = s_rewardSession.Find(reward);
         if (entry != null)
         {
@@ -130,19 +135,22 @@ public static partial class McpMod
     private static void RewardNotConsumed(NRewardsScreen __instance, Control button) => RewardObservation(() => ObserveRewardResult(__instance, button, false));
     private static void RewardStarted(NRewardButton __instance) => RewardObservation(() =>
     {
-        if (__instance.Reward == null) return;
+        if (__instance.Reward == null)
+            return;
         // A human can return from the map and click before any GET. Re-establish the
         // displayed parent session from its UI ancestry, with unknown prior history.
         for (Node? node = __instance.GetParent(); node != null; node = node.GetParent())
             if (node is NRewardsScreen screen) { GetRewardButtons(screen); break; }
         RewardSession.Entry? entry = s_rewardSession.Find(__instance.Reward);
-        if (entry != null) s_rewardSession.Begin(entry);
+        if (entry != null)
+            s_rewardSession.Begin(entry);
     });
 
     private static void RewardExecutionTask(NRewardButton __instance, ref Task __result)
     {
         RewardSession.Entry? entry = __instance.Reward == null ? null : s_rewardSession.Find(__instance.Reward);
-        if (entry != null) __result = ObserveRewardExecutionAsync(__result, entry);
+        if (entry != null)
+            __result = ObserveRewardExecutionAsync(__result, entry);
     }
 
     // The task is the game's own reward execution, and this observer resumes on the main
@@ -168,7 +176,8 @@ public static partial class McpMod
     private static void AppendRewardActionOutcome(Dictionary<string, object?> result)
     {
         string? id = (result.GetValueOrDefault("parent_reward_id") ?? result.GetValueOrDefault("reward_id")) as string;
-        if (id == null) return;
+        if (id == null)
+            return;
         RefreshRewardRun();
         RewardSession.Entry? entry = s_rewardSession.Entries.FirstOrDefault(e => string.Equals(e.Id, id, StringComparison.Ordinal));
         bool observed = entry != null && !entry.Resolving && entry.SelectionState is "claimed" or "skipped";
@@ -224,9 +233,14 @@ public static partial class McpMod
         }
         RewardObservation(() =>
         {
-            if (choice == null) s_rewardSession.Choice(entry, "interrupted");
+            if (choice == null)
+            {
+                s_rewardSession.Choice(entry, "interrupted");
+            }
             else if (cardCount.HasValue && choice >= 0 && choice < cardCount)
+            {
                 s_rewardSession.Choice(entry, "card");
+            }
             else if (cardCount.HasValue && alternatives != null && choice - cardCount >= 0 && choice - cardCount < alternatives.Length)
             {
                 CardRewardAlternative alternative = alternatives[(choice - cardCount).Value];
@@ -234,7 +248,10 @@ public static partial class McpMod
                     && alternative.AfterSelected == PostAlternateCardRewardAction.EndSelectionAndDoNotCompleteReward;
                 s_rewardSession.Choice(entry, skip ? "skip" : "alternative", alternative.OptionId);
             }
-            else s_rewardSession.Choice(entry, "unknown");
+            else
+            {
+                s_rewardSession.Choice(entry, "unknown");
+            }
         });
         return choice;
     }

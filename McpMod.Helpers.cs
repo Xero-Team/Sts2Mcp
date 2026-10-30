@@ -59,7 +59,8 @@ public static partial class McpMod
     // phase when combat is running, it's the player side's turn, and the player is in Play.
     internal static bool IsPlayPhase(MegaCrit.Sts2.Core.Entities.Players.Player? player)
     {
-        if (!IsPlayerSideTurn()) return false;
+        if (!IsPlayerSideTurn())
+            return false;
         return player?.PlayerCombatState?.Phase == MegaCrit.Sts2.Core.Combat.PlayerTurnPhase.Play;
     }
 
@@ -67,7 +68,8 @@ public static partial class McpMod
     // this is the local player; in co-op it means at least one player can still act.
     internal static bool IsPlayPhase(MegaCrit.Sts2.Core.Combat.ICombatState? combatState)
     {
-        if (!IsPlayerSideTurn() || combatState == null) return false;
+        if (!IsPlayerSideTurn() || combatState == null)
+            return false;
         foreach (Player player in combatState.Players)
         {
             if (player?.PlayerCombatState?.Phase == MegaCrit.Sts2.Core.Combat.PlayerTurnPhase.Play)
@@ -79,7 +81,8 @@ public static partial class McpMod
     private static bool IsPlayerSideTurn()
     {
         CombatManager manager = MegaCrit.Sts2.Core.Combat.CombatManager.Instance;
-        if (manager is not { IsInProgress: true }) return false;
+        if (manager is not { IsInProgress: true })
+            return false;
         return manager.DebugOnlyGetState()?.CurrentSide == MegaCrit.Sts2.Core.Combat.CombatSide.Player;
     }
 
@@ -122,7 +125,8 @@ public static partial class McpMod
         try
         {
             object? result = getter();
-            if (result == null) return null;
+            if (result == null)
+                return null;
             // If it's a LocString, call GetFormattedText
             if (result is MegaCrit.Sts2.Core.Localization.LocString locString)
                 return StripRichTextTags(locString.GetFormattedText());
@@ -923,7 +927,8 @@ public static partial class McpMod
         foreach (Node child in children)
         {
             T? val = FindFirst<T>(child);
-            if (val != null) return val;
+            if (val != null)
+                return val;
         }
         return null;
     }

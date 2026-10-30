@@ -75,12 +75,18 @@ public static partial class McpMod
     private static string? SelectionOriginKind(Type? type)
     {
         string ns = type?.Namespace ?? "";
-        if (ns.Contains(".Cards", StringComparison.Ordinal)) return "card";
-        if (ns.Contains(".Potions", StringComparison.Ordinal)) return "potion";
-        if (ns.Contains(".Powers", StringComparison.Ordinal)) return "power";
-        if (ns.Contains(".Relics", StringComparison.Ordinal)) return "relic";
-        if (ns.Contains(".Monsters", StringComparison.Ordinal)) return "monster";
-        if (ns.Contains(".Events", StringComparison.Ordinal)) return "event";
+        if (ns.Contains(".Cards", StringComparison.Ordinal))
+            return "card";
+        if (ns.Contains(".Potions", StringComparison.Ordinal))
+            return "potion";
+        if (ns.Contains(".Powers", StringComparison.Ordinal))
+            return "power";
+        if (ns.Contains(".Relics", StringComparison.Ordinal))
+            return "relic";
+        if (ns.Contains(".Monsters", StringComparison.Ordinal))
+            return "monster";
+        if (ns.Contains(".Events", StringComparison.Ordinal))
+            return "event";
         return type == null ? null : "model";
     }
 
@@ -102,8 +108,10 @@ public static partial class McpMod
 
     private static string SelectionEffect(string methodName, string? originType)
     {
-        if (string.Equals(methodName, nameof(CardSelectCmd.FromHandForDiscard), StringComparison.Ordinal)) return "discard";
-        if (string.Equals(methodName, nameof(CardSelectCmd.FromHandForUpgrade), StringComparison.Ordinal)) return "upgrade";
+        if (string.Equals(methodName, nameof(CardSelectCmd.FromHandForDiscard), StringComparison.Ordinal))
+            return "discard";
+        if (string.Equals(methodName, nameof(CardSelectCmd.FromHandForUpgrade), StringComparison.Ordinal))
+            return "upgrade";
 
         return originType switch
         {

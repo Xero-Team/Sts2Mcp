@@ -402,21 +402,27 @@ public static partial class McpMod
             WalkForEffects(body, monster, scan);
 
         var fx = new Dictionary<string, object?>(StringComparer.Ordinal);
-        if (scan.Applies.Count > 0) fx["applies"] = scan.Applies;
+        if (scan.Applies.Count > 0)
+            fx["applies"] = scan.Applies;
         // Powers the move takes back. A consumer that predates this key simply
         // keeps a power the move removes, which is what every build did before.
-        if (scan.Removes.Count > 0) fx["removes"] = scan.Removes;
+        if (scan.Removes.Count > 0)
+            fx["removes"] = scan.Removes;
         // Creatures the move adds. One entry per `CreatureCmd.Add<T>` call site;
         // a loop around one is still one call, so a move that spawns several
         // relies on the consumer's catalog for the count.
-        if (scan.Summons.Count > 0) fx["summons"] = scan.Summons;
-        if (scan.Block != null) fx["block"] = scan.Block;
+        if (scan.Summons.Count > 0)
+            fx["summons"] = scan.Summons;
+        if (scan.Block != null)
+            fx["block"] = scan.Block;
         // Block the move puts on someone else. Kept out of "block" so a
         // consumer never credits it to the mover; a null "monster" means the
         // recipient could not be read, which is a known unknown rather than a
         // reason to guess.
-        if (scan.AllyBlock.Count > 0) fx["ally_block"] = scan.AllyBlock;
-        if (scan.Heal != null) fx["heal"] = scan.Heal;
+        if (scan.AllyBlock.Count > 0)
+            fx["ally_block"] = scan.AllyBlock;
+        if (scan.Heal != null)
+            fx["heal"] = scan.Heal;
         if (scan.StatusCards.Count > 0)
         {
             // "status_card" stays a bare class name for consumers that predate
@@ -1530,7 +1536,8 @@ public static partial class McpMod
             return false;
 
         scan.Heal = (scan.Heal ?? 0) + (scan.TakeAmount() ?? 0);
-        if (scan.Heal == 0) scan.Heal = null;
+        if (scan.Heal == 0)
+            scan.Heal = null;
         return true;
     }
 

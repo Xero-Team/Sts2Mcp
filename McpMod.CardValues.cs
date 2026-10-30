@@ -132,7 +132,8 @@ public static partial class McpMod
 
         private static void Restore(List<(DynamicVar Var, decimal Enchanted, decimal Preview)>? saved)
         {
-            if (saved == null) return;
+            if (saved == null)
+                return;
             foreach ((DynamicVar? dynamicVar, decimal enchanted, decimal preview) in saved)
             {
                 // DynamicVar setters only clamp and assign decimal fields.

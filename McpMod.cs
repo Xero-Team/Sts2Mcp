@@ -159,7 +159,8 @@ public static partial class McpMod
 
     internal static string? GameVersion()
     {
-        if (s_gameVersionRead) return s_gameVersion;
+        if (s_gameVersionRead)
+            return s_gameVersion;
         s_gameVersionRead = true;
         s_gameVersion = TryRead("game.version",
             () => MegaCrit.Sts2.Core.Debug.ReleaseInfoManager.Instance.ReleaseInfo?.Version);
@@ -173,7 +174,8 @@ public static partial class McpMod
             // Optional settings UI patches should not block the HTTP bridge itself.
             // The optional speed-settings detours stall startup on this macOS
             // host. The REST bridge does not depend on them.
-            if (!OperatingSystem.IsMacOS()) TryApplyHarmonyPatches();
+            if (!OperatingSystem.IsMacOS())
+                TryApplyHarmonyPatches();
             GD.Print("[STS2 MCP] Initializing REST bridge (macOS: no settings detours)");
 
             // Expose a completion signal for async room entry; see TrackRoomEntries.
@@ -304,7 +306,8 @@ public static partial class McpMod
         {
             // The client already gave up on this request; running the action now would apply a
             // command the caller has since retried or abandoned.
-            if (cancellation.Cancelled) return;
+            if (cancellation.Cancelled)
+                return;
 
             CompleteWith(tcs, func);
         });
@@ -835,9 +838,11 @@ public static partial class McpMod
 
     private static bool IsTruthyFlag(string? value)
     {
-        if (value == null) return false;
+        if (value == null)
+            return false;
         // `?wait=` with nothing after it still reads as "switch it on".
-        if (value.Length == 0) return true;
+        if (value.Length == 0)
+            return true;
         return string.Equals(value, "1"
 , StringComparison.Ordinal) || value.Equals("true", StringComparison.OrdinalIgnoreCase)
             || value.Equals("yes", StringComparison.OrdinalIgnoreCase)

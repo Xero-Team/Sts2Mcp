@@ -444,8 +444,10 @@ public static partial class McpMod
 
     private static int LevenshteinDistance(string left, string right)
     {
-        if (left.Length == 0) return right.Length;
-        if (right.Length == 0) return left.Length;
+        if (left.Length == 0)
+            return right.Length;
+        if (right.Length == 0)
+            return left.Length;
 
         int[] previous = new int[right.Length + 1];
         int[] current = new int[right.Length + 1];

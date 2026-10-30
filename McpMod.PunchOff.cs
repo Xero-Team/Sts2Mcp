@@ -64,7 +64,8 @@ public static partial class McpMod
 
         private static bool Prefix(ref Task __result)
         {
-            if (!InstantModeIsActive()) return true;
+            if (!InstantModeIsActive())
+                return true;
 
             __result = Task.CompletedTask;
             return false;

@@ -58,7 +58,8 @@ public static partial class McpMod
         var config = new ModConfig();
         string? modDir = Path.GetDirectoryName(
             System.Reflection.Assembly.GetExecutingAssembly().Location);
-        if (modDir == null) return WithResolvedPort(config);
+        if (modDir == null)
+            return WithResolvedPort(config);
 
         string configPath = Path.Combine(modDir, ConfigFileName);
         if (!File.Exists(configPath))
@@ -256,7 +257,8 @@ public static partial class McpMod
     /// </summary>
     private static void SetInstantModeConfig(bool enabled)
     {
-        if (s_config.InstantMode == enabled) return;
+        if (s_config.InstantMode == enabled)
+            return;
         s_config.InstantMode = enabled;
         SaveConfig();
     }
@@ -271,7 +273,8 @@ public static partial class McpMod
         {
             string? modDir = Path.GetDirectoryName(
                 System.Reflection.Assembly.GetExecutingAssembly().Location);
-            if (modDir == null) return;
+            if (modDir == null)
+                return;
 
             string configPath = Path.Combine(modDir, ConfigFileName);
 

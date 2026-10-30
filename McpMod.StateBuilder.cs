@@ -1201,9 +1201,12 @@ public static partial class McpMod
             CombatManager combat = CombatManager.Instance;
             if (combat.IsInProgress)
             {
-                if (combat.PlayerActionsDisabled) reasons.Add("player_actions_disabled");
-                if (combat.IsStarting) reasons.Add("combat_starting");
-                if (combat.IsOverOrEnding) reasons.Add("combat_ending");
+                if (combat.PlayerActionsDisabled)
+                    reasons.Add("player_actions_disabled");
+                if (combat.IsStarting)
+                    reasons.Add("combat_starting");
+                if (combat.IsOverOrEnding)
+                    reasons.Add("combat_ending");
             }
         });
 
@@ -2440,7 +2443,8 @@ public static partial class McpMod
         Dictionary<Player, int> depths = s_ownerEffectDepthField.GetValue(CombatManager.Instance) as Dictionary<Player, int>
             ?? throw new InvalidOperationException("CombatManager owner effect depths are unavailable");
         int depth = depths.TryGetValue(player, out int value) ? value : 0;
-        if (depth < 0) throw new InvalidOperationException("CombatManager owner effect depth is negative");
+        if (depth < 0)
+            throw new InvalidOperationException("CombatManager owner effect depth is negative");
         return depth;
     }
 
@@ -2657,7 +2661,8 @@ public static partial class McpMod
         foreach (CardModel card in combatState.Hand.Cards)
         {
             Dictionary<string, object?> cardState = BuildCardState(card, cardIndex, player);
-            if (previewHandUpgrades) AttachUpgradePreview(cardState, card);
+            if (previewHandUpgrades)
+                AttachUpgradePreview(cardState, card);
             hand.Add(cardState);
             cardIndex++;
         }
@@ -3032,13 +3037,20 @@ public static partial class McpMod
     private static string? GetPotionEpoch(PotionModel potion)
     {
         ModelId id = potion.Id;
-        if (Potion1Epoch.Potions.Any(candidate => candidate.Id == id)) return "POTION1_EPOCH";
-        if (Potion2Epoch.Potions.Any(candidate => candidate.Id == id)) return "POTION2_EPOCH";
-        if (Ironclad4Epoch.Potions.Any(candidate => candidate.Id == id)) return "IRONCLAD4_EPOCH";
-        if (Silent4Epoch.Potions.Any(candidate => candidate.Id == id)) return "SILENT4_EPOCH";
-        if (Regent4Epoch.Potions.Any(candidate => candidate.Id == id)) return "REGENT4_EPOCH";
-        if (Necrobinder4Epoch.Potions.Any(candidate => candidate.Id == id)) return "NECROBINDER4_EPOCH";
-        if (Defect4Epoch.Potions.Any(candidate => candidate.Id == id)) return "DEFECT4_EPOCH";
+        if (Potion1Epoch.Potions.Any(candidate => candidate.Id == id))
+            return "POTION1_EPOCH";
+        if (Potion2Epoch.Potions.Any(candidate => candidate.Id == id))
+            return "POTION2_EPOCH";
+        if (Ironclad4Epoch.Potions.Any(candidate => candidate.Id == id))
+            return "IRONCLAD4_EPOCH";
+        if (Silent4Epoch.Potions.Any(candidate => candidate.Id == id))
+            return "SILENT4_EPOCH";
+        if (Regent4Epoch.Potions.Any(candidate => candidate.Id == id))
+            return "REGENT4_EPOCH";
+        if (Necrobinder4Epoch.Potions.Any(candidate => candidate.Id == id))
+            return "NECROBINDER4_EPOCH";
+        if (Defect4Epoch.Potions.Any(candidate => candidate.Id == id))
+            return "DEFECT4_EPOCH";
         return null;
     }
 
@@ -3198,8 +3210,10 @@ public static partial class McpMod
 
     private static string? GetStarCostDisplay(CardModel card)
     {
-        if (card.HasStarCostX) return "X";
-        if (card.CurrentStarCost >= 0) return card.GetStarCostWithModifiers().ToString(CultureInfo.InvariantCulture);
+        if (card.HasStarCostX)
+            return "X";
+        if (card.CurrentStarCost >= 0)
+            return card.GetStarCostWithModifiers().ToString(CultureInfo.InvariantCulture);
         return null;
     }
 
@@ -3361,7 +3375,8 @@ public static partial class McpMod
 
     private static Dictionary<string, object?>? BuildEnchantmentState(CardModel card)
     {
-        if (card.Enchantment == null) return null;
+        if (card.Enchantment == null)
+            return null;
         // Match description rendering, including the enchantment's own DynamicVars.
         using UnpoweredCardVars? scope = s_unpoweredValues ? UnpoweredCardVars.Apply(card) : null;
         string? text = card.Enchantment.DynamicExtraCardText?.GetFormattedText();
@@ -3395,7 +3410,10 @@ public static partial class McpMod
             damage = card.DynamicVars.OstyDamage.BaseValue;
             props = card.DynamicVars.OstyDamage.Props;
         }
-        else return null;
+        else
+        {
+            return null;
+        }
         decimal additive = card.Enchantment?.EnchantDamageAdditive(damage, props) ?? 0m;
         decimal multiplier = card.Enchantment?.EnchantDamageMultiplicative(damage + additive, props) ?? 1m;
         var state = new Dictionary<string, object?>(StringComparer.Ordinal)
@@ -3444,7 +3462,8 @@ public static partial class McpMod
     private static Dictionary<string, object?>? BuildUpgradePreviewInfo(CardModel card)
     {
         CardModel? preview = SafeBuildUpgradedCardPreview(card);
-        if (preview == null) return null;
+        if (preview == null)
+            return null;
 
         return new Dictionary<string, object?>(StringComparer.Ordinal)
         {
@@ -3464,10 +3483,12 @@ public static partial class McpMod
     /// </summary>
     private static void AttachUpgradePreview(Dictionary<string, object?> cardInfo, CardModel card)
     {
-        if (!card.IsUpgradable || card.CurrentUpgradeLevel >= card.MaxUpgradeLevel) return;
+        if (!card.IsUpgradable || card.CurrentUpgradeLevel >= card.MaxUpgradeLevel)
+            return;
 
         Dictionary<string, object?>? preview = BuildUpgradePreviewInfo(card);
-        if (preview != null) cardInfo["upgrade_preview"] = preview;
+        if (preview != null)
+            cardInfo["upgrade_preview"] = preview;
     }
 
     private static bool CanUpgradeHandThisTurn(Player player, IEnumerable<CardModel> hand)
@@ -3532,7 +3553,8 @@ public static partial class McpMod
         {
             foreach (Creature enemy in combatState.Enemies)
             {
-                if (!enemy.IsAlive) continue;
+                if (!enemy.IsAlive)
+                    continue;
 
                 TryDo("card.vs_targets", () => previews.Add(BuildCardTargetPreview(card, enemy)));
             }
@@ -5089,9 +5111,12 @@ public static partial class McpMod
         var events = new List<Dictionary<string, object?>>();
         CollectSeenRooms(history[act], monsters, elites, events);
 
-        if (monsters.Count > 0) result["monster"] = monsters;
-        if (elites.Count > 0) result["elite"] = elites;
-        if (events.Count > 0) result["event"] = events;
+        if (monsters.Count > 0)
+            result["monster"] = monsters;
+        if (elites.Count > 0)
+            result["elite"] = elites;
+        if (events.Count > 0)
+            result["event"] = events;
         if (result.Count > 0)
             result["act"] = act + 1;
 
@@ -5423,7 +5448,8 @@ public static partial class McpMod
         // Reward items
         List<NRewardButton> rewardButtons = GetRewardButtons(rewardsScreen);
         state["screen_revision"] = s_rewardSession.Revision;
-        if (!s_rewardTrackingAvailable) Warn("rewards.selection_state", "UI tracking unavailable; missing observations are unknown");
+        if (!s_rewardTrackingAvailable)
+            Warn("rewards.selection_state", "UI tracking unavailable; missing observations are unknown");
         var items = new List<Dictionary<string, object?>>();
         int index = 0;
         foreach (NRewardButton button in rewardButtons)
@@ -5581,7 +5607,8 @@ public static partial class McpMod
         foreach (NCardHolder? holder in cardHolders)
         {
             CardModel? card = holder.CardModel;
-            if (card == null) continue;
+            if (card == null)
+                continue;
 
             Dictionary<string, object?> cardInfo = BuildCardInfo(card);
             cardInfo["index"] = index;
@@ -5733,7 +5760,8 @@ public static partial class McpMod
         foreach (NGridCardHolder holder in cardHolders)
         {
             CardModel card = holder.CardModel;
-            if (card == null) continue;
+            if (card == null)
+                continue;
 
             Dictionary<string, object?> cardInfo = BuildCardInfo(card);
             cardInfo["index"] = index;
@@ -5749,7 +5777,8 @@ public static partial class McpMod
             }
             // Only on the upgrade screen: the transform/remove screens do not upgrade
             // anything, and every card carrying a preview would bloat the payload.
-            if (screen is NDeckUpgradeSelectScreen) AttachUpgradePreview(cardInfo, card);
+            if (screen is NDeckUpgradeSelectScreen)
+                AttachUpgradePreview(cardInfo, card);
             AddCardHolderState(cardInfo, holder);
             cards.Add(cardInfo);
             if (cardInfo["is_selected"] is true)
@@ -5829,7 +5858,8 @@ public static partial class McpMod
         foreach (Control container in previewContainers)
         {
             NBackButton? cancelBtn = GetCardSelectPreviewCancel(container);
-            if (IsControlVisibleOrActionable(cancelBtn)) return true;
+            if (IsControlVisibleOrActionable(cancelBtn))
+                return true;
         }
         NBackButton closeButton = screen.GetNodeOrNull<NBackButton>("%Close");
         return IsControlVisibleOrActionable(closeButton);
@@ -5846,7 +5876,8 @@ public static partial class McpMod
         foreach (Control container in previewContainers)
         {
             NConfirmButton? confirm = GetCardSelectPreviewConfirm(container);
-            if (IsControlVisibleOrActionable(confirm)) return true;
+            if (IsControlVisibleOrActionable(confirm))
+                return true;
         }
         if (previewShowing)
             return false;
@@ -5939,7 +5970,8 @@ public static partial class McpMod
         foreach (NGridCardHolder holder in cardHolders)
         {
             CardModel card = holder.CardModel;
-            if (card == null) continue;
+            if (card == null)
+                continue;
 
             Dictionary<string, object?> cardInfo = BuildCardInfo(card);
             cardInfo["index"] = index;
@@ -6130,14 +6162,16 @@ public static partial class McpMod
         foreach (NHandCardHolder holder in hand.ActiveHolders)
         {
             CardModel? card = holder.CardModel;
-            if (card == null) continue;
+            if (card == null)
+                continue;
 
             Dictionary<string, object?> cardInfo = BuildCardInfo(card);
             cardInfo["index"] = index;
             cardInfo["description"] = SafeGetCardDescription(card); // hand cards use default pile
             // Only when the prompt is "upgrade a card in hand"; the plain select modes
             // (discard, exhaust, ...) have nothing to decide from the upgraded text.
-            if (hand.CurrentMode == NPlayerHand.Mode.UpgradeSelect) AttachUpgradePreview(cardInfo, card);
+            if (hand.CurrentMode == NPlayerHand.Mode.UpgradeSelect)
+                AttachUpgradePreview(cardInfo, card);
             AddCardHolderState(cardInfo, holder);
             selectableCards.Add(cardInfo);
             index++;
@@ -6195,7 +6229,8 @@ public static partial class McpMod
         int selIdx = 0;
         foreach (CardModel card in selectedCardModels)
         {
-            if (card == null) continue;
+            if (card == null)
+                continue;
             int handIndex = FindHandPosition(card);
             Dictionary<string, object?> selectedInfo = BuildCardState(card, handIndex);
             // index addresses the selected UI container; hand_index names
@@ -6237,7 +6272,8 @@ public static partial class McpMod
         foreach (NRelicBasicHolder? holder in relicHolders)
         {
             RelicModel? relic = holder.Relic?.Model;
-            if (relic == null) continue;
+            if (relic == null)
+                continue;
 
             relics.Add(new Dictionary<string, object?>(StringComparer.Ordinal)
             {
@@ -6441,7 +6477,8 @@ public static partial class McpMod
             foreach (NTreasureRoomRelicHolder? holder in holders)
             {
                 RelicModel? relic = holder.Relic?.Model;
-                if (relic == null) continue;
+                if (relic == null)
+                    continue;
                 relics.Add(new Dictionary<string, object?>(StringComparer.Ordinal)
                 {
                     ["index"] = index,
@@ -6665,7 +6702,8 @@ public static partial class McpMod
     {
         var pets = new List<Dictionary<string, object?>>();
         PlayerCombatState? combatState = player.PlayerCombatState;
-        if (combatState == null) return pets;
+        if (combatState == null)
+            return pets;
 
         // Check Osty specifically (Byrdpip/PaelsLegion are cosmetic with no real combat state)
         Creature? osty = combatState.GetPet<Osty>();

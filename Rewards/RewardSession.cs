@@ -51,7 +51,8 @@ internal sealed class RewardSession
 
     internal void CheckRun(object? run)
     {
-        if (ReferenceEquals(_run, run)) return;
+        if (ReferenceEquals(_run, run))
+            return;
         Clear();
         _run = run;
     }
@@ -67,14 +68,16 @@ internal sealed class RewardSession
     internal void Open(object screen, object? run)
     {
         CheckRun(run);
-        if (IsScreen(screen)) return;
+        if (IsScreen(screen))
+            return;
         Clear();
         _screen = screen;
     }
 
     internal Entry Register(object key, bool fresh = false)
     {
-        if (_entries.TryGetValue(key, out Entry? entry)) return entry;
+        if (_entries.TryGetValue(key, out Entry? entry))
+            return entry;
         entry = new Entry(key, $"reward:{_epoch}:{++_serial}", fresh);
         _entries.Add(key, entry);
         _revision++;
@@ -86,7 +89,8 @@ internal sealed class RewardSession
     internal void Sync(IEnumerable<object> available)
     {
         List<Entry> next = available.Select(key => Register(key)).Where(e => !string.Equals(e.SelectionState, "claimed", StringComparison.Ordinal)).ToList();
-        if (_claimable.SequenceEqual(next)) return;
+        if (_claimable.SequenceEqual(next))
+            return;
         _claimable = next;
         _revision++;
     }
@@ -99,7 +103,8 @@ internal sealed class RewardSession
         if (id != null)
         {
             entry = _claimable.FirstOrDefault(e => string.Equals(e.Id, id, StringComparison.Ordinal));
-            if (entry == null) return "reward_id is unknown, from another screen, claimed, or not currently claimable";
+            if (entry == null)
+                return "reward_id is unknown, from another screen, claimed, or not currently claimable";
         }
         if (index.HasValue)
         {
@@ -115,7 +120,8 @@ internal sealed class RewardSession
 
     internal void Begin(Entry entry)
     {
-        if (!Contains(entry)) return;
+        if (!Contains(entry))
+            return;
         entry.SelectionState = "opened";
         entry.LastSelection = null;
         entry.LastOptionId = null;
@@ -125,7 +131,8 @@ internal sealed class RewardSession
 
     internal void AwaitChoice(Entry entry)
     {
-        if (!Contains(entry)) return;
+        if (!Contains(entry))
+            return;
         entry.SelectionState = "opened";
         entry.Resolving = false;
         _revision++;
@@ -133,7 +140,8 @@ internal sealed class RewardSession
 
     internal void Choice(Entry entry, string kind, string? optionId = null)
     {
-        if (!Contains(entry)) return;
+        if (!Contains(entry))
+            return;
         entry.LastSelection = kind;
         entry.LastOptionId = optionId;
         entry.Resolving = true;
@@ -142,7 +150,8 @@ internal sealed class RewardSession
 
     internal void Complete(Entry entry, bool consumed)
     {
-        if (!Contains(entry)) return;
+        if (!Contains(entry))
+            return;
         entry.SelectionState = "unknown";
         if (consumed)
             entry.SelectionState = "claimed";
@@ -159,7 +168,8 @@ internal sealed class RewardSession
 
     internal void Interrupt(Entry entry)
     {
-        if (!Contains(entry)) return;
+        if (!Contains(entry))
+            return;
         entry.SelectionState = "unknown";
         entry.LastSelection = "interrupted";
         entry.LastOptionId = null;

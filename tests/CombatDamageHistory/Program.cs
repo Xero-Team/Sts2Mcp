@@ -35,22 +35,30 @@ foreach (var (name, props, fullyBlocked, damage) in new[] {
     proxy.Side = CombatSide.Player;
     var result = new DamageResult(creature, props) { UnblockedDamage = damage, WasFullyBlocked = fullyBlocked };
     var entry = new DamageReceivedEntry(result, creature, null, null, 1, CombatSide.Player, null!, new[] { owner });
-    if (!entry.HappenedThisTurn(state)) throw new Exception("Current side history missing");
-    if (Export(entry) != !fullyBlocked) throw new Exception("Exporter conflated HP loss and full blocking");
+    if (!entry.HappenedThisTurn(state))
+        throw new Exception("Current side history missing");
+    if (Export(entry) != !fullyBlocked)
+        throw new Exception("Exporter conflated HP loss and full blocking");
     proxy.Side = CombatSide.Enemy;
-    if (entry.HappenedThisTurn(state)) throw new Exception("Spite history leaked across sides");
-    if (Export(entry) != !fullyBlocked) throw new Exception("Exporter lost owner history across sides");
+    if (entry.HappenedThisTurn(state))
+        throw new Exception("Spite history leaked across sides");
+    if (Export(entry) != !fullyBlocked)
+        throw new Exception("Exporter lost owner history across sides");
     Set(playerState, "<TurnNumber>k__BackingField", 4);
-    if (!entry.HappenedLastPlayerTurn(owner)) throw new Exception("Previous owner-turn history missing");
-    if (Export(entry)) throw new Exception("Old owner-turn damage leaked into the current turn");
+    if (!entry.HappenedLastPlayerTurn(owner))
+        throw new Exception("Previous owner-turn history missing");
+    if (Export(entry))
+        throw new Exception("Old owner-turn damage leaked into the current turn");
     bool emotion = !entry.Result.WasFullyBlocked && entry.HappenedLastPlayerTurn(owner);
     Console.WriteLine($"{name}: Spite={damage > 0}, EmotionChip={emotion}; export and side/owner-turn boundaries agree.");
 }
-if (Export()) throw new Exception("Empty history must remain false");
+if (Export())
+    throw new Exception("Empty history must remain false");
 Set(playerState, "<TurnNumber>k__BackingField", 4);
 var unrelated = (Creature)RuntimeHelpers.GetUninitializedObject(typeof(Creature));
 var otherEntry = new DamageReceivedEntry(new DamageResult(unrelated, ValueProp.Move), unrelated, null, null, 1, CombatSide.Enemy, null!, new[] { owner });
-if (Export(otherEntry)) throw new Exception("Another creature's damage activated this owner");
+if (Export(otherEntry))
+    throw new Exception("Another creature's damage activated this owner");
 var corrupted = new DamageReceivedEntry(new DamageResult(creature, ValueProp.Move), creature, null, null, 1, CombatSide.Enemy, null!, new[] { owner });
 typeof(CombatHistoryEntry).GetField("_playerTurnNumbers", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(corrupted, null);
 try

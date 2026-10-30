@@ -1262,7 +1262,8 @@ public static partial class McpMod
                 }
             }
 
-            if (levelNodes.Count == 0) break;
+            if (levelNodes.Count == 0)
+                break;
 
             sb.Append("-> ");
             sb.Append(string.Join(" or ", levelNodes.Select(n => $"{n.type} ({n.col},{n.row})")));
@@ -1552,7 +1553,8 @@ public static partial class McpMod
 
     private static string FormatStatusAmount(object? amount)
     {
-        if (amount is int i && i == -1) return "indefinite";
+        if (amount is int i && i == -1)
+            return "indefinite";
         return amount?.ToString() ?? "0";
     }
 
@@ -1616,7 +1618,8 @@ public static partial class McpMod
     private static void FormatEventVotesMarkdown(StringBuilder sb, Dictionary<string, object?> eventData)
     {
         bool isShared = eventData.TryGetValue("is_shared", out object? sh) && sh is true;
-        if (!isShared) return;
+        if (!isShared)
+            return;
 
         if (!eventData.TryGetValue("votes", out object? votesObj) || votesObj is not List<Dictionary<string, object?>> votes || votes.Count == 0)
             return;

@@ -59,7 +59,8 @@ public static partial class McpMod
     /// </summary>
     private static bool PrefsAreLoaded()
     {
-        if (s_prefsReady) return true;
+        if (s_prefsReady)
+            return true;
         TryDo(() =>
         {
             if (NGame.Instance?.MainMenu != null || RunManager.Instance.IsInProgress)
@@ -79,22 +80,27 @@ public static partial class McpMod
     {
         // Feature off and nothing of ours applied: leave the game's setting completely alone
         // (including the dev console's own `instant` command).
-        if (!s_instantModeEnabled && !s_instantModeApplied) return;
-        if (!PrefsAreLoaded()) return;
+        if (!s_instantModeEnabled && !s_instantModeApplied)
+            return;
+        if (!PrefsAreLoaded())
+            return;
 
         string? failure = TryAction("settings.instant_mode.reconcile", () =>
         {
             PrefsSave prefs = SaveManager.Instance.PrefsSave;
-            if (prefs == null) return;
+            if (prefs == null)
+                return;
 
             if (s_instantModeEnabled && !IsMultiplayerRun())
             {
-                if (prefs.FastMode != FastModeType.Instant) prefs.FastMode = FastModeType.Instant;
+                if (prefs.FastMode != FastModeType.Instant)
+                    prefs.FastMode = FastModeType.Instant;
                 s_instantModeApplied = true;
             }
             else
             {
-                if (prefs.FastMode == FastModeType.Instant) prefs.FastMode = FastModeType.Fast;
+                if (prefs.FastMode == FastModeType.Instant)
+                    prefs.FastMode = FastModeType.Fast;
                 s_instantModeApplied = false;
             }
         });
@@ -115,7 +121,8 @@ public static partial class McpMod
     /// </summary>
     internal static bool InstantModeIsActive()
     {
-        if (!PrefsAreLoaded()) return false;
+        if (!PrefsAreLoaded())
+            return false;
         return TryRead<bool?>(() => SaveManager.Instance.PrefsSave?.FastMode == FastModeType.Instant) ?? false;
     }
 
@@ -124,7 +131,8 @@ public static partial class McpMod
         Node current = node;
         while (current != null)
         {
-            if (current.Name == "InstantMode") return true;
+            if (current.Name == "InstantMode")
+                return true;
             current = current.GetParent();
         }
         return false;
@@ -134,11 +142,13 @@ public static partial class McpMod
     {
         foreach (Node? child in parent.GetChildren())
         {
-            if (child is T typed) return typed;
+            if (child is T typed)
+                return typed;
             if (child is Node childNode)
             {
                 T? found = FindChildOfType<T>(childNode);
-                if (found != null) return found;
+                if (found != null)
+                    return found;
             }
         }
         return null;
@@ -170,7 +180,8 @@ public static partial class McpMod
 
         // Update label text
         MegaRichTextLabel label = instantLine.GetNodeOrNull<MegaRichTextLabel>("Label");
-        if (label != null) label.Text = "Instant Mode";
+        if (label != null)
+            label.Text = "Instant Mode";
 
         // Store reference and correct initial tick state
         // (NFastModeTickbox._Ready() already ran via AddChild, but used original SetFromSettings logic)
@@ -203,7 +214,8 @@ public static partial class McpMod
     {
         static bool Prefix(NFastModeTickbox __instance)
         {
-            if (!IsInInstantModeLine(__instance)) return true;
+            if (!IsInInstantModeLine(__instance))
+                return true;
 
             // "Reset gameplay settings" writes FastMode = Normal and then refreshes every
             // resettable node. Nothing else produces Normal while Instant Mode is on (the
@@ -226,7 +238,8 @@ public static partial class McpMod
     {
         static bool Prefix(NFastModeTickbox __instance)
         {
-            if (!IsInInstantModeLine(__instance)) return true;
+            if (!IsInInstantModeLine(__instance))
+                return true;
             // Instant Mode turned on. It implies Fast Mode — which is also what the player
             // gets during a multiplayer run, where Instant itself is suppressed.
             if (SaveManager.Instance.PrefsSave.FastMode == FastModeType.Normal)
@@ -246,7 +259,8 @@ public static partial class McpMod
     {
         static bool Prefix(NFastModeTickbox __instance)
         {
-            if (!IsInInstantModeLine(__instance)) return true;
+            if (!IsInInstantModeLine(__instance))
+                return true;
             // Instant Mode turned off - fall back to Fast
             SaveManager.Instance.PrefsSave.FastMode = FastModeType.Fast;
             SetInstantModeEnabled(false);
@@ -258,7 +272,8 @@ public static partial class McpMod
             // Only for the ORIGINAL Fast Mode tickbox being unticked (→ Normal).
             // Turning Fast Mode off turns Instant Mode off with it, otherwise the reconciler
             // would immediately drag the setting back up to Instant.
-            if (IsInInstantModeLine(__instance)) return;
+            if (IsInInstantModeLine(__instance))
+                return;
             if (s_instantModeTickbox != null && s_instantModeTickbox.IsTicked)
             {
                 s_instantModeTickbox.IsTicked = false;
@@ -276,7 +291,8 @@ public static partial class McpMod
     {
         static void Postfix(NFastModeHoverTip __instance)
         {
-            if (!IsInInstantModeLine(__instance)) return;
+            if (!IsInInstantModeLine(__instance))
+                return;
 
             // Build a HoverTip with custom strings via reflection
             // (HoverTip is a record struct; Title/Description have private setters)

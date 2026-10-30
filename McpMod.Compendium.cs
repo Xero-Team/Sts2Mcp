@@ -667,10 +667,12 @@ public static partial class McpMod
 
     private static object? ToJsonSafe(object? value, int depth, int maxItems)
     {
-        if (value == null || depth > 4) return value?.ToString();
+        if (value == null || depth > 4)
+            return value?.ToString();
         if (value is string or bool or byte or sbyte or short or ushort or int or uint or long or ulong or float or double or decimal)
             return value;
-        if (value is Enum) return value.ToString();
+        if (value is Enum)
+            return value.ToString();
 
         Type type = value.GetType();
         PropertyInfo? entryProperty = type.GetProperty("Entry", BindingFlags.Instance | BindingFlags.Public);
@@ -683,7 +685,8 @@ public static partial class McpMod
             int count = 0;
             foreach (DictionaryEntry item in dictionary)
             {
-                if (count++ >= maxItems) break;
+                if (count++ >= maxItems)
+                    break;
                 result[item.Key?.ToString() ?? "null"] = ToJsonSafe(item.Value, depth + 1, maxItems);
             }
             return result;
@@ -695,7 +698,8 @@ public static partial class McpMod
             int count = 0;
             foreach (object? item in enumerable)
             {
-                if (count++ >= maxItems) break;
+                if (count++ >= maxItems)
+                    break;
                 result.Add(ToJsonSafe(item, depth + 1, maxItems));
             }
             return result;

@@ -68,12 +68,15 @@ public static partial class McpMod
         {
             MethodBase? method = trace.GetFrame(i)?.GetMethod();
             Type? declaring = method?.DeclaringType;
-            if (declaring == null) continue;
+            if (declaring == null)
+                continue;
 
             string name = $"{declaring.FullName}.{method!.Name}";
-            if (name.Contains("HarmonyLib") || name.Contains("Sts2Mcp")) continue;
+            if (name.Contains("HarmonyLib") || name.Contains("Sts2Mcp"))
+                continue;
 
-            if (shown > 0) sb.Append(" <- ");
+            if (shown > 0)
+                sb.Append(" <- ");
             sb.Append(name);
             shown++;
         }
@@ -101,7 +104,8 @@ public static partial class McpMod
 
     private static void NoteLoadingHandleClosed(NetLoadingHandle handle)
     {
-        if (!s_openLoadingHandles.TryGetValue(handle, out LoadingHandleInfo? info)) return;
+        if (!s_openLoadingHandles.TryGetValue(handle, out LoadingHandleInfo? info))
+            return;
         s_openLoadingHandles.Remove(handle);
 
         ulong held = Time.GetTicksMsec() - info.OpenedMs;
@@ -120,10 +124,12 @@ public static partial class McpMod
     /// </summary>
     internal static void CheckLoadingHandleLeak()
     {
-        if (s_loadingStuckReported || s_loadingHeldSinceMs == 0 || s_openLoadingHandles.Count == 0) return;
+        if (s_loadingStuckReported || s_loadingHeldSinceMs == 0 || s_openLoadingHandles.Count == 0)
+            return;
 
         ulong now = Time.GetTicksMsec();
-        if (now - s_loadingHeldSinceMs < LoadingStuckReportMs) return;
+        if (now - s_loadingHeldSinceMs < LoadingStuckReportMs)
+            return;
         s_loadingStuckReported = true;
 
         var sb = new StringBuilder();

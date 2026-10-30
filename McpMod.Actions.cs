@@ -1175,13 +1175,16 @@ public static partial class McpMod
             index = parsedIndex;
         }
         string? error = s_rewardSession.Resolve(rewardId, index, revision, out RewardSession.Entry? entry);
-        if (error != null) return Error(error);
+        if (error != null)
+            return Error(error);
         NRewardButton button = enabledButtons.First(b => ReferenceEquals(b.Reward, entry!.Key));
 
         Reward reward = button.Reward!;
         string rewardDesc = GetRewardTypeName(reward);
         if (reward is GoldReward g)
+        {
             rewardDesc = $"gold ({g.Amount})";
+        }
         else if (reward is PotionReward p)
         {
             rewardDesc = $"potion ({SafeGetText(() => p.Potion?.Title)})";
@@ -1196,7 +1199,9 @@ public static partial class McpMod
                     + $"cannot claim {rewardDesc}. Use discard_potion first, or claim the other rewards and proceed.");
         }
         else if (reward is CardReward)
+        {
             rewardDesc = "card (opens card selection)";
+        }
 
         button.ForceClick();
 
@@ -2189,7 +2194,8 @@ public static partial class McpMod
         RefreshEntityIdRegistry(combatState);
         foreach (Creature creature in combatState.Enemies)
         {
-            if (!creature.IsAlive) continue;
+            if (!creature.IsAlive)
+                continue;
             if (string.Equals(GetStableEntityId(creature), entityId, StringComparison.Ordinal))
                 return creature;
         }
