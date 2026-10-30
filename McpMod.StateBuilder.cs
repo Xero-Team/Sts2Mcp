@@ -117,287 +117,7 @@ public static partial class McpMod
         }
 
         if (!RunManager.Instance.IsInProgress)
-        {
-            result["state_type"] = "menu";
-
-            // Detect which menu screen is active
-            if (tree?.Root != null)
-            {
-                // Custom run setup screen (seed / ascension / modifiers + its own
-                // character buttons). It is a submenu pushed over the singleplayer
-                // or multiplayer-host submenu, and it is NOT an NCharacterSelectScreen,
-                // so it needs its own detection before either of those.
-                if (!result.ContainsKey("menu_screen"))
-                {
-                    var customRun = FindFirst<NCustomRunScreen>(tree.Root);
-                    if (customRun != null && IsNodeVisible(customRun))
-                    {
-                        AddCustomRunMenuState(result, customRun);
-                    }
-                }
-
-                if (!result.ContainsKey("menu_screen"))
-                {
-                    // Check for singleplayer submenu (Standard / Daily / Custom)
-                    var spSubmenu = FindFirst<NSingleplayerSubmenu>(tree.Root);
-                    if (spSubmenu != null && IsNodeVisible(spSubmenu))
-                    {
-                        result["menu_screen"] = "singleplayer";
-                        result["message"] = "Select game mode.";
-
-                        var modeOptions = new List<Dictionary<string, object?>>();
-                        var modeFields = new[] { ("_standardButton", "standard"), ("_dailyButton", "daily"), ("_customButton", "custom") };
-                        foreach (var (fieldName, label) in modeFields)
-                        {
-                            TryDo($"menu.singleplayer.options.{label}", () =>
-                            {
-                                var btn = GetInstanceFieldValue(spSubmenu, fieldName);
-                                if (btn is Control ctrl && IsNodeVisible(ctrl))
-                                {
-                                    var isEnabled = btn.GetType().GetProperty("IsEnabled")?.GetValue(btn) as bool?;
-                                    modeOptions.Add(new Dictionary<string, object?>(StringComparer.Ordinal)
-                                    {
-                                        ["name"] = label,
-                                        ["enabled"] = isEnabled ?? true
-                                    });
-                                }
-                            });
-                        }
-                        AddMenuOptionIfVisible(modeOptions, spSubmenu, "_backButton", "back");
-                        result["options"] = modeOptions;
-                    }
-                    // Check for multiplayer host submenu (Standard / Daily / Custom for multiplayer)
-                    else
-                    {
-                        var mpHostSubmenu = FindFirst<NMultiplayerHostSubmenu>(tree.Root);
-                        if (mpHostSubmenu != null && IsNodeVisible(mpHostSubmenu))
-                        {
-                            result["menu_screen"] = "multiplayer_host";
-                            result["message"] = "Multiplayer host: select game mode.";
-
-                            var modeOptions = new List<Dictionary<string, object?>>();
-                            var modeFields = new[] { ("_standardButton", "standard"), ("_dailyButton", "daily"), ("_customButton", "custom") };
-                            foreach (var (fieldName, label) in modeFields)
-                            {
-                                TryDo($"menu.multiplayer_host.options.{label}", () =>
-                                {
-                                    var btn = GetInstanceFieldValue(mpHostSubmenu, fieldName);
-                                    if (btn is Control ctrl && IsNodeVisible(ctrl))
-                                    {
-                                        var isEnabled = btn.GetType().GetProperty("IsEnabled")?.GetValue(btn) as bool?;
-                                        modeOptions.Add(new Dictionary<string, object?>(StringComparer.Ordinal)
-                                        {
-                                            ["name"] = label,
-                                            ["enabled"] = isEnabled ?? true
-                                        });
-                                    }
-                                });
-                            }
-                            AddMenuOptionIfVisible(modeOptions, mpHostSubmenu, "_backButton", "back");
-                            result["options"] = modeOptions;
-                        }
-                        else
-                        {
-                            // Check for multiplayer submenu (Host / Join / Load / Abandon)
-                            var mpSubmenu = FindFirst<NMultiplayerSubmenu>(tree.Root);
-                            if (mpSubmenu != null && IsNodeVisible(mpSubmenu))
-                            {
-                                result["menu_screen"] = "multiplayer";
-                                result["message"] = "Multiplayer menu.";
-
-                                var mpOptions = new List<Dictionary<string, object?>>();
-                                var mpFields = new[] { ("_hostButton", "host"), ("_joinButton", "join"), ("_loadButton", "load"), ("_abandonButton", "abandon") };
-                                foreach (var (fieldName, label) in mpFields)
-                                {
-                                    TryDo($"menu.multiplayer.options.{label}", () =>
-                                    {
-                                        var btn = GetInstanceFieldValue(mpSubmenu, fieldName);
-                                        if (btn is Control ctrl && IsNodeVisible(ctrl))
-                                        {
-                                            var isEnabled = btn.GetType().GetProperty("IsEnabled")?.GetValue(btn) as bool?;
-                                            mpOptions.Add(new Dictionary<string, object?>(StringComparer.Ordinal)
-                                            {
-                                                ["name"] = label,
-                                                ["enabled"] = isEnabled ?? true
-                                            });
-                                        }
-                                    });
-                                }
-                                AddMenuOptionIfVisible(mpOptions, mpSubmenu, "_backButton", "back");
-                                result["options"] = mpOptions;
-                            }
-                        }
-                    }
-                    // Multiplayer Join Friend screen (lives in the same submenu stack as
-                    // NMultiplayerSubmenu; pushed when the user clicks "join")
-                    if (!result.ContainsKey("menu_screen"))
-                    {
-                        var joinScreen = FindFirst<NJoinFriendScreen>(tree.Root);
-                        if (joinScreen != null && IsNodeVisible(joinScreen))
-                        {
-                            AddMultiplayerJoinMenuState(result, joinScreen);
-                        }
-                    }
-
-                    // Multiplayer Load lobby — resume saved MP run. Pushed by NMultiplayerSubmenu
-                    // when "load" is clicked (host) or by JoinFlow when joining a save in progress (client).
-                    if (!result.ContainsKey("menu_screen"))
-                    {
-                        var loadLobby = FindFirst<NMultiplayerLoadGameScreen>(tree.Root);
-                        if (loadLobby != null && IsNodeVisible(loadLobby))
-                        {
-                            AddMultiplayerLoadLobbyMenuState(result, loadLobby);
-                        }
-                    }
-
-                    // Custom mode setup screen (reached via singleplayer/multiplayer-host
-                    // "custom"). It replaces the normal character select and adds a seed
-                    // field and run modifiers, so detect it before the plain char select.
-                    if (!result.ContainsKey("menu_screen"))
-                    {
-                        var customRun = FindFirst<NCustomRunScreen>(tree.Root);
-                        if (customRun != null && IsNodeVisible(customRun))
-                            AddCustomRunMenuState(result, customRun);
-                    }
-
-                    // Check for character select screen
-                    if (!result.ContainsKey("menu_screen"))
-                    {
-                        var charSelect = FindFirst<NCharacterSelectScreen>(tree.Root);
-                        if (charSelect != null && IsNodeVisible(charSelect))
-                        {
-                            AddCharacterSelectMenuState(result, charSelect);
-                        }
-                        else
-                        {
-                            // Check for other screens
-                            var timelineScreen = FindFirst<NTimelineScreen>(tree.Root);
-                            var compendiumSubmenu = FindFirst<NCompendiumSubmenu>(tree.Root);
-                            var settingsScreen = FindFirst<NSettingsScreen>(tree.Root);
-
-                            if (timelineScreen != null && IsNodeVisible(timelineScreen))
-                            {
-                                result["menu_screen"] = "timeline";
-                                result["message"] = "Timeline screen.";
-                                result["options"] = new List<Dictionary<string, object?>>
-                            {
-                                new(StringComparer.Ordinal) { ["name"] = "advance", ["enabled"] = true },
-                                new(StringComparer.Ordinal) { ["name"] = "back", ["enabled"] = true }
-                            };
-
-                                // Read epochs from ProgressState (stable, not hover-dependent)
-                                foreach (var entry in BuildTimelineEpochState())
-                                    result[entry.Key] = entry.Value;
-                            }
-                            else if (compendiumSubmenu != null && IsNodeVisible(compendiumSubmenu))
-                            {
-                                result["menu_screen"] = "compendium";
-                                result["message"] = "Compendium screen.";
-                            }
-                            else if (settingsScreen != null && IsNodeVisible(settingsScreen))
-                            {
-                                foreach (var entry in BuildSettingsMenuState(settingsScreen, inRun: false))
-                                    result[entry.Key] = entry.Value;
-                            }
-                            else
-                            {
-                                var profileScreen = FindFirst<NProfileScreen>(tree.Root);
-                                if (profileScreen != null && IsNodeVisible(profileScreen))
-                                {
-                                    result["menu_screen"] = "profile_select";
-                                    result["message"] = "Profile select screen.";
-                                    result["current_profile_id"] = SaveManager.Instance?.CurrentProfileId;
-
-                                    var options = new List<Dictionary<string, object?>>();
-                                    var buttons = GetInstanceFieldValue(profileScreen, "_profileButtons") as System.Collections.IEnumerable;
-                                    if (buttons != null)
-                                    {
-                                        foreach (var btn in buttons)
-                                        {
-                                            var btnId = GetInstanceFieldValue(btn, "_profileId");
-                                            if (btnId is int id)
-                                            {
-                                                var enabled = btn.GetType().GetProperty("IsEnabled")?.GetValue(btn) as bool?;
-                                                options.Add(new Dictionary<string, object?>(StringComparer.Ordinal)
-                                                {
-                                                    ["name"] = $"profile_{id}",
-                                                    ["enabled"] = enabled ?? true
-                                                });
-                                            }
-                                        }
-                                    }
-
-                                    var backBtn = GetInstanceFieldValue(profileScreen, "_backButton")
-                                        ?? FindFirst<NBackButton>(profileScreen);
-                                    if (backBtn is NClickableControl backClickable && IsNodeVisible(backClickable))
-                                    {
-                                        options.Add(new Dictionary<string, object?>(StringComparer.Ordinal)
-                                        {
-                                            ["name"] = "back",
-                                            ["enabled"] = backClickable.IsEnabled
-                                        });
-                                    }
-
-                                    if (options.Count > 0)
-                                        result["options"] = options;
-                                }
-                            }
-                            if (!result.ContainsKey("menu_screen"))
-                            {
-                                result["menu_screen"] = "main";
-                                result["message"] = "Main menu.";
-
-                                var mainMenu = FindFirst<NMainMenu>(tree.Root);
-                                if (mainMenu != null)
-                                {
-                                    var options = new List<string>();
-                                    var blockedOptions = new List<Dictionary<string, object?>>();
-                                    var fields = new[] { "_continueButton", "_abandonRunButton", "_singleplayerButton", "_multiplayerButton", "_compendiumButton", "_timelineButton", "_settingsButton", "_quitButton" };
-                                    var labels = new[] { "continue", "abandon_run", "singleplayer", "multiplayer", "compendium", "timeline", "settings", "quit" };
-                                    var unrevealedEpochs = GetProgressEpochIdsByState("Obtained", "ObtainedNoSlot");
-                                    for (int i = 0; i < fields.Length; i++)
-                                    {
-                                        TryDo($"menu.main.options.{labels[i]}", () =>
-                                        {
-                                            var btn = GetInstanceFieldValue(mainMenu, fields[i]);
-                                            if (btn is NClickableControl clickable &&
-                                                clickable.IsEnabled &&
-                                                clickable.Visible &&
-                                                clickable.IsVisibleInTree())
-                                            {
-                                                options.Add(labels[i]);
-                                            }
-                                        });
-                                    }
-                                    if (options.Count > 0)
-                                        result["options"] = options;
-                                    if (blockedOptions.Count > 0)
-                                        result["blocked_options"] = blockedOptions;
-
-                                    // A finished run leaves its epochs obtained-but-unrevealed,
-                                    // and the main menu hides `singleplayer` until they are
-                                    // revealed. Say so, and name the action that clears it.
-                                    if (unrevealedEpochs.Count > 0)
-                                    {
-                                        result["pending_epoch_ids"] = unrevealedEpochs;
-                                        result["message"] =
-                                            $"Main menu. {unrevealedEpochs.Count} epoch(s) obtained but not revealed - "
-                                            + "the singleplayer option stays hidden until they are. "
-                                            + "Run the 'timeline_reveal_epochs' action (repeat until done) to clear this.";
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            } // close if (!result.ContainsKey("menu_screen"))
-            else
-            {
-                result["message"] = "No run in progress.";
-            }
-
-            return result;
-        }
+            return BuildNoRunState(result, tree);
 
         var runState = RunManager.Instance.DebugOnlyGetState();
         if (runState == null)
@@ -840,6 +560,300 @@ public static partial class McpMod
         AddResolvingState(result, result.GetValueOrDefault("state_type")?.ToString());
 
         return result;
+    }
+
+    /// <summary>The state for a game with no run in progress: whichever menu screen is up.</summary>
+    private static Dictionary<string, object?> BuildNoRunState(
+        Dictionary<string, object?> result, SceneTree? tree)
+    {
+        result["state_type"] = "menu";
+
+        // Detect which menu screen is active
+        if (tree?.Root != null)
+            AppendMenuScreenState(result, tree.Root);
+        else
+            result["message"] = "No run in progress.";
+
+        return result;
+    }
+
+    private static void AppendMenuScreenState(Dictionary<string, object?> result, Node root)
+    {
+        // Custom run setup screen (seed / ascension / modifiers + its own
+        // character buttons). It is a submenu pushed over the singleplayer
+        // or multiplayer-host submenu, and it is NOT an NCharacterSelectScreen,
+        // so it needs its own detection before either of those.
+        if (!result.ContainsKey("menu_screen"))
+        {
+            var customRun = FindFirst<NCustomRunScreen>(root);
+            if (customRun != null && IsNodeVisible(customRun))
+                AddCustomRunMenuState(result, customRun);
+        }
+
+        AppendGameModeSubmenuState(result, root);
+        AppendJoinLoadAndCustomMenuState(result, root);
+        AppendCharacterOrOtherMenuState(result, root);
+    }
+
+    private static void AppendGameModeSubmenuState(Dictionary<string, object?> result, Node root)
+    {
+        // Check for singleplayer submenu (Standard / Daily / Custom)
+        var spSubmenu = FindFirst<NSingleplayerSubmenu>(root);
+        if (spSubmenu != null && IsNodeVisible(spSubmenu))
+        {
+            result["menu_screen"] = "singleplayer";
+            result["message"] = "Select game mode.";
+            result["options"] = BuildGameModeOptions(spSubmenu, "menu.singleplayer");
+            return;
+        }
+
+        // Check for multiplayer host submenu (Standard / Daily / Custom for multiplayer)
+        var mpHostSubmenu = FindFirst<NMultiplayerHostSubmenu>(root);
+        if (mpHostSubmenu != null && IsNodeVisible(mpHostSubmenu))
+        {
+            result["menu_screen"] = "multiplayer_host";
+            result["message"] = "Multiplayer host: select game mode.";
+            result["options"] = BuildGameModeOptions(mpHostSubmenu, "menu.multiplayer_host");
+            return;
+        }
+
+        AppendMultiplayerSubmenuState(result, root);
+    }
+
+    /// <summary>The standard/daily/custom buttons both game-mode submenus show.</summary>
+    private static List<Dictionary<string, object?>> BuildGameModeOptions(
+        object submenu, string context)
+    {
+        var modeOptions = new List<Dictionary<string, object?>>();
+        var modeFields = new[] { ("_standardButton", "standard"), ("_dailyButton", "daily"), ("_customButton", "custom") };
+        foreach (var (fieldName, label) in modeFields)
+        {
+            TryDo($"{context}.options.{label}",
+                () => AppendButtonOption(modeOptions, submenu, fieldName, label));
+        }
+        AddMenuOptionIfVisible(modeOptions, submenu, "_backButton", "back");
+        return modeOptions;
+    }
+
+    /// <summary>
+    /// Adds one option for a named button, when that button exists and is showing. A
+    /// control that does not expose IsEnabled counts as enabled.
+    /// </summary>
+    private static void AppendButtonOption(
+        List<Dictionary<string, object?>> options,
+        object owner,
+        string field,
+        string name)
+    {
+        var btn = GetInstanceFieldValue(owner, field);
+        if (btn is not Control ctrl || !IsNodeVisible(ctrl))
+            return;
+        var isEnabled = btn.GetType().GetProperty("IsEnabled")?.GetValue(btn) as bool?;
+        options.Add(new Dictionary<string, object?>(StringComparer.Ordinal)
+        {
+            ["name"] = name,
+            ["enabled"] = isEnabled ?? true
+        });
+    }
+
+    private static void AppendMultiplayerSubmenuState(
+        Dictionary<string, object?> result, Node root)
+    {
+        // Check for multiplayer submenu (Host / Join / Load / Abandon)
+        var mpSubmenu = FindFirst<NMultiplayerSubmenu>(root);
+        if (mpSubmenu == null || !IsNodeVisible(mpSubmenu))
+            return;
+
+        result["menu_screen"] = "multiplayer";
+        result["message"] = "Multiplayer menu.";
+
+        var mpOptions = new List<Dictionary<string, object?>>();
+        var mpFields = new[] { ("_hostButton", "host"), ("_joinButton", "join"), ("_loadButton", "load"), ("_abandonButton", "abandon") };
+        foreach (var (fieldName, label) in mpFields)
+        {
+            TryDo($"menu.multiplayer.options.{label}",
+                () => AppendButtonOption(mpOptions, mpSubmenu, fieldName, label));
+        }
+        AddMenuOptionIfVisible(mpOptions, mpSubmenu, "_backButton", "back");
+        result["options"] = mpOptions;
+    }
+
+    private static void AppendJoinLoadAndCustomMenuState(
+        Dictionary<string, object?> result, Node root)
+    {
+        // Multiplayer Join Friend screen (lives in the same submenu stack as
+        // NMultiplayerSubmenu; pushed when the user clicks "join")
+        if (!result.ContainsKey("menu_screen"))
+        {
+            var joinScreen = FindFirst<NJoinFriendScreen>(root);
+            if (joinScreen != null && IsNodeVisible(joinScreen))
+                AddMultiplayerJoinMenuState(result, joinScreen);
+        }
+
+        // Multiplayer Load lobby — resume saved MP run. Pushed by NMultiplayerSubmenu
+        // when "load" is clicked (host) or by JoinFlow when joining a save in progress (client).
+        if (!result.ContainsKey("menu_screen"))
+        {
+            var loadLobby = FindFirst<NMultiplayerLoadGameScreen>(root);
+            if (loadLobby != null && IsNodeVisible(loadLobby))
+                AddMultiplayerLoadLobbyMenuState(result, loadLobby);
+        }
+
+        // Custom mode setup screen (reached via singleplayer/multiplayer-host
+        // "custom"). It replaces the normal character select and adds a seed
+        // field and run modifiers, so detect it before the plain char select.
+        if (!result.ContainsKey("menu_screen"))
+        {
+            var customRun = FindFirst<NCustomRunScreen>(root);
+            if (customRun != null && IsNodeVisible(customRun))
+                AddCustomRunMenuState(result, customRun);
+        }
+    }
+
+    private static void AppendCharacterOrOtherMenuState(
+        Dictionary<string, object?> result, Node root)
+    {
+        // Check for character select screen
+        if (result.ContainsKey("menu_screen"))
+            return;
+
+        var charSelect = FindFirst<NCharacterSelectScreen>(root);
+        if (charSelect != null && IsNodeVisible(charSelect))
+        {
+            AddCharacterSelectMenuState(result, charSelect);
+            return;
+        }
+
+        AppendOtherMenuScreens(result, root);
+        if (!result.ContainsKey("menu_screen"))
+            AppendMainMenuState(result, root);
+    }
+
+    private static void AppendOtherMenuScreens(Dictionary<string, object?> result, Node root)
+    {
+        // Check for other screens
+        var timelineScreen = FindFirst<NTimelineScreen>(root);
+        var compendiumSubmenu = FindFirst<NCompendiumSubmenu>(root);
+        var settingsScreen = FindFirst<NSettingsScreen>(root);
+
+        if (timelineScreen != null && IsNodeVisible(timelineScreen))
+        {
+            result["menu_screen"] = "timeline";
+            result["message"] = "Timeline screen.";
+            result["options"] = new List<Dictionary<string, object?>>
+            {
+                new(StringComparer.Ordinal) { ["name"] = "advance", ["enabled"] = true },
+                new(StringComparer.Ordinal) { ["name"] = "back", ["enabled"] = true }
+            };
+
+            // Read epochs from ProgressState (stable, not hover-dependent)
+            foreach (var entry in BuildTimelineEpochState())
+                result[entry.Key] = entry.Value;
+        }
+        else if (compendiumSubmenu != null && IsNodeVisible(compendiumSubmenu))
+        {
+            result["menu_screen"] = "compendium";
+            result["message"] = "Compendium screen.";
+        }
+        else if (settingsScreen != null && IsNodeVisible(settingsScreen))
+        {
+            foreach (var entry in BuildSettingsMenuState(settingsScreen, inRun: false))
+                result[entry.Key] = entry.Value;
+        }
+        else
+        {
+            AppendProfileSelectState(result, root);
+        }
+    }
+
+    private static void AppendProfileSelectState(Dictionary<string, object?> result, Node root)
+    {
+        var profileScreen = FindFirst<NProfileScreen>(root);
+        if (profileScreen == null || !IsNodeVisible(profileScreen))
+            return;
+
+        result["menu_screen"] = "profile_select";
+        result["message"] = "Profile select screen.";
+        result["current_profile_id"] = SaveManager.Instance?.CurrentProfileId;
+
+        var options = new List<Dictionary<string, object?>>();
+        var buttons = GetInstanceFieldValue(profileScreen, "_profileButtons") as System.Collections.IEnumerable;
+        if (buttons != null)
+        {
+            foreach (var btn in buttons)
+            {
+                var btnId = GetInstanceFieldValue(btn, "_profileId");
+                if (btnId is int id)
+                {
+                    var enabled = btn.GetType().GetProperty("IsEnabled")?.GetValue(btn) as bool?;
+                    options.Add(new Dictionary<string, object?>(StringComparer.Ordinal)
+                    {
+                        ["name"] = $"profile_{id}",
+                        ["enabled"] = enabled ?? true
+                    });
+                }
+            }
+        }
+
+        var backBtn = GetInstanceFieldValue(profileScreen, "_backButton")
+            ?? FindFirst<NBackButton>(profileScreen);
+        if (backBtn is NClickableControl backClickable && IsNodeVisible(backClickable))
+        {
+            options.Add(new Dictionary<string, object?>(StringComparer.Ordinal)
+            {
+                ["name"] = "back",
+                ["enabled"] = backClickable.IsEnabled
+            });
+        }
+
+        if (options.Count > 0)
+            result["options"] = options;
+    }
+
+    private static void AppendMainMenuState(Dictionary<string, object?> result, Node root)
+    {
+        result["menu_screen"] = "main";
+        result["message"] = "Main menu.";
+
+        var mainMenu = FindFirst<NMainMenu>(root);
+        if (mainMenu == null)
+            return;
+
+        var options = new List<string>();
+        var blockedOptions = new List<Dictionary<string, object?>>();
+        var fields = new[] { "_continueButton", "_abandonRunButton", "_singleplayerButton", "_multiplayerButton", "_compendiumButton", "_timelineButton", "_settingsButton", "_quitButton" };
+        var labels = new[] { "continue", "abandon_run", "singleplayer", "multiplayer", "compendium", "timeline", "settings", "quit" };
+        var unrevealedEpochs = GetProgressEpochIdsByState("Obtained", "ObtainedNoSlot");
+        for (int i = 0; i < fields.Length; i++)
+        {
+            TryDo($"menu.main.options.{labels[i]}", () =>
+            {
+                var btn = GetInstanceFieldValue(mainMenu, fields[i]);
+                if (btn is NClickableControl clickable &&
+                    clickable.IsEnabled &&
+                    clickable.Visible &&
+                    clickable.IsVisibleInTree())
+                {
+                    options.Add(labels[i]);
+                }
+            });
+        }
+        if (options.Count > 0)
+            result["options"] = options;
+        if (blockedOptions.Count > 0)
+            result["blocked_options"] = blockedOptions;
+
+        // A finished run leaves its epochs obtained-but-unrevealed,
+        // and the main menu hides `singleplayer` until they are
+        // revealed. Say so, and name the action that clears it.
+        if (unrevealedEpochs.Count > 0)
+        {
+            result["pending_epoch_ids"] = unrevealedEpochs;
+            result["message"] =
+                $"Main menu. {unrevealedEpochs.Count} epoch(s) obtained but not revealed - "
+                + "the singleplayer option stays hidden until they are. "
+                + "Run the 'timeline_reveal_epochs' action (repeat until done) to clear this.";
+        }
     }
 
     /// <summary>
