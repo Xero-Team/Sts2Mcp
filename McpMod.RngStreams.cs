@@ -403,7 +403,7 @@ public static partial class McpMod
         }
         catch (Exception ex)
         {
-            SendError(response, 500, $"Failed to build relic bags: {ex.Message}");
+            SendError(response, 500, $"Failed to build relic bags: {ex.Message}", "relicbag_build_failed");
         }
     }
 

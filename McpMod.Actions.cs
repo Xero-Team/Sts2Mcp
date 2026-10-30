@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json;
 using MegaCrit.Sts2.Core.Nodes.Cards;
@@ -55,16 +55,16 @@ public static partial class McpMod
     private static Dictionary<string, object?> ExecuteAction(string action, Dictionary<string, JsonElement> data)
     {
         if (!RunManager.Instance.IsInProgress)
-            return Error("No run in progress");
+            return Error("No run in progress", "run_not_in_progress");
 
         var runState = RunManager.Instance.DebugOnlyGetState()!;
         var player = LocalContext.GetMe(runState);
         if (player == null)
-            return Error("Could not find local player");
+            return Error("Could not find local player", "local_player_unavailable");
 
         var tree = (Godot.Engine.GetMainLoop()) as SceneTree;
         if (tree?.Root != null && IsAnyFtueVisible(tree.Root))
-            return Error("Blocking popup active. Use menu_select with one of the advertised popup options before gameplay actions.");
+            return Error("Blocking popup active. Use menu_select with one of the advertised popup options before gameplay actions.", "blocking_popup_active");
 
         var covered = RunSubmenuBlockingError(tree, action);
         if (covered != null)
@@ -120,7 +120,7 @@ public static partial class McpMod
             "debug_gain_max_hp" => ExecuteDebugGainMaxHp(player, data),
             "debug_upgrade_deck" => ExecuteDebugUpgradeDeck(player),
             "return_to_main_menu" => ExecuteReturnToMainMenu(),
-            _ => Error($"Unknown action: {action}")
+            _ => Error($"Unknown action: {action}", "unknown_action")
         };
     }
 
@@ -662,6 +662,8 @@ public static partial class McpMod
         var potion = player.GetPotionAtSlotIndex(slot);
         if (potion == null)
             return Error(DescribeEmptyPotionSlot(player, slot));
+        if (potion.IsQueued)
+            return Error($"Potion '{SafeGetText(() => potion.Title)}' is already queued and cannot be discarded");
 
         string potionName = SafeGetText(() => potion.Title) ?? "unknown";
         // The potion popup's discard button (NPotionPopup.OnDiscardButtonPressed) goes through a
@@ -686,7 +688,9 @@ public static partial class McpMod
         if (!TryGetIntParam(data, out int index, "index", "option_index"))
             return MissingIntParam("event option index", "index", "option_index");
 
-        var buttons = FindAll<NEventOptionButton>(uiRoom);
+        var buttons = FindAll<NEventOptionButton>(uiRoom)
+            .Where(button => button.Visible && button.IsVisibleInTree())
+            .ToList();
 
         if (buttons.Count == 0)
             return Error("No event options available");
@@ -716,6 +720,7 @@ public static partial class McpMod
             return Error($"Event option {index} is not clickable right now - a choice is already resolving");
 
         string title = SafeGetText(() => option.Title) ?? "option";
+
         button.ForceClick();
 
         return new Dictionary<string, object?>
@@ -812,6 +817,7 @@ public static partial class McpMod
             return Error($"Rest option [{index}] {option.OptionId} is not clickable right now - an option is already resolving");
 
         string optionName = SafeGetText(() => option.Title) ?? option.OptionId;
+
         button.ForceClick();
 
         return new Dictionary<string, object?>
@@ -1059,6 +1065,7 @@ public static partial class McpMod
         var error = _rewardSession.Resolve(rewardId, index, revision, out var entry);
         if (error != null) return Error(error);
         var button = enabledButtons.First(b => ReferenceEquals(b.Reward, entry!.Key));
+
         var reward = button.Reward!;
         string rewardDesc = GetRewardTypeName(reward);
         if (reward is GoldReward g)
@@ -1100,7 +1107,9 @@ public static partial class McpMod
         if (!TryGetIntParam(data, out int cardIndex, "card_index", "index"))
             return MissingIntParam("index of the offered card", "card_index", "index");
 
-        var cardHolders = FindAllSortedByPosition<NCardHolder>(cardScreen);
+        var cardHolders = FindAllSortedByPosition<NCardHolder>(cardScreen)
+            .Where(holder => holder.CardModel != null && holder.Visible && holder.IsVisibleInTree())
+            .ToList();
         if (cardIndex < 0 || cardIndex >= cardHolders.Count)
             return Error($"Card index {cardIndex} out of range (screen has {cardHolders.Count} cards)");
 
@@ -1224,7 +1233,7 @@ public static partial class McpMod
         if (overlay is NRewardsScreen rewardsScreen)
         {
             var btn = FindFirst<NProceedButton>(rewardsScreen);
-            if (btn is { IsEnabled: true })
+            if (btn != null && IsControlVisibleOrActionable(btn))
             {
                 btn.ForceClick();
                 return new Dictionary<string, object?> { ["status"] = "ok", ["message"] = "Proceeding from rewards" };
@@ -1232,7 +1241,7 @@ public static partial class McpMod
         }
 
         // Try rest site
-        if (NRestSiteRoom.Instance is { } restRoom && restRoom.ProceedButton.IsEnabled)
+        if (NRestSiteRoom.Instance is { } restRoom && IsControlVisibleOrActionable(restRoom.ProceedButton))
         {
             restRoom.ProceedButton.ForceClick();
             return new Dictionary<string, object?> { ["status"] = "ok", ["message"] = "Proceeding from rest site" };
@@ -1251,7 +1260,7 @@ public static partial class McpMod
                     ["message"] = "Closing shop inventory; call proceed again to leave the shop room"
                 };
             }
-            if (merchRoom.ProceedButton.IsEnabled)
+            if (IsControlVisibleOrActionable(merchRoom.ProceedButton))
             {
                 merchRoom.ProceedButton.ForceClick();
                 return new Dictionary<string, object?> { ["status"] = "ok", ["message"] = "Proceeding from shop" };
@@ -1267,16 +1276,16 @@ public static partial class McpMod
                 var fmInventory = FindFirst<NMerchantInventory>(fmNode);
                 if (fmInventory is { IsOpen: true })
                 {
-                    if (!TryCloseMerchantInventory(fmInventory))
-                        return Error("Fake merchant inventory is open but could not be closed");
-                    return new Dictionary<string, object?>
-                    {
-                        ["status"] = "ok",
-                        ["message"] = "Closing fake merchant inventory; call proceed again to leave the event"
-                    };
+                if (!TryCloseMerchantInventory(fmInventory))
+                    return Error("Fake merchant inventory is open but could not be closed");
+                return new Dictionary<string, object?>
+                {
+                    ["status"] = "ok",
+                    ["message"] = "Closing fake merchant inventory; call proceed again to leave the event"
+                };
                 }
                 var proceedBtn = FindFirst<NProceedButton>(fmNode);
-                if (proceedBtn is { IsEnabled: true })
+                if (proceedBtn != null && IsControlVisibleOrActionable(proceedBtn))
                 {
                     proceedBtn.ForceClick();
                     return new Dictionary<string, object?> { ["status"] = "ok", ["message"] = "Proceeding from fake merchant" };
@@ -1287,7 +1296,7 @@ public static partial class McpMod
         // Try treasure room
         var treasureUI = FindFirst<NTreasureRoom>(
             ((Godot.SceneTree)Godot.Engine.GetMainLoop()).Root);
-        if (treasureUI != null && treasureUI.ProceedButton.IsEnabled)
+        if (treasureUI != null && IsControlVisibleOrActionable(treasureUI.ProceedButton))
         {
             treasureUI.ProceedButton.ForceClick();
             return new Dictionary<string, object?> { ["status"] = "ok", ["message"] = "Proceeding from treasure room" };
@@ -1348,6 +1357,7 @@ public static partial class McpMod
                     }
                     return confirmResult;
                 }
+
             }
 
             var grid = FindFirst<NCardGrid>(gridScreen);
@@ -1363,6 +1373,7 @@ public static partial class McpMod
                 return Error("A selection preview is open - use confirm_selection to apply it, or cancel_selection to go back to the grid");
 
             var holders = FindAllSortedByPosition<NGridCardHolder>(gridScreen);
+
             if (index < 0 || index >= holders.Count)
                 return Error($"Card index {index} out of range ({holders.Count} cards available)");
 
@@ -1454,7 +1465,9 @@ public static partial class McpMod
         }
         else if (overlay is NChooseACardSelectionScreen chooseScreen)
         {
-            var holders = FindAllSortedByPosition<NGridCardHolder>(chooseScreen);
+            var holders = FindAllSortedByPosition<NGridCardHolder>(chooseScreen)
+                .Where(holder => holder.CardModel != null)
+                .ToList();
             if (index < 0 || index >= holders.Count)
                 return Error($"Card index {index} out of range ({holders.Count} cards available)");
 
@@ -1467,6 +1480,11 @@ public static partial class McpMod
                 return Error("Choose-a-card screen is still inside its 350ms opening deadzone - retry once card_select.can_select is true");
 
             var holder = holders[index];
+            if (holder.CardModel == null)
+                return Error($"Card index {index} does not contain a card");
+            if (!IsCardHolderSelectable(holder))
+                return Error($"Card index {index} is not selectable");
+
             string cardName = SafeGetText(() => holder.CardModel?.Title) ?? "unknown";
             holder.EmitSignal(NCardHolder.SignalName.Pressed, holder);
 
@@ -1521,6 +1539,7 @@ public static partial class McpMod
                 return Error(selectedCount is 0
                     ? "The preview is empty - cancel_selection to go back to the grid and select at least one card"
                     : "The preview's confirm did nothing - the screen would not accept the current selection");
+
             }
 
             return new Dictionary<string, object?>
@@ -1562,6 +1581,7 @@ public static partial class McpMod
         // The screen takes itself off the overlay stack the moment it completes, so a stack
         // that no longer has it on top is the proof that the press landed.
         if (!IsCardSelectScreenStillOpen(screen))
+
         {
             return new Dictionary<string, object?>
             {
@@ -1600,7 +1620,7 @@ public static partial class McpMod
         if (overlay is NChooseACardSelectionScreen chooseScreen)
         {
             var skipButton = chooseScreen.GetNodeOrNull<NClickableControl>("SkipButton");
-            if (skipButton is { IsEnabled: true })
+            if (IsControlVisibleOrActionable(skipButton))
             {
                 skipButton.ForceClick();
                 return new Dictionary<string, object?>
@@ -1635,7 +1655,7 @@ public static partial class McpMod
 
         // Close the screen entirely
         var closeButton = screen.GetNodeOrNull<NBackButton>("%Close");
-        if (closeButton is { IsEnabled: true })
+        if (IsControlVisibleOrActionable(closeButton))
         {
             closeButton.ForceClick();
             return new Dictionary<string, object?>
@@ -1661,7 +1681,12 @@ public static partial class McpMod
         if (previewContainer?.Visible == true)
             return Error("A bundle preview is already open - confirm or cancel it first");
 
-        var bundles = FindAll<NCardBundle>(screen);
+        var bundles = FindAll<NCardBundle>(screen)
+            .Where(bundle => bundle.Visible
+                             && bundle.IsVisibleInTree()
+                             && bundle.Hitbox.IsEnabled
+                             && IsNodeVisible(bundle.Hitbox))
+            .ToList();
         if (index < 0 || index >= bundles.Count)
             return Error($"Bundle index {index} out of range ({bundles.Count} bundles available)");
 
@@ -1680,7 +1705,7 @@ public static partial class McpMod
             return Error("No bundle selection screen is open");
 
         var confirmButton = screen.GetNodeOrNull<NConfirmButton>("%Confirm");
-        if (confirmButton is not { IsEnabled: true })
+        if (!IsControlVisibleOrActionable(confirmButton))
             return Error("Bundle confirm button is not enabled");
 
         confirmButton.ForceClick();
@@ -1698,7 +1723,7 @@ public static partial class McpMod
             return Error("No bundle selection screen is open");
 
         var cancelButton = screen.GetNodeOrNull<NBackButton>("%Cancel");
-        if (cancelButton is not { IsEnabled: true })
+        if (!IsControlVisibleOrActionable(cancelButton))
             return Error("Bundle cancel button is not enabled");
 
         cancelButton.ForceClick();
@@ -1723,6 +1748,11 @@ public static partial class McpMod
             return Error($"Card index {index} out of range ({holders.Count} selectable cards)");
 
         var holder = holders[index];
+        if (holder.CardModel == null)
+            return Error($"Card index {index} does not contain a card");
+        if (!IsCardHolderSelectable(holder))
+            return Error($"Card index {index} is not selectable");
+
         string cardName = SafeGetText(() => holder.CardModel?.Title) ?? "unknown";
 
         // Emit the Pressed signal - same path the game UI uses
@@ -1742,7 +1772,7 @@ public static partial class McpMod
             return Error("No in-combat card selection is active");
 
         var confirmBtn = hand.GetNodeOrNull<NConfirmButton>("%SelectModeConfirmButton");
-        if (confirmBtn == null || !confirmBtn.IsEnabled)
+        if (!IsControlVisibleOrActionable(confirmBtn))
             return Error("Confirm button is not enabled - select more cards first");
 
         confirmBtn.ForceClick();
@@ -1763,7 +1793,9 @@ public static partial class McpMod
         if (!TryGetIntParam(data, out int index, "index", "relic_index"))
             return MissingIntParam("relic index", "index", "relic_index");
 
-        var holders = FindAll<NRelicBasicHolder>(screen);
+        var holders = FindAll<NRelicBasicHolder>(screen)
+            .Where(holder => holder.Relic?.Model != null && holder.IsEnabled && holder.Visible && holder.IsVisibleInTree())
+            .ToList();
         if (index < 0 || index >= holders.Count)
             return Error($"Relic index {index} out of range ({holders.Count} relics available)");
 
@@ -1785,7 +1817,7 @@ public static partial class McpMod
             return Error("No relic selection screen is open");
 
         var skipButton = screen.GetNodeOrNull<NClickableControl>("SkipButton");
-        if (skipButton is not { IsEnabled: true })
+        if (skipButton is not { IsEnabled: true, Visible: true } || !skipButton.IsVisibleInTree())
             return Error("No skip option available");
 
         skipButton.ForceClick();
@@ -1812,7 +1844,7 @@ public static partial class McpMod
             return MissingIntParam("relic index", "index", "relic_index");
 
         var holders = FindAll<NTreasureRoomRelicHolder>(relicCollection)
-            .Where(h => h.IsEnabled && h.Visible)
+            .Where(h => h.IsEnabled && h.Visible && h.IsVisibleInTree())
             .ToList();
 
         if (index < 0 || index >= holders.Count)
@@ -1848,7 +1880,7 @@ public static partial class McpMod
 
         if (button == null)
             return Error($"Unknown Crystal Sphere tool: {tool}");
-        if (!button.Visible || !button.IsEnabled)
+        if (!button.Visible || !button.IsVisibleInTree() || !button.IsEnabled)
             return Error($"Crystal Sphere tool '{tool}' is not available");
 
         button.ForceClick();
@@ -1877,7 +1909,7 @@ public static partial class McpMod
             .FirstOrDefault(c => c.Entity.X == x && c.Entity.Y == y);
         if (cell == null)
             return Error($"Crystal Sphere cell ({x}, {y}) was not found");
-        if (!cell.Entity.IsHidden || !cell.Visible)
+        if (!cell.Entity.IsHidden || !cell.Visible || !cell.IsVisibleInTree())
             return Error($"Crystal Sphere cell ({x}, {y}) is not clickable");
 
         cell.EmitSignal(NClickableControl.SignalName.Released, cell);
@@ -2127,7 +2159,7 @@ public static partial class McpMod
         // An empty option is allowed when there is another instruction to carry out
         // (currently: setting the ascension level on character select).
         if (string.IsNullOrEmpty(option) && ascension == null)
-            return Error("Missing menu option");
+            return Error("Missing menu option", "missing_menu_option");
 
         var tree = (Engine.GetMainLoop()) as SceneTree;
         if (tree?.Root == null)
@@ -2457,12 +2489,24 @@ public static partial class McpMod
                 _ => null
             };
             if (menuFieldName == null)
-                return Error($"Unknown menu option: {option}");
+                return Error($"Unknown menu option: {option}", "unknown_menu_option");
 
             return ClickMenuButtonField(mainMenu, menuFieldName, $"Selected {option}", $"Option '{option}' is not available");
         }
 
-        return Error("Not on a menu screen");
+        return Error("Not on a menu screen", "not_on_menu");
+    }
+
+    private static Dictionary<string, object?> TimelineUnlocksNeedManualRevealFromOpenTimeline(List<string> unrevealedEpochs)
+    {
+        return new Dictionary<string, object?>
+        {
+            ["status"] = "ok",
+            ["message"] = "Timeline has obtained epochs without visible slots; no revealable epoch slot is available through automation",
+            ["pending_epoch_ids"] = unrevealedEpochs,
+            ["manual_action_required"] = true,
+            ["done"] = true
+        };
     }
 
     private static Dictionary<string, object?> ExecutePopupOption(

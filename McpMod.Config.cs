@@ -12,6 +12,8 @@ public static partial class McpMod
 {
     public const int DefaultPort = 15526;
     private const string ConfigFileName = "STS2_MCP.conf";
+    private const string DotEnvFileName = ".env";
+    private const string PortEnvVar = "STS2_PORT";
 
     /// <summary>
     /// Values read from STS2_MCP.conf. Every field has a safe default so a
@@ -89,13 +91,136 @@ public static partial class McpMod
     }
 
     /// <summary>
-    /// Lets a launch argument override the configured port, so several game
-    /// processes can run side by side without editing the file.
+    /// Resolves the listening port. This is the ONLY port resolver in the mod; the
+    /// dotenv support the AI-Ascension fork added lives here rather than in a second
+    /// loader. Precedence, highest first:
+    ///
+    ///   1. the <c>--sts2-mcp-port=&lt;port&gt;</c> launch argument (McpPortResolver)
+    ///   2. dotenv: <c>STS2_PORT</c> in the process environment, then <c>.env</c> next to
+    ///      STS2_MCP.dll, then <c>.env</c> in the game's current directory
+    ///   3. the <c>port</c> key of STS2_MCP.conf
+    ///   4. <see cref="DefaultPort"/> (15526)
+    ///
+    /// A malformed value at any level is logged and skipped so the next source wins.
     /// </summary>
     private static ModConfig WithResolvedPort(ModConfig config)
     {
-        config.Port = McpPortResolver.Resolve(Godot.OS.GetCmdlineArgs(), config.Port);
+        int configuredPort = config.Port;
+        if (TryResolveDotEnvPort(out int dotEnvPort))
+            configuredPort = dotEnvPort;
+
+        config.Port = McpPortResolver.Resolve(Godot.OS.GetCmdlineArgs(), configuredPort);
         return config;
+    }
+
+    private static bool TryResolveDotEnvPort(out int port)
+    {
+        if (TryLoadPortFromEnvironment(out port))
+            return true;
+
+        string? modDir = Path.GetDirectoryName(
+            System.Reflection.Assembly.GetExecutingAssembly().Location);
+
+        return TryLoadPortFromDotEnv(modDir, out port);
+    }
+
+    private static bool TryLoadPortFromEnvironment(out int port)
+    {
+        var configured = System.Environment.GetEnvironmentVariable(PortEnvVar);
+        if (string.IsNullOrWhiteSpace(configured))
+        {
+            port = 0;
+            return false;
+        }
+
+        return TryParseConfiguredPort(configured, PortEnvVar, out port);
+    }
+
+    private static bool TryLoadPortFromDotEnv(string? modDir, out int port)
+    {
+        foreach (var envPath in GetDotEnvPaths(modDir))
+        {
+            try
+            {
+                if (!File.Exists(envPath))
+                    continue;
+
+                foreach (var line in File.ReadLines(envPath))
+                {
+                    var stripped = line.Trim();
+                    if (stripped.Length == 0
+                        || stripped.StartsWith("#", StringComparison.Ordinal)
+                        || !stripped.Contains('='))
+                        continue;
+
+                    var separator = stripped.IndexOf('=');
+                    var key = stripped[..separator].Trim();
+                    if (key.StartsWith("export ", StringComparison.Ordinal))
+                        key = key["export ".Length..].Trim();
+
+                    if (!string.Equals(key, PortEnvVar, StringComparison.Ordinal))
+                        continue;
+
+                    var value = ParseDotEnvValue(stripped[(separator + 1)..]);
+                    return TryParseConfiguredPort(value, $"{envPath}:{PortEnvVar}", out port);
+                }
+            }
+            catch (Exception ex) when (ex is UnauthorizedAccessException or IOException)
+            {
+                GD.PrintErr($"[STS2 MCP] Failed to read {envPath}: {ex.Message}");
+            }
+        }
+
+        port = 0;
+        return false;
+    }
+
+    private static IEnumerable<string> GetDotEnvPaths(string? modDir)
+    {
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+
+        if (!string.IsNullOrWhiteSpace(modDir))
+        {
+            var modEnvPath = Path.Combine(modDir, DotEnvFileName);
+            if (seen.Add(modEnvPath))
+                yield return modEnvPath;
+        }
+
+        var cwdEnvPath = Path.Combine(System.Environment.CurrentDirectory, DotEnvFileName);
+        if (seen.Add(cwdEnvPath))
+            yield return cwdEnvPath;
+    }
+
+    /// <summary>
+    /// Reads one dotenv value: a quoted value ends at its closing quote and may contain
+    /// <c>#</c>; an unquoted value ends at a <c>#</c> comment.
+    /// </summary>
+    private static string ParseDotEnvValue(string rawValue)
+    {
+        var value = rawValue.Trim();
+        if (value.Length >= 2 && (value[0] == '\'' || value[0] == '"'))
+        {
+            var quote = value[0];
+            var closingQuoteIndex = value.IndexOf(quote, 1);
+            if (closingQuoteIndex != -1)
+                return value[1..closingQuoteIndex];
+        }
+
+        var commentIndex = value.IndexOf('#');
+        if (commentIndex >= 0)
+            value = value[..commentIndex].TrimEnd();
+
+        return value;
+    }
+
+    private static bool TryParseConfiguredPort(string value, string source, out int port)
+    {
+        if (int.TryParse(value.Trim(), out port) && port is > 0 and <= 65535)
+            return true;
+
+        GD.PrintErr($"[STS2 MCP] Invalid port value from {source}: {value}; using next configured port source");
+        port = 0;
+        return false;
     }
 
     private static void TryWriteDefaultConfig(string configPath, ModConfig config)

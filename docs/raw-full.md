@@ -8,15 +8,36 @@ HTTP API served by the STS2_MCP mod on `localhost:15526`. No authentication. Loc
 - `POST /api/v1/singleplayer` — perform a game action
 - `GET  /api/v1/multiplayer` — read multiplayer game state
 - `POST /api/v1/multiplayer` — perform a multiplayer action
-- `GET  /api/v1/mapdrawings` — read saved map strokes and live node anchors
+- `GET  /api/v1/settings` — read settings and preferences
 - `GET  /api/v1/profile` — read current profile progress
 - `GET  /api/v1/compendium` — read Compendium-shaped profile progress
-- `GET  /api/v1/wiki` — fuzzy-search, or list, card/relic wiki entries
-- `GET  /api/v1/cardpools` — every unlocked card pool in roll order (static per run)
+- `GET  /api/v1/bestiary` — read monster and encounter metadata
+- `GET  /api/v1/glossary/cards` — read active-run card pool metadata
+- `GET  /api/v1/glossary/relics` — read active-run relic pool metadata
+- `GET  /api/v1/glossary/potions` — read active-run potion pool metadata
+- `GET  /api/v1/glossary/keywords` — read active-run keyword metadata
 - `GET  /api/v1/profiles` — list profile slots
 - `POST /api/v1/profiles` — switch or delete profile slots
+- `GET  /api/v1/record` — read combat recorder status
+- `GET  /api/v1/record/inspect` — inspect a recorded combat replay
+- `GET  /api/v1/wiki` — fuzzy-search, or list, card/relic wiki entries
+- `GET  /api/v1/cardpools` — every unlocked card pool in roll order (static per run)
+- `GET  /api/v1/potionpools` — every unlocked potion pool in roll order
+- `GET  /api/v1/relicbag` — the generated relic bag
+- `GET  /api/v1/mapdrawings` — read saved map strokes and live node anchors
 
-The endpoints are mutually exclusive: calling singleplayer during a multiplayer run (or vice versa) returns HTTP 409.
+HTTP error responses include `status: "error"` and `error`; route, validation, read-endpoint, and action failures include `error_code`.
+Route-level failures include `error_code: "method_not_allowed"` for unsupported HTTP methods, `error_code: "not_found"` for unknown paths, and `error_code: "internal_error"` for unexpected top-level handler failures.
+POST validation failures use stable `error_code` values where possible, including `invalid_json`, `missing_action`, `invalid_action_type`, `missing_profile_id`, `invalid_profile_id_type`, and `invalid_action_payload`.
+Action failures include `error_code`; endpoint-specific conflicts keep their specific codes, while older generic action failures use the stable fallback `action_error`.
+Read endpoint startup/data-availability failures use non-2xx structured errors where possible, including `save_manager_unavailable`, `settings_data_unavailable`, and `profile_data_unavailable`.
+Read endpoint exceptions include endpoint-specific `error_code` values such as `settings_read_failed`, `bestiary_build_failed`, `glossary_build_failed`, `profile_build_failed`, `profiles_read_failed`, `compendium_build_failed`, `singleplayer_state_read_failed`, and `multiplayer_state_read_failed`.
+
+`GET /` returns the API index with `status: "ok"`, `kind: "api_index"`, `version`, `endpoint_count`, `bound_prefixes`, and the advertised endpoint list.
+
+Save/path context fields are normalized with forward slashes in JSON responses, including Windows absolute paths.
+
+The singleplayer and multiplayer endpoints are mutually exclusive: calling singleplayer during a multiplayer run (or vice versa) returns HTTP 409. The mismatch response includes `error_code`: `multiplayer_run_active` when singleplayer is called during a multiplayer run, or `not_multiplayer_run` when multiplayer is called outside one.
 
 ---
 
@@ -80,6 +101,8 @@ shared UI state that only the card node writes, so in `powered` mode a draw-pile
 shop or reward card reports whatever the last on-screen render happened to leave
 there. The unpowered path sets the values explicitly before rendering.
 
+Unsupported `format` values return HTTP 400 with `error_code: "invalid_format"` instead of falling back to JSON.
+
 ### Common Top-Level Fields
 
 Every response — `menu` and error-ish states included — carries the build stamp and the game's own
@@ -107,11 +130,17 @@ feature-detect additions by presence and use `schema_version` only to notice a b
   the new `alive` field instead of assuming every entry is a valid target.
 - **1** — initial contract.
 
+Every state JSON response also includes `status: "ok"` and `kind` (`singleplayer_state` or
+`multiplayer_state`), so a client can tell a successful read from an error body without
+inspecting the HTTP status. Active-run states include run, current-run, and local-player context.
+
 Every response except `menu` additionally includes these top-level fields alongside the
 state-specific data:
 
 ```jsonc
 {
+  "status": "ok",
+  "kind": "singleplayer_state",
   "state_type": "...",      // Screen identifier (see sections below)
   "run": {
     "act": 1,               // Current act (1-indexed)
@@ -150,6 +179,19 @@ state-specific data:
     // True if any party Ironclad has UnlockState.NumberOfRuns == 0.
     // Lasting Candy uses this per-player fact, not the shared party maximum.
     "first_run_ironclad_present": false
+  },
+  "current_run": {
+    "is_in_progress": true,
+    "profile_id": 1,
+    "progress_path": "modded/profile1/saves/progress.save",
+    "resolved_progress_path": "C:/Users/timot/AppData/Roaming/SlayTheSpire2/steam/<account>/modded/profile1/saves/progress.save",
+    "profile_root": "modded/profile1",
+    "save_scope": "modded",
+    "id_format": "{save_scope}:profile{profile_id}:{start_time}",
+    // Save-backed fields below are present when current_run.save exposes them.
+    "run_id": "modded:profile1:1778295706",
+    "start_time": 1778295706,
+    "seed": "2450ZAR9EF"
   },
   "player": { ... },        // Full player state (see Player Object below)
   // ... state-specific fields
@@ -263,11 +305,14 @@ Always present at the top level (except `menu`). Contains everything about the l
 
   // --- Always present ---
   "status": [ /* Power Objects */ ],
+  "deck_count": 10,
+  "deck": [ /* Pile Card Objects */ ],
   "relics": [
     {
       "id": "BURNING_BLOOD",
       "name": "Burning Blood",
       "description": "At the end of combat, heal 6 HP.",
+      "rarity": "Starter",
       "counter": null,       // Number if relic shows a counter, null otherwise
       "used_up": false,      // RelicModel.IsUsedUp: the relic has been used up
       "melted": false,       // RelicModel.IsMelted: a separate melted-wax state
@@ -279,9 +324,17 @@ Always present at the top level (except `menu`). Contains everything about the l
       "id": "SWIFT_POTION",
       "name": "Swift Potion",
       "description": "Draw 3 cards.",
+      "rarity": "Common",
       "slot": 0,             // Potion slot index (use this for use_potion action)
       "can_use_in_combat": true,
+      "can_use": true,       // true when use_potion can run now, assuming any required target is supplied
+      "use_blocked_reason": null, // e.g. "CombatOnly", "EnemyTargetRequiresCombat", "Automatic", "AlreadyQueued", "PlayerDead", "CustomUsabilityCheckFailed", "NotInPlayPhase", "PlayerActionsDisabled", "NoValidTargets"
+      "can_discard": true,
+      "discard_blocked_reason": null, // e.g. "AlreadyQueued"
+      "requires_target": false,
+      "valid_targets": [],   // For AnyEnemy potions: [{ "entity_id": "JAW_WORM_0", "combat_id": 12, "name": "Jaw Worm" }]
       "target_type": "None", // None, Self, AnyEnemy, AnyAlly, AnyPlayer, etc.
+      "usage": "Manual",
       "keywords": [ /* Keyword Objects */ ]
     }
   ],
@@ -319,9 +372,20 @@ records too. A hidden counter and an empty list mean there are no cards left.
   "star_cost": null,         // Regent star cost as string, null if N/A
   "description": "Deal 6 damage.",
   "target_type": "AnyEnemy", // None, Self, AnyEnemy, AllEnemies, etc.
+  "requires_target": true,
+  "valid_targets": [
+    { "entity_id": "JAW_WORM_0", "combat_id": 12, "name": "Jaw Worm" }
+  ],
   "can_play": true,
-  "unplayable_reason": null, // e.g. "NotEnoughEnergy", "Unplayable", null if playable
+  "unplayable_reason": null, // e.g. "NotEnoughEnergy", "NotInPlayPhase", "PlayerActionsDisabled", null if playable
   "is_upgraded": false,
+  "is_upgradable": true,
+  "current_upgrade_level": 0,
+  "max_upgrade_level": 1,
+  "upgrade_preview_type": "None",
+  "upgrade_preview_cost": "1",
+  "upgrade_preview_star_cost": null,
+  "upgrade_preview_description": "Deal 9 damage.",
   "keywords": [ /* Keyword Objects */ ],   // localized hover tips — DISPLAY TEXT, don't match on it
   "keyword_ids": ["Exhaust"],              // machine-readable CardKeyword names; use these
   "combat_card_id": 12,      // stable physical identity for the fight; tells two copies of Strike apart
@@ -339,6 +403,7 @@ records too. A hidden counter and an empty list mean there are no cards left.
 
 ```jsonc
 {
+  "index": 0,
   "id": "STRIKE_R",
   "name": "Strike",
   "type": "Attack",          // Attack, Skill, Power, Status, Curse
@@ -347,6 +412,13 @@ records too. A hidden counter and an empty list mean there are no cards left.
   "description": "Deal 6 damage.",
   "rarity": "Common",
   "is_upgraded": false,
+  "is_upgradable": true,
+  "current_upgrade_level": 0,
+  "max_upgrade_level": 1,
+  "upgrade_preview_type": "None",
+  "upgrade_preview_cost": "1",
+  "upgrade_preview_star_cost": null,
+  "upgrade_preview_description": "Deal 9 damage.",
   "target_type": "AnyEnemy", // None, Self, AnyEnemy, AllEnemies, etc.
   "keywords": [ /* Keyword Objects */ ],   // localized hover tips — DISPLAY TEXT, don't match on it
   "keyword_ids": ["Exhaust"],              // machine-readable CardKeyword names; use these
@@ -432,12 +504,13 @@ No run in progress.
   "state_type": "menu",
   "message": "No run in progress. Player is in the main menu.",
   "menu_screen": "main",
-  "options": ["continue", "singleplayer", "multiplayer", "compendium", "timeline", "settings", "quit"]
+  "options": ["continue", "abandon_run", "singleplayer", "multiplayer", "compendium", "timeline", "settings", "quit"]
 }
 ```
 
 Use `menu_select` with one of the advertised options. Options are accepted case-insensitively.
 If a visible option is intentionally withheld from automation, the state may also include `blocked_options` with a reason. For example, Timeline can be blocked while obtained epochs still need manual reveal because opening that game state through automation can trigger invalid unlock-state errors.
+`abandon_run` opens a confirmation popup; the next state exposes the popup's `confirm` / `cancel` options.
 
 Menu sub-screens expose their own options:
 
@@ -635,6 +708,9 @@ has actually started:
     "round": 1,
     "turn": "player",       // "player" or "enemy"
     "is_play_phase": true,
+    "player_actions_disabled": false,
+    "can_end_turn": true,
+    "end_turn_blocked_reason": null, // e.g. "NotInPlayPhase", "PlayerActionsDisabled", "CardInPlay", "HandSelectionMode"
     "enemies": [
       {
         "entity_id": "JAW_WORM_0",    // Synthesized ID for targeting
@@ -644,6 +720,7 @@ has actually started:
         "hp": 44,
         "max_hp": 44,
         "block": 0,
+        "is_alive": true,
         "status": [ /* Power Objects */ ],
         "intents": [
           {
@@ -732,7 +809,10 @@ has actually started:
           "power_name": "Reattach",
           "hp": 25                     // HP it returns with; null when not readable
         },
-        "intents": []                  // Becomes a Heal intent on the turn before the revive
+        "intents": [],                 // Becomes a Heal intent on the turn before the revive
+        "is_visible": true,            // Node visible this frame
+        "can_target": true,            // Valid target for a targeted card/potion right now
+        "can_select": true             // Selectable in this phase (target + play phase)
       }
     ],
     // The player's side of the board: living, non-player creatures (Osty and
@@ -913,7 +993,18 @@ Appears when a card effect prompts "Select a card to exhaust/discard/upgrade". *
       }
     ],
     "selected_cards": [          // Only present if cards have been selected
-      { "index": 0, "hand_index": 2, "id": "DEFEND", "name": "Defend", "is_upgraded": false /* full Card State */ }
+      {
+        "index": 0,
+        "hand_index": 2,         // Physical index in player.hand, disambiguates identical copies
+        "id": "DEFEND_R",
+        "name": "Defend",
+        "type": "Skill",
+        "cost": "1",
+        "star_cost": null,
+        "description": "Gain 5 Block.",
+        "is_upgraded": false,
+        "keywords": [ /* Keyword Objects */ ]
+      }
     ],
     "can_confirm": false
   },
@@ -936,6 +1027,8 @@ Appears after combat ends or when triggered by events (e.g. TheFutureOfPotions, 
         "index": 0,
         "type": "gold",              // gold, potion, relic, card, special_card, card_removal
         "description": "Obtain 25 gold.",
+        "is_visible": true,
+        "can_claim": true,
         "gold_amount": 25            // Only for gold rewards
       },
       {
@@ -943,10 +1036,25 @@ Appears after combat ends or when triggered by events (e.g. TheFutureOfPotions, 
         "type": "potion",
         "description": "Obtain a potion.",
         "potion_id": "SWIFT_POTION", // Only for potion rewards
-        "potion_name": "Swift Potion"
+        "potion_name": "Swift Potion",
+        "potion_description": "Draw 3 cards.",
+        "potion_rarity": "Common",
+        "potion_target_type": "None",
+        "potion_usage": "Manual",
+        "keywords": [ /* Keyword Objects */ ]
       },
       {
         "index": 2,
+        "type": "relic",
+        "description": "Obtain a relic.",
+        "relic_id": "VAJRA",
+        "relic_name": "Vajra",
+        "relic_description": "At the start of each combat, gain 1 Strength.",
+        "relic_rarity": "Common",
+        "keywords": [ /* Keyword Objects */ ]
+      },
+      {
+        "index": 3,
         "type": "card",
         "description": "Add a card to your deck."
         // Card rewards open the card_reward screen when claimed
@@ -1014,10 +1122,13 @@ Pick one card to add to your deck. Appears after claiming a card reward, or dire
         "description": "Deal 13 damage. Apply 1 Weak. Apply 1 Vulnerable.",
         "rarity": "Uncommon",
         "is_upgraded": false,
+        "is_selected": false,
+        "is_visible": true,
+        "can_select": true,
         "keywords": [ /* Keyword Objects */ ]
       }
     ],
-    "can_skip": true
+    "can_skip": true       // true only when the skip/alternate button is enabled and visible
   },
   "run": { ... },
   "player": { ... }
@@ -1056,6 +1167,8 @@ Pick one card to add to your deck. Appears after claiming a card reward, or dire
         "index": 0,
         "col": 2, "row": 3,
         "type": "RestSite",
+        "is_visible": true,
+        "can_travel": true,
         "leads_to": [            // 1-level lookahead (children)
           { "col": 1, "row": 4, "type": "Elite" },
           { "col": 3, "row": 4, "type": "Shop" }
@@ -1142,12 +1255,17 @@ them from the dedicated `GET /api/v1/mapdrawings` endpoint.
         "title": "Draft",
         "description": "Choose 10 card rewards to replace your starting deck.",
         "is_locked": false,
+        "is_enabled": true,
+        "is_visible": true,
+        "can_choose": true,
         "is_proceed": false,
         "was_chosen": false,
         "is_enabled": true,                  // false while a choice is executing or a transition is resolving
         "relic_id": "RELIC_ID",             // Only if option has a relic
         "relic_name": "Relic Name",         // Only if option has a relic
         "relic_description": "Relic desc.",  // Only if option has a relic
+        "relic_rarity": "Common",           // Only if option has a relic
+        "relic_keywords": [ /* Keyword Objects */ ],
         "keywords": [ /* Keyword Objects */ ]
       }
     ]
@@ -1171,6 +1289,8 @@ them from the dedicated `GET /api/v1/mapdrawings` endpoint.
         "name": "Rest",
         "description": "Heal 30% of max HP.",
         "is_enabled": true,
+        "is_visible": true,
+        "can_choose": true,
         "has_button": true   // false = the option exists in the run model but no
                              // button is drawn; choose_rest_option refuses it
       }
@@ -1188,8 +1308,14 @@ State queries do not open the inventory. Use `shop_open` when ready to buy;
 this permits out-of-combat actions such as throwing Foul Potion first.
 
 Card entries include `is_upgraded`, `enchantment`, and `enchantment_state` from
-the offered card. These use the same fields as deck and reward cards, including
-relic effects applied when the inventory is created or updated after a purchase.
+the offered card, plus `card_upgrade_preview_*` fields describing what the card
+would become if upgraded. These use the same fields as deck and reward cards,
+including relic effects applied when the inventory is created or updated after a
+purchase.
+
+`can_proceed` mirrors the `proceed` action: it is true if the proceed button is
+already enabled, or if the inventory can be closed (then proceeded through) in
+one action. `can_close_inventory` reports the close step on its own.
 
 ```jsonc
 {
@@ -1204,6 +1330,7 @@ relic effects applied when the inventory is created or updated after a purchase.
         "price": 75,               // Gold price in the shop
         "is_stocked": true,
         "can_afford": true,
+        "can_purchase": true,
         "on_sale": false,
         "card_id": "OFFERING",
         "card_name": "Offering",
@@ -1212,6 +1339,7 @@ relic effects applied when the inventory is created or updated after a purchase.
         "card_star_cost": null,    // Regent star cost as string, null if N/A
         "card_rarity": "Rare",
         "card_description": "Lose 6 HP. Gain 2 Energy. Draw 3 cards.",
+        "card_upgrade_preview_description": "Lose 6 HP. Gain 2 Energy. Draw 4 cards.",
         "is_upgraded": false,
         "enchantment": null,
         "enchantment_state": null,
@@ -1224,9 +1352,11 @@ relic effects applied when the inventory is created or updated after a purchase.
         "price": 150,
         "is_stocked": true,
         "can_afford": false,
+        "can_purchase": false,
         "relic_id": "VAJRA",
         "relic_name": "Vajra",
         "relic_description": "At the start of each combat, gain 1 Strength.",
+        "relic_rarity": "Common",
         "keywords": [ /* Keyword Objects */ ]
       },
       // Potion entry
@@ -1236,9 +1366,13 @@ relic effects applied when the inventory is created or updated after a purchase.
         "price": 50,
         "is_stocked": true,
         "can_afford": true,
+        "can_purchase": true,
         "potion_id": "FIRE_POTION",
         "potion_name": "Fire Potion",
         "potion_description": "Deal 20 damage to target enemy.",
+        "potion_rarity": "Common",
+        "potion_target_type": "Enemy",
+        "potion_usage": "Manual",
         "keywords": [ /* Keyword Objects */ ]
       },
       // Card removal entry
@@ -1247,9 +1381,12 @@ relic effects applied when the inventory is created or updated after a purchase.
         "category": "card_removal",
         "price": 75,
         "is_stocked": true,
-        "can_afford": true
+        "can_afford": true,
+        "can_purchase": true
       }
     ],
+    "inventory_open": true,
+    "can_close_inventory": true,
     "can_proceed": true,
     "error": "..."             // Only present if inventory isn't ready; retry in a moment
   },
@@ -1280,12 +1417,16 @@ merchant disappears.
           "cost": 150,
           "is_stocked": true,
           "can_afford": true,
+          "can_purchase": true,
           "relic_id": "VAJRA",
           "relic_name": "Vajra",
           "relic_description": "At the start of each combat, gain 1 Strength.",
+          "relic_rarity": "Common",
           "keywords": [ /* Keyword Objects */ ]
         }
       ],
+      "inventory_open": true,
+      "can_close_inventory": true,
       "can_proceed": true
     },
     // After fight:
@@ -1317,6 +1458,8 @@ Chest is auto-opened on first state query.
         "name": "Lantern",
         "description": "Gain 1 Energy on the first turn of each combat.",
         "rarity": "Uncommon",
+        "is_visible": true,
+        "can_claim": true,
         "keywords": [ /* Keyword Objects */ ]
       }
     ],
@@ -1363,15 +1506,21 @@ context rather than applying a deck-only heuristic.
         "description": "Deal 6 damage.",
         "rarity": "Common",
         "is_upgraded": false,
+        "is_upgraded": false,
         "selected": false,       // in the screen's own selection set (grid screens only)
+        "is_selected": false,    // same fact from the holder's own selected state
+        "is_visible": true,
+        "can_select": true,
         "keywords": [ /* Keyword Objects */ ]
       }
     ],
+    "selected_cards": [],        // selected cards as full card payloads
     "selected_count": 0,         // how many cards the screen currently holds selected
     "required_count": 2,         // the N of a "choose N" prompt; null when a range is accepted
     "min_select": 2,             // the two ends of that range (equal when required_count is set)
     "max_select": 2,
     "preview_showing": false,    // true when the preview panel is up (step two, see below)
+    "preview_cards": [],         // cards shown by an upgrade/transform/select preview
     "can_confirm": false,        // true when confirm button is available
     "can_cancel": true           // true when close/cancel button is available
 
@@ -1448,6 +1597,8 @@ Boss relic selection. Pick is immediate.
         "name": "Black Star",
         "description": "Elites drop an additional relic.",
         "rarity": "Rare",
+        "is_visible": true,
+        "can_select": true,
         "keywords": [ /* Keyword Objects */ ]
       }
     ],
@@ -1592,33 +1743,45 @@ space accepted by `map_draw`.
 
 Profile endpoints are independent of the singleplayer and multiplayer run endpoints.
 
+### `GET /api/v1/settings`
+
+Returns current settings and preferences as a structured object with `status: "ok"`, `kind: "settings"`, display, audio, gameplay, language, skip-intro, and mod-loading status.
+
 ### `GET /api/v1/profile`
 
-Returns the active profile's persistent progress summary, including character stats, card stats, encounter stats, discovered content, achievements, epochs, and global totals.
+Returns the active profile's persistent progress summary, including `status: "ok"`, `kind: "profile"`, `profile_id`, save scope/path context, `resolved_progress_path`, `current_run` when a run is active, character stats, card stats, encounter stats, discovered content, achievements, epochs, and global totals.
 
 ### `GET /api/v1/compendium`
 
 Returns the active profile's progress grouped by the in-game Compendium cards:
 
-- `current_run`: present while a run is active. Includes a derived `run_id` in `{save_scope}:profile{profile_id}:{start_time}` format, plus `start_time`, `seed`, `save_time`, `run_time`, and run metadata read from `current_run.save`.
-- `card_library`: discovered card IDs and card pick/skip/win/loss stats. This endpoint intentionally reports profile-level progress; card rules text remains available through game state when cards are visible in a run.
-- `relic_collection`: discovered relic IDs. The profile save exposes discovery, but not a typed per-relic description or obtained-count catalog.
-- `potion_lab`: discovered potion IDs. The profile save exposes discovery, but not a typed per-potion rules text or lab metadata catalog.
-- `bestiary`: profile encounter/enemy fight stats. The in-game Bestiary card is currently marked future/locked, so this section is stats-only and does not expose a full enemy metadata catalog.
+- `status`, `kind`: response envelope fields. `kind` is `compendium`.
+- `profile_id`, `progress_path`, `resolved_progress_path`, `profile_root`, `save_scope`: active profile and save-location context, matching `/api/v1/profile`.
+- `current_run`: present while a run is active. Includes profile/save context (`is_in_progress`, `profile_id`, `progress_path`, `resolved_progress_path`, `profile_root`, `save_scope`) and `id_format`; when `current_run.save` can be read, it also includes save-backed fields such as `start_time`, a derived `run_id` in `{save_scope}:profile{profile_id}:{start_time}` format, `seed`, `save_time`, `run_time`, and other run metadata.
+- `card_library`: discovered card IDs and card pick/skip/win/loss stats. Detailed card metadata lives at `/api/v1/glossary/cards`, which currently requires a run context.
+- `relic_collection`: discovered relic IDs. Detailed relic metadata lives at `/api/v1/glossary/relics`, which currently requires a run context.
+- `potion_lab`: discovered potion IDs. Detailed potion metadata lives at `/api/v1/glossary/potions`, which currently requires a run context.
+- `bestiary`: profile encounter/enemy fight stats plus a pointer to `/api/v1/bestiary` for reflected model metadata. The in-game Bestiary card is currently marked future/locked.
 - `character_stats`: per-character and global profile totals.
 - `run_history`: summaries of the active profile's saved `saves/history/*.run` files. If more than 20 files exist, the response includes the 20 most recent entries and the local `history_path`.
 
-The response is built from `SaveManager.Progress`, the active profile's `progress.save` path, and local run-history files under the same active Steam account. It does not scan every Steam account under the save root. Run-history parsing is bounded to the 20 most recent `.run` files in the response so profile pages with many saved runs do not return unbounded payloads.
-
-`current_run.run_id` is derived from save scope, profile id, and run `start_time`. Use it to identify one concrete run attempt. Use `seed` separately when grouping runs by generated content, because multiple attempts can share the same seed.
-
 ```jsonc
 {
+  "status": "ok",
+  "kind": "compendium",
   "profile_id": 1,
+  "progress_path": "modded/profile1/saves/progress.save",
+  "resolved_progress_path": "C:/Users/timot/AppData/Roaming/SlayTheSpire2/steam/76561197985806660/modded/profile1/saves/progress.save",
+  "profile_root": "modded/profile1",
+  "save_scope": "modded",
   "current_run": {
     "is_in_progress": true,
     "profile_id": 1,
+    "progress_path": "modded/profile1/saves/progress.save",
+    "resolved_progress_path": "C:/Users/timot/AppData/Roaming/SlayTheSpire2/steam/76561197985806660/modded/profile1/saves/progress.save",
+    "profile_root": "modded/profile1",
     "save_scope": "modded",
+    "id_format": "{save_scope}:profile{profile_id}:{start_time}",
     "run_id": "modded:profile1:1778295706",
     "start_time": 1778295706,
     "seed": "2450ZAR9EF",
@@ -1628,10 +1791,11 @@ The response is built from `SaveManager.Progress`, the active profile's `progres
     "card_library": { "status": "exposed", "discovered_ids": ["BASH"], "stats": [] },
     "relic_collection": { "status": "partially_exposed", "discovered_ids": ["BURNING_BLOOD"] },
     "potion_lab": { "status": "partially_exposed", "discovered_ids": [] },
-    "bestiary": { "status": "locked_in_ui", "encounter_stats": [], "enemy_stats": [] },
+    "bestiary": { "status": "locked_in_ui", "detail_endpoint": "/api/v1/bestiary" },
     "character_stats": { "status": "exposed", "characters": [], "global": {} },
     "run_history": {
       "status": "exposed",
+      "history_path": "C:/.../SlayTheSpire2/steam/<account>/modded/profile1/saves/history",
       "entry_count": 10,
       "entries": [
         {
@@ -1645,6 +1809,71 @@ The response is built from `SaveManager.Progress`, the active profile's `progres
       ]
     }
   }
+}
+```
+
+The response is built from `SaveManager.Progress`, the active profile's `progress.save` path, and local run-history files under the same active Steam account. It does not scan every Steam account under the save root. Run-history parsing is bounded to the 20 most recent `.run` files in the response so profile pages with many saved runs do not return unbounded payloads.
+
+`current_run.run_id` is derived from save scope, profile id, and run `start_time`. Use it to identify one concrete run attempt. Use `seed` separately when grouping runs by generated content, because multiple attempts can share the same seed. `card_library`, `relic_collection`, and `potion_lab` report profile-level discovery only; rules text for those items is available from game state or from the run-scoped glossary endpoints below.
+
+### `GET /api/v1/bestiary`
+
+Returns reflected monster and encounter metadata as a deterministic structured object with `status`, `kind`, `monster_count`, `encounter_count`, `monsters`, and `encounters`. Profile-specific encounter and enemy fight stats are also summarized under `/api/v1/compendium`.
+
+### `GET /api/v1/glossary/*`
+
+The glossary endpoints expose active-run pool metadata. They require a run in progress and are scoped to the current run/character context plus shared run pools such as Colorless cards, shared relics, and shared potions, not profile-wide discovered content. Successful responses are structured objects with `status`, `kind`, `scope`, `count`, profile/save context (`profile_id`, `progress_path`, `resolved_progress_path`, `profile_root`, `save_scope`), `current_run` save context, `players`, and `items`; `current_run.run_id` and `current_run.seed` are included when `current_run.save` exposes them.
+
+- `GET /api/v1/glossary/cards`: active-run card pool metadata, including energy/star costs, upgrade availability, plus upgraded-preview cost and description.
+- `GET /api/v1/glossary/relics`: active-run relic pool metadata.
+- `GET /api/v1/glossary/potions`: active-run potion pool metadata.
+- `GET /api/v1/glossary/keywords`: keyword metadata collected from active-run cards, relics, and potions.
+
+If no run is active, glossary endpoints return HTTP 409 with `error_code: "run_not_in_progress"` plus the same profile/save context fields so callers can identify the active profile even without a current run. If a run is marked in progress but the run state cannot be read, they return HTTP 503 with `error_code: "run_state_unavailable"` plus the same profile/save context fields.
+
+Example success shape:
+
+```json
+{
+  "status": "ok",
+  "kind": "cards",
+  "scope": "active_run",
+  "count": 87,
+  "profile_id": 1,
+  "progress_path": "modded/profile1/saves/progress.save",
+  "resolved_progress_path": "C:/Users/timot/AppData/Roaming/SlayTheSpire2/steam/76561197985806660/modded/profile1/saves/progress.save",
+  "profile_root": "modded/profile1",
+  "save_scope": "modded",
+  "current_run": {
+    "is_in_progress": true,
+    "profile_id": 1,
+    "progress_path": "modded/profile1/saves/progress.save",
+    "resolved_progress_path": "C:/Users/timot/AppData/Roaming/SlayTheSpire2/steam/76561197985806660/modded/profile1/saves/progress.save",
+    "profile_root": "modded/profile1",
+    "save_scope": "modded",
+    "id_format": "{save_scope}:profile{profile_id}:{start_time}",
+    "run_id": "modded:profile1:1778295706",
+    "seed": "VQY2JBY38L"
+  },
+  "items": [
+    {
+      "id": "STRIKE_RED",
+      "name": "Strike",
+      "type": "Attack",
+      "cost": "1",
+      "star_cost": null,
+      "rarity": "Basic",
+      "is_upgraded": false,
+      "is_upgradable": true,
+      "current_upgrade_level": 0,
+      "max_upgrade_level": 1,
+      "upgrade_preview_type": "None",
+      "upgrade_preview_cost": "1",
+      "upgrade_preview_star_cost": null,
+      "upgrade_preview_description": "Deal 9 damage.",
+      "keywords": []
+    }
+  ]
 }
 ```
 
@@ -1780,11 +2009,41 @@ Lists the three profile slots and identifies the active slot.
 
 ```json
 {
+  "status": "ok",
+  "kind": "profiles",
   "current_profile_id": 1,
+  "count": 3,
   "profiles": [
-    { "id": 1, "is_current": true, "has_data": true },
-    { "id": 2, "is_current": false, "has_data": false },
-    { "id": 3, "is_current": false, "has_data": true }
+    {
+      "id": 1,
+      "profile_id": 1,
+      "is_current": true,
+      "has_data": true,
+      "progress_path": "modded/profile1/saves/progress.save",
+      "resolved_progress_path": "C:/.../SlayTheSpire2/steam/<account>/modded/profile1/saves/progress.save",
+      "profile_root": "modded/profile1",
+      "save_scope": "modded"
+    },
+    {
+      "id": 2,
+      "profile_id": 2,
+      "is_current": false,
+      "has_data": false,
+      "progress_path": "modded/profile2/saves/progress.save",
+      "resolved_progress_path": "modded/profile2/saves/progress.save",
+      "profile_root": "modded/profile2",
+      "save_scope": "modded"
+    },
+    {
+      "id": 3,
+      "profile_id": 3,
+      "is_current": false,
+      "has_data": true,
+      "progress_path": "modded/profile3/saves/progress.save",
+      "resolved_progress_path": "C:/.../SlayTheSpire2/steam/<account>/modded/profile3/saves/progress.save",
+      "profile_root": "modded/profile3",
+      "save_scope": "modded"
+    }
   ]
 }
 ```
@@ -1809,12 +2068,15 @@ Delete an inactive profile slot:
 | `profile_id` | int | Yes | Profile slot, from 1 to 3 |
 
 Switching is rejected during a run. Deleting the active profile is rejected; switch away first if you need to remove a slot.
+Profile action validation returns structured HTTP errors: invalid profile IDs and unknown actions return HTTP 400, deleting the active profile returns HTTP 409 with `error_code: "active_profile_delete"`, and switching profiles during a run returns HTTP 409 with `error_code: "run_in_progress"`.
 
 ---
 
 ## POST — Perform Actions
 
 All POST requests use a JSON body with an `"action"` field and action-specific parameters.
+Action dispatch failures include structured `error_code` values. Missing or unknown main-menu `menu_select` options and unknown non-menu actions return HTTP 400; gameplay actions posted with no active run return HTTP 409 with `error_code: "run_not_in_progress"`. Older generic action failures use the stable fallback `error_code: "action_error"`. Other failed action attempts return non-2xx structured error JSON instead of HTTP 200.
+If a tutorial or blocking popup is visible during a run, gameplay actions return HTTP 409 with `error_code: "blocking_popup_active"`; use the advertised `menu_select` option to dismiss or answer it first.
 
 ### Success Response
 
@@ -1828,7 +2090,11 @@ Action failures — the action was understood but could not be performed — are
 **HTTP 200**:
 
 ```jsonc
-{ "status": "error", "error": "Card requires a target. Provide 'target' with an entity_id." }
+{
+  "status": "error",
+  "error": "Card requires a target. Provide 'target' with an entity_id.",
+  "error_code": "action_error"
+}
 ```
 
 Transport failures — invalid JSON, a missing `action` field, an unknown route, a wrong HTTP method,
@@ -1937,7 +2203,12 @@ Select an option from the main menu, a menu submenu, profile select, character s
 | `seed` | string | No | Only supported in menu contexts that expose a real seeded flow. Standard singleplayer character select currently returns an error without starting a run when `seed` is supplied. |
 
 `game_over` advertises only `main_menu`. `continue` is not actionable on that screen and returns an error.
-If `timeline` is blocked by pending obtained epochs, `menu_select` returns an error with `manual_action_required: true` and `pending_epoch_ids` instead of opening Timeline.
+If `timeline` is blocked by pending obtained epochs, `menu_select` returns HTTP 409 with `error_code: "timeline_manual_action_required"`, `manual_action_required: true`, and `pending_epoch_ids` instead of opening Timeline.
+When the game is already on `menu_screen: "timeline"`, `menu_select` with `option: "advance"` progresses safe Timeline UI steps:
+tutorial/confirm/proceed buttons, queued unlock screens, epoch inspect close buttons, and visible obtained epoch slots.
+If the Timeline is still animating, or the obtained epoch slot has not spawned yet, the response includes `retry: true` with `pending_epoch_ids`.
+Pending `ObtainedNoSlot` epochs still return `manual_action_required: true` and `done: true` if no queued Timeline expansion screen or visible slot is available.
+The main-menu `timeline` guard remains in place because entering Timeline from that state can still trigger invalid game unlock-state errors.
 
 ---
 
@@ -1952,9 +2223,7 @@ Play a card from hand during combat.
 | Parameter | Type | Required | Description |
 |---|---|---|---|
 | `card_index` | int | Yes | 0-based index in hand |
-| `target` | string | For `AnyEnemy` cards | `entity_id` of the target enemy. For `AnyAlly` cards (multiplayer-only) it is optional and names a teammate — `players[].entity_id` (e.g. `"player_1"`) or its numeric `combat_id`; self is rejected, and if omitted/unresolvable the lowest-HP living teammate is targeted. `AnyPlayer` cards ignore `target` (the engine only accepts a null target for them). |
-
-**Errors:** Not in combat, not play phase, card unplayable, invalid index, missing target, ally-targeting card with self as target or no living teammate.
+| `target` | string | When hand card `requires_target` is true (or for `AnyAlly` cards) | `entity_id` from the card's `valid_targets` list, or the target combat_id as a string. For `AnyAlly` cards (multiplayer-only) it names a teammate — `players[].entity_id` (e.g. `"player_1"`) or its numeric `combat_id`; self is rejected, and if omitted/unresolvable the lowest-HP living teammate is targeted. `AnyPlayer` cards ignore `target` (the engine only accepts a null target for them). |
 
 **Warning:** Playing a card removes it from hand — all higher indices shift left. Play from highest index first, or re-query state between plays.
 
@@ -1969,9 +2238,9 @@ Use a potion from the potion belt.
 | Parameter | Type | Required | Description |
 |---|---|---|---|
 | `slot` | int | Yes | Potion slot index |
-| `target` | string | For `AnyEnemy` potions | `entity_id` of the target enemy. For `AnyPlayer` potions it is optional and may name any living player — `players[].entity_id` (e.g. `"player_1"`) or numeric `combat_id`; defaults to self (this is how you throw a potion to a teammate). `AnyAlly` potions require a teammate (never self); default is the lowest-HP living teammate. |
+| `target` | string | For `AnyEnemy` potions | `entity_id` of the target enemy (one of the potion's `valid_targets`), or the target combat_id as a string. For `AnyPlayer` potions it is optional and may name any living player — `players[].entity_id` (e.g. `"player_1"`) or numeric `combat_id`; defaults to self (this is how you throw a potion to a teammate). `AnyAlly` potions require a teammate (never self); default is the lowest-HP living teammate. |
 
-**Errors:** Empty slot, combat-only potion used outside combat, automatic potion, already queued, player dead, unresolvable player target.
+**Errors:** Empty slot, combat-only potion used outside combat, automatic potion, already queued, player dead, custom usability blocked, missing/invalid target, enemy-targeted potion outside combat, unresolvable player target.
 
 ### `discard_potion`
 
@@ -1985,7 +2254,7 @@ Discard a potion to free up the slot. Use when potion slots are full and you nee
 |---|---|---|---|
 | `slot` | int | Yes | Potion slot index |
 
-**Errors:** Empty slot, out-of-range slot.
+**Errors:** Empty slot, out-of-range slot, potion already queued.
 
 ### `end_turn`
 
@@ -1995,7 +2264,7 @@ End the player's combat turn.
 { "action": "end_turn" }
 ```
 
-**Errors:** Not in combat, not play phase, card mid-play, hand in selection mode.
+**Errors:** Not in combat, not play phase, actions disabled, card mid-play, hand in selection mode.
 
 ### `combat_select_card`
 
@@ -2007,11 +2276,11 @@ Select a card during in-combat hand selection (exhaust, discard, upgrade prompts
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
-| `card_index` | int | Yes | Index in the selectable hand cards |
+| `card_index` | int | Yes | Index in the hand-selection cards; the card must be visible and report `can_select: true` |
 
 ### `combat_confirm_selection`
 
-Confirm the in-combat hand card selection.
+Confirm the in-combat hand card selection when the visible confirm button is enabled.
 
 ```json
 { "action": "combat_confirm_selection" }
@@ -2079,7 +2348,7 @@ SACRIFICE や他の alternative の代用にはしない。
 
 ### `proceed`
 
-Leave the current screen and open the map. Works from: rewards, rest site, shop, treasure room.
+Leave the current screen and open the map when a visible proceed button is enabled. Works from: rewards, rest site, shop, fake merchant, and treasure room; shop/fake merchant can close an open inventory first when the visible back button is enabled.
 
 ```json
 { "action": "proceed" }
@@ -2236,7 +2505,7 @@ Select a card in a card selection overlay.
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
-| `index` | int | Yes | 0-based card index in the grid |
+| `index` | int | Yes | 0-based card index in the grid; the card must be visible and report `can_select: true` |
 
 **Behavior varies by screen type:**
 - Grid screens (transform, upgrade, enchant, select): toggles selection through the game's own
@@ -2293,11 +2562,11 @@ Open a bundle preview in the bundle selection screen.
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
-| `index` | int | Yes | 0-based bundle index |
+| `index` | int | Yes | 0-based bundle index; the bundle must be visible and report `can_select: true` |
 
 ### `confirm_bundle_selection`
 
-Confirm the currently previewed bundle.
+Confirm the currently previewed bundle when the visible confirm button is enabled.
 
 ```json
 { "action": "confirm_bundle_selection" }
@@ -2305,7 +2574,7 @@ Confirm the currently previewed bundle.
 
 ### `cancel_bundle_selection`
 
-Cancel the bundle preview.
+Cancel the bundle preview when the visible cancel button is enabled.
 
 ```json
 { "action": "cancel_bundle_selection" }
@@ -2473,6 +2742,11 @@ rooms.
 {
   "battle": {
     "all_players_ready": false,
+    "local_player_ready_to_end_turn": false,
+    "can_end_turn": true,
+    "end_turn_blocked_reason": null,
+    "can_undo_end_turn": false,
+    "undo_end_turn_blocked_reason": "NotReady"
     // Same shape as singleplayer (round, turn, is_play_phase, enemies).
     // Player state lives in top-level "player" (local) and "players" (all).
 
@@ -2646,13 +2920,13 @@ rooms.
 ```json
 { "action": "end_turn" }
 ```
-In multiplayer, this is a vote. The turn ends only when all players submit.
+In multiplayer, this is a vote. The turn ends only when all players submit. Use `battle.can_end_turn` / `battle.end_turn_blocked_reason` to check local readiness.
 
 **Undo end turn:**
 ```json
 { "action": "undo_end_turn" }
 ```
-Retract the end-turn vote before all players have committed.
+Retract the end-turn vote before all players have committed. Use `battle.can_undo_end_turn` / `battle.undo_end_turn_blocked_reason` to check local readiness.
 
 All other actions work identically to singleplayer.
 

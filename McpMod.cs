@@ -149,6 +149,7 @@ public static partial class McpMod
 
     private static HttpListener? _listener;
     private static Thread? _serverThread;
+    private static string[] _boundPrefixes = Array.Empty<string>();
     private static readonly ConcurrentQueue<Action> _mainThreadQueue = new();
     // Indentation was ~32% of a typical in-combat state response (12,069 -> 8,178 bytes).
     // The main consumer is an LLM that pays per token, so compact is the default and
@@ -191,6 +192,7 @@ public static partial class McpMod
         }
         return _gameVersion;
     }
+
     public static void Initialize()
     {
         try
@@ -222,10 +224,12 @@ public static partial class McpMod
             // "record"/"record_dir" keys from the same file.
             Recorder.CombatRecorder.StartIfConfigured();
 
+            // Loopback only: the bridge is for the local controller, never the network.
             _listener = new HttpListener();
             _listener.Prefixes.Add($"http://localhost:{port}/");
             _listener.Prefixes.Add($"http://127.0.0.1:{port}/");
             _listener.Start();
+            _boundPrefixes = new List<string>(_listener.Prefixes).ToArray();
 
             _serverThread = new Thread(ServerLoop)
             {
@@ -234,7 +238,7 @@ public static partial class McpMod
             };
             _serverThread.Start();
 
-            GD.Print($"[STS2 MCP] v{VersionString} server started on http://localhost:{port}/");
+            GD.Print($"[STS2 MCP] v{VersionString} server started on {string.Join(", ", _boundPrefixes)}");
         }
         catch (Exception ex)
         {
@@ -414,23 +418,43 @@ public static partial class McpMod
             {
                 // A dictionary, not an anonymous type: _jsonOptions drops null *properties*,
                 // and "commit" has to stay present (as null) for clients that read it blindly.
-                SendJson(response, new Dictionary<string, object?>
+                // kind/endpoint_count/endpoints come from the fork's discoverable api index.
+                if (request.HttpMethod == "GET")
                 {
-                    ["message"] = $"Hello from STS2 MCP v{VersionString}",
-                    ["status"] = "ok",
-                    ["version"] = Version,
-                    ["commit"] = BuildCommit,
-                    ["schema_version"] = StateSchemaVersion
-                }, pretty);
+                    var endpoints = BuildEndpointIndex();
+                    SendJson(response, new Dictionary<string, object?>
+                    {
+                        ["message"] = $"Hello from STS2 MCP v{VersionString}",
+                        ["status"] = "ok",
+                        ["kind"] = "api_index",
+                        ["version"] = Version,
+                        ["commit"] = BuildCommit,
+                        ["schema_version"] = StateSchemaVersion,
+                        ["bound_prefixes"] = _boundPrefixes,
+                        ["endpoint_count"] = endpoints.Count,
+                        ["endpoints"] = endpoints
+                    }, pretty);
+                }
+                else
+                {
+                    SendError(response, 405, "Method not allowed", pretty, "method_not_allowed");
+                }
             }
             else if (path == "/api/v1/singleplayer")
             {
+                if (request.HttpMethod != "GET" && request.HttpMethod != "POST")
+                {
+                    SendError(response, 405, "Method not allowed", pretty, "method_not_allowed");
+                    return;
+                }
+
                 // Hard-block singleplayer endpoint during multiplayer runs
                 // to prevent calling the non-sync-safe end_turn path
                 if (IsMultiplayerRun())
                 {
                     SendError(response, 409,
-                        "Multiplayer run is active. Use /api/v1/multiplayer instead.", pretty);
+                        "Multiplayer run is active. Use /api/v1/multiplayer instead.", pretty,
+                        "multiplayer_run_active");
                     return;
                 }
 
@@ -439,15 +463,22 @@ public static partial class McpMod
                 else if (request.HttpMethod == "POST")
                     HandlePostAction(request, response);
                 else
-                    SendError(response, 405, "Method not allowed", pretty);
+                    SendError(response, 405, "Method not allowed", pretty, "method_not_allowed");
             }
             else if (path == "/api/v1/multiplayer")
             {
+                if (request.HttpMethod != "GET" && request.HttpMethod != "POST")
+                {
+                    SendError(response, 405, "Method not allowed", pretty, "method_not_allowed");
+                    return;
+                }
+
                 // Guard: reject multiplayer endpoint during singleplayer runs
                 if (!IsMultiplayerRun())
                 {
                     SendError(response, 409,
-                        "Not in a multiplayer run. Use /api/v1/singleplayer instead.", pretty);
+                        "Not in a multiplayer run. Use /api/v1/singleplayer instead.", pretty,
+                        "not_multiplayer_run");
                     return;
                 }
 
@@ -456,7 +487,14 @@ public static partial class McpMod
                 else if (request.HttpMethod == "POST")
                     HandlePostMultiplayerAction(request, response);
                 else
-                    SendError(response, 405, "Method not allowed", pretty);
+                    SendError(response, 405, "Method not allowed", pretty, "method_not_allowed");
+            }
+            else if (path == "/api/v1/settings")
+            {
+                if (request.HttpMethod == "GET")
+                    HandleGetSettings(response);
+                else
+                    SendError(response, 405, "Method not allowed", pretty, "method_not_allowed");
             }
             else if (path == "/api/v1/profiles")
             {
@@ -465,7 +503,7 @@ public static partial class McpMod
                 else if (request.HttpMethod == "POST")
                     HandlePostProfiles(request, response);
                 else
-                    SendError(response, 405, "Method not allowed", pretty);
+                    SendError(response, 405, "Method not allowed", pretty, "method_not_allowed");
             }
             else if (path == "/api/v1/profile")
             {
@@ -528,11 +566,53 @@ public static partial class McpMod
                 if (request.HttpMethod == "GET")
                     HandleGetMapDrawings(response);
                 else
-                    SendError(response, 405, "Method not allowed");
+                    SendError(response, 405, "Method not allowed", pretty, "method_not_allowed");
+            }
+            else if (path == "/api/v1/compendium")
+            {
+                if (request.HttpMethod == "GET")
+                    HandleGetCompendium(request, response);
+                else
+                    SendError(response, 405, "Method not allowed", pretty, "method_not_allowed");
+            }
+            else if (path == "/api/v1/bestiary")
+            {
+                if (request.HttpMethod == "GET")
+                    HandleGetBestiary(response);
+                else
+                    SendError(response, 405, "Method not allowed", pretty, "method_not_allowed");
+            }
+            else if (path == "/api/v1/glossary/cards")
+            {
+                if (request.HttpMethod == "GET")
+                    HandleGetGlossaryCards(response);
+                else
+                    SendError(response, 405, "Method not allowed", pretty, "method_not_allowed");
+            }
+            else if (path == "/api/v1/glossary/relics")
+            {
+                if (request.HttpMethod == "GET")
+                    HandleGetGlossaryRelics(response);
+                else
+                    SendError(response, 405, "Method not allowed", pretty, "method_not_allowed");
+            }
+            else if (path == "/api/v1/glossary/potions")
+            {
+                if (request.HttpMethod == "GET")
+                    HandleGetGlossaryPotions(response);
+                else
+                    SendError(response, 405, "Method not allowed", pretty, "method_not_allowed");
+            }
+            else if (path == "/api/v1/glossary/keywords")
+            {
+                if (request.HttpMethod == "GET")
+                    HandleGetGlossaryKeywords(response);
+                else
+                    SendError(response, 405, "Method not allowed", pretty, "method_not_allowed");
             }
             else
             {
-                SendError(response, 404, "Not found", pretty);
+                SendError(response, 404, "Not found", pretty, "not_found");
             }
         }
         // Safety net for any blocking call reached outside a handler's own try/catch: a stalled
@@ -547,10 +627,38 @@ public static partial class McpMod
             try
             {
                 SendError(context.Response, 500, $"Internal error: {ex.Message}",
-                    WantsPretty(context.Request));
+                    WantsPretty(context.Request), "internal_error");
             }
             catch { /* response may already be closed */ }
         }
+    }
+
+    private static List<Dictionary<string, object?>> BuildEndpointIndex()
+    {
+        return new List<Dictionary<string, object?>>
+        {
+            new() { ["method"] = "GET", ["path"] = "/api/v1/singleplayer", ["description"] = "Read singleplayer state with status/kind envelope and active-run context" },
+            new() { ["method"] = "POST", ["path"] = "/api/v1/singleplayer", ["description"] = "Perform singleplayer action" },
+            new() { ["method"] = "GET", ["path"] = "/api/v1/multiplayer", ["description"] = "Read multiplayer state with status/kind envelope and active-run context" },
+            new() { ["method"] = "POST", ["path"] = "/api/v1/multiplayer", ["description"] = "Perform multiplayer action" },
+            new() { ["method"] = "GET", ["path"] = "/api/v1/settings", ["description"] = "Read settings and preferences" },
+            new() { ["method"] = "GET", ["path"] = "/api/v1/profile", ["description"] = "Read active profile progress plus normalized save/run context" },
+            new() { ["method"] = "GET", ["path"] = "/api/v1/compendium", ["description"] = "Read Compendium-shaped profile progress plus normalized save/run context" },
+            new() { ["method"] = "GET", ["path"] = "/api/v1/bestiary", ["description"] = "Read monster and encounter metadata" },
+            new() { ["method"] = "GET", ["path"] = "/api/v1/glossary/cards", ["description"] = "Read active-run card pool metadata plus profile/save/run context" },
+            new() { ["method"] = "GET", ["path"] = "/api/v1/glossary/relics", ["description"] = "Read active-run relic pool metadata plus profile/save/run context" },
+            new() { ["method"] = "GET", ["path"] = "/api/v1/glossary/potions", ["description"] = "Read active-run potion pool metadata plus profile/save/run context" },
+            new() { ["method"] = "GET", ["path"] = "/api/v1/glossary/keywords", ["description"] = "Read active-run keyword metadata plus profile/save/run context" },
+            new() { ["method"] = "GET", ["path"] = "/api/v1/profiles", ["description"] = "List profile slots plus normalized save context" },
+            new() { ["method"] = "POST", ["path"] = "/api/v1/profiles", ["description"] = "Switch or delete profile slots" },
+            new() { ["method"] = "GET", ["path"] = "/api/v1/record", ["description"] = "Read combat recorder status" },
+            new() { ["method"] = "GET", ["path"] = "/api/v1/record/inspect", ["description"] = "Inspect a recorded combat replay" },
+            new() { ["method"] = "GET", ["path"] = "/api/v1/wiki", ["description"] = "Fuzzy-search discovered card and relic wiki entries" },
+            new() { ["method"] = "GET", ["path"] = "/api/v1/cardpools", ["description"] = "Read the active card pools" },
+            new() { ["method"] = "GET", ["path"] = "/api/v1/potionpools", ["description"] = "Read the active potion pools" },
+            new() { ["method"] = "GET", ["path"] = "/api/v1/relicbag", ["description"] = "Read the generated relic bag" },
+            new() { ["method"] = "GET", ["path"] = "/api/v1/mapdrawings", ["description"] = "Read stroke and live node drawing positions" }
+        };
     }
 
     // Called on HTTP thread (not main thread) as a best-effort guard.
@@ -571,10 +679,13 @@ public static partial class McpMod
         string format = request.QueryString["format"] ?? "json";
         bool pretty = WantsPretty(request);
 
+        if (!TryValidateStateFormat(response, format))
+            return;
+
         string detail = request.QueryString["detail"] ?? "summary";
         if (detail is not ("summary" or "full"))
         {
-            SendError(response, 400, "detail must be either 'summary' or 'full'.");
+            SendError(response, 400, "detail must be either 'summary' or 'full'.", pretty);
             return;
         }
         bool fullDetail = detail == "full";
@@ -585,7 +696,7 @@ public static partial class McpMod
         string values = request.QueryString["values"] ?? "powered";
         if (values is not ("powered" or "unpowered"))
         {
-            SendError(response, 400, "values must be either 'powered' or 'unpowered'.");
+            SendError(response, 400, "values must be either 'powered' or 'unpowered'.", pretty);
             return;
         }
         bool unpowered = values == "unpowered";
@@ -626,7 +737,9 @@ public static partial class McpMod
                 response.StatusCode = 500;
                 SendJson(response, new Dictionary<string, object?>
                 {
+                    ["status"] = "error",
                     ["error"] = $"Failed to read multiplayer game state: {ex.Message}",
+                    ["error_code"] = "multiplayer_state_read_failed",
                     ["exception_type"] = ex.GetType().FullName,
                     ["stack_trace"] = ex.StackTrace
                 }, pretty);
@@ -649,13 +762,18 @@ public static partial class McpMod
         }
         catch
         {
-            SendError(response, 400, "Invalid JSON", pretty);
+            SendError(response, 400, "Invalid JSON", pretty, "invalid_json");
             return;
         }
 
         if (parsed == null || !parsed.TryGetValue("action", out var actionElem))
         {
-            SendError(response, 400, "Missing 'action' field", pretty);
+            SendError(response, 400, "Missing 'action' field", pretty, "missing_action");
+            return;
+        }
+        if (actionElem.ValueKind != JsonValueKind.String)
+        {
+            SendError(response, 400, "'action' field must be a string", pretty, "invalid_action_type");
             return;
         }
 
@@ -717,13 +835,16 @@ public static partial class McpMod
         string format = request.QueryString["format"] ?? "json";
         bool pretty = WantsPretty(request);
 
+        if (!TryValidateStateFormat(response, format))
+            return;
+
         // Card descriptions and enemy intent labels are rendered by the game with the
         // player's standing powers and relics already applied. "unpowered" strips that
         // baking back to base + enchantment; see UnpoweredCardVars in McpMod.Helpers.cs.
         string values = request.QueryString["values"] ?? "powered";
         if (values is not ("powered" or "unpowered"))
         {
-            SendError(response, 400, "values must be either 'powered' or 'unpowered'.");
+            SendError(response, 400, "values must be either 'powered' or 'unpowered'.", pretty);
             return;
         }
         bool unpowered = values == "unpowered";
@@ -780,7 +901,9 @@ public static partial class McpMod
                 response.StatusCode = 500;
                 SendJson(response, new Dictionary<string, object?>
                 {
+                    ["status"] = "error",
                     ["error"] = $"Failed to read game state: {ex.Message}",
+                    ["error_code"] = "singleplayer_state_read_failed",
                     ["exception_type"] = ex.GetType().FullName,
                     ["stack_trace"] = ex.StackTrace
                 }, pretty);
@@ -1032,6 +1155,15 @@ public static partial class McpMod
         return result;
     }
 
+    private static bool TryValidateStateFormat(HttpListenerResponse response, string format)
+    {
+        if (format is "json" or "markdown")
+            return true;
+
+        SendError(response, 400, "Invalid format. Use: json, markdown", "invalid_format");
+        return false;
+    }
+
     private static void HandlePostAction(HttpListenerRequest request, HttpListenerResponse response)
     {
         bool pretty = WantsPretty(request);
@@ -1046,13 +1178,18 @@ public static partial class McpMod
         }
         catch
         {
-            SendError(response, 400, "Invalid JSON", pretty);
+            SendError(response, 400, "Invalid JSON", pretty, "invalid_json");
             return;
         }
 
         if (parsed == null || !parsed.TryGetValue("action", out var actionElem))
         {
-            SendError(response, 400, "Missing 'action' field", pretty);
+            SendError(response, 400, "Missing 'action' field", pretty, "missing_action");
+            return;
+        }
+        if (actionElem.ValueKind != JsonValueKind.String)
+        {
+            SendError(response, 400, "'action' field must be a string", pretty, "invalid_action_type");
             return;
         }
 
@@ -1169,6 +1306,7 @@ public static partial class McpMod
             {
                 SendError(response, 500, $"Action failed: {ex.Message}", pretty);
                 return "exception";
+
             }
         }
 
@@ -1189,6 +1327,38 @@ public static partial class McpMod
             SendError(response, 500, $"Action failed: {ex.Message}", pretty);
             return "exception";
         }
+    }
+
+    private static void SendActionError(HttpListenerResponse response, string prefix, Exception ex)
+    {
+        var statusCode = ex is InvalidOperationException or FormatException or OverflowException
+            ? 400
+            : 500;
+        var errorCode = statusCode == 400 ? "invalid_action_payload" : "action_failed";
+        SendError(response, statusCode, $"{prefix}: {ex.Message}", errorCode);
+    }
+
+    private static void SendActionResultJson(HttpListenerResponse response, Dictionary<string, object?> result)
+    {
+        if (result.TryGetValue("status", out var status) && status as string == "error")
+        {
+            if (result.TryGetValue("error_code", out var errorCode))
+            {
+                response.StatusCode = (errorCode as string) switch
+                {
+                    "missing_menu_option" or "unknown_menu_option" or "unknown_action" or "unknown_multiplayer_action" => 400,
+                    "not_on_menu" or "run_not_in_progress" or "not_multiplayer_run" or "blocking_popup_active" => 409,
+                    "local_player_unavailable" => 409,
+                    "timeline_manual_action_required" => 409,
+                    _ => 400
+                };
+            }
+            else
+            {
+                response.StatusCode = 400;
+            }
+        }
+        SendJson(response, result);
     }
 }
 

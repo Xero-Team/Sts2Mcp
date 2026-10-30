@@ -80,3 +80,23 @@ This file is the gameplay guide. The policy for changing the repository itself:
   review limits: `.agents/shared/ai-contribution/REFERENCE.md`. Code and layer
   rules: `.agents/skills/sts2-engineering/SKILL.md`. Security review:
   `.agents/skills/security-audit/SKILL.md`.
+
+## Development Workflow
+
+When starting any new feature, functionality, or meaningful change:
+
+1. Create an appropriate feature branch before making changes.
+2. Use a branch name with the `codex/` prefix when appropriate, for example `codex/add-spectator-delay`.
+3. Reference a `todo.md` during the work.
+4. Stay on the branch that matches the current task and do not mix unrelated changes across branches.
+5. Before switching branches, make sure work is committed or stashed and the working tree is clean.
+6. When working on multiple branches at once, keep one task per branch and use separate worktrees when practical.
+7. Ensure the thread is associated with the active working branch before committing. If the thread was previously on `main` and work is now on `codex/...`, switch or confirm the thread to that feature branch. Never commit to `main` unless explicitly instructed.
+8. Keep branches small and single-purpose so review, testing, and rollback are easier.
+9. Rebase or merge from `main` regularly to keep long-lived branches current.
+10. Do the implementation work on that branch.
+11. Run the relevant tests and checks before committing.
+12. Commit and push only after the work has been tested.
+13. If the change is valid, merge it.
+
+Goal: keep `main` stable and use feature branches as the default workflow.

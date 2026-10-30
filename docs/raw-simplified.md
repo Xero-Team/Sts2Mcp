@@ -7,18 +7,37 @@ HTTP API on `localhost:15526`. No authentication.
 - `POST /api/v1/singleplayer` — perform action
 - `GET /api/v1/multiplayer` — read multiplayer state
 - `POST /api/v1/multiplayer` — perform multiplayer action
-- `GET /api/v1/mapdrawings` — read saved map strokes and live node anchors
+- `GET /api/v1/settings` — read settings and preferences
 - `GET /api/v1/profile` — read current profile progress
 - `GET /api/v1/compendium` — read Compendium-shaped profile progress
-- `GET /api/v1/wiki` — fuzzy-search, or list, card/relic wiki entries
-- `GET /api/v1/cardpools` — every unlocked card pool in roll order (static per run)
+- `GET /api/v1/bestiary` — read monster and encounter metadata
+- `GET /api/v1/glossary/cards` — read active-run card pool metadata
+- `GET /api/v1/glossary/relics` — read active-run relic pool metadata
+- `GET /api/v1/glossary/potions` — read active-run potion pool metadata
+- `GET /api/v1/glossary/keywords` — read active-run keyword metadata
 - `GET /api/v1/profiles` — list profile slots
 - `POST /api/v1/profiles` — switch or delete profile slots
 - `GET /api/v1/record` — combat recorder status (see [recording.md](recording.md))
 - `GET /api/v1/record/inspect?file=<.mcr>` — decode a combat replay with the game's reader (verification only; contains hidden checksums)
+- `GET /api/v1/wiki` — fuzzy-search, or list, card/relic wiki entries
+- `GET /api/v1/cardpools` — every unlocked card pool in roll order (static per run)
+- `GET /api/v1/potionpools` — every unlocked potion pool in roll order
+- `GET /api/v1/relicbag` — the generated relic bag
+- `GET /api/v1/mapdrawings` — read saved map strokes and live node anchors
 - `POST /api/v1/singleplayer {"action": "set_recording", "enabled": true|false}` — turn the combat recorder on/off (works without a run)
 
-Singleplayer and multiplayer endpoints are mutually exclusive (HTTP 409 if mismatched).
+HTTP error responses include `status: "error"` and `error`; route, validation, read-endpoint, and action failures include `error_code`.
+Route-level failures include `error_code: "method_not_allowed"` for unsupported HTTP methods, `error_code: "not_found"` for unknown paths, and `error_code: "internal_error"` for unexpected top-level handler failures.
+POST validation failures use stable `error_code` values where possible, including `invalid_json`, `missing_action`, `invalid_action_type`, `missing_profile_id`, `invalid_profile_id_type`, and `invalid_action_payload`.
+Action failures include `error_code`; endpoint-specific conflicts keep their specific codes, while older generic action failures use the stable fallback `action_error`.
+Read endpoint startup/data-availability failures use non-2xx structured errors where possible, including `save_manager_unavailable`, `settings_data_unavailable`, and `profile_data_unavailable`.
+Read endpoint exceptions include endpoint-specific `error_code` values such as `settings_read_failed`, `bestiary_build_failed`, `glossary_build_failed`, `profile_build_failed`, `profiles_read_failed`, `compendium_build_failed`, `singleplayer_state_read_failed`, and `multiplayer_state_read_failed`.
+
+`GET /` returns `status: "ok"`, `kind: "api_index"`, `version`, `endpoint_count`, `bound_prefixes`, and the advertised endpoint list.
+
+Save/path context fields are normalized with forward slashes in JSON responses, including Windows absolute paths.
+
+Singleplayer and multiplayer endpoints are mutually exclusive (HTTP 409 if mismatched). The mismatch response includes `error_code`: `multiplayer_run_active` when singleplayer is called during a multiplayer run, or `not_multiplayer_run` when multiplayer is called outside one.
 
 ## GET — Query Parameters
 
@@ -40,9 +59,12 @@ Pael's Tooth includes `relics[].runtime.return_cards`: full card records in save
 order, rendered with their pending upgrade applied. Each entry also reports its
 original `stored_upgrade_level`. Reading the list changes no cards or RNG.
 
+Unsupported `format` values return HTTP 400 with `error_code: "invalid_format"`.
+
 ## GET — State Types
 
 Every JSON response includes:
+- `status: "ok"` and `kind` — `singleplayer_state` or `multiplayer_state`
 - `game_version` — the game's own release version (e.g. `"0.108.2"`), from its `release_info.json`; omitted when the build has none
 - `state_type` — which screen the game is on (see below)
 - `mod_version` — mod version string, e.g. `0.4.0`
@@ -50,17 +72,18 @@ Every JSON response includes:
 - `schema_version` — integer version of this contract, currently `3`. **Bumped only when an existing field or action changes meaning or is removed.** Added fields, actions, parameters and `state_type`s do not bump it, so feature-detect additions by presence and use `schema_version` only to notice a breaking change. `3` removed `map.next_encounters`, which exposed future rooms before the player could see them; `map.encounters_seen` reports only travelled encounters. `2` changed enemy targeting: `battle.enemies` can now contain a dead enemy the game keeps in the fight (`alive: false`), so it is no longer the same thing as "the enemies you can target".
 - `warnings` — **present only when something went wrong.** A list of strings, one per part of the state that could not be built, as `"<field or section>: <ExceptionType>: <message>"` (e.g. `"map.encounters_seen: NullReferenceException: ..."`). The state builders read the live game through reflection and swallow whatever throws, so a member the game renamed simply stops appearing; this list says which one. **A warning naming a field means that field may be absent, partial or stale below** — the rest of the payload is still valid. Duplicates are collapsed, and the list stops at 50 entries plus a final `"... N more warnings suppressed"`. Markdown renders the count and the first three under the `STILL RESOLVING` block. Not every swallowed exception is reported: a few catches are expected to fire during normal play (node-tree churn, probing alternative property names) and are deliberately silent.
 - `run` — `{ act, floor, ascension, player_count, card_multiplayer_constraint }` (absent for `menu`)
+- `current_run` — active-run save context, including `is_in_progress`, `profile_id`, `progress_path`, `resolved_progress_path`, `profile_root`, `save_scope`, and `id_format`; also includes `run_id`, `start_time`, and `seed` when `current_run.save` exposes them (absent for `menu`)
 - `player` — full player state: character, HP, gold, relics, potions, `max_potion_slots` (belt capacity, grows with relics), and during combat: energy, hand, piles, orbs (absent for `menu`)
   - `character_id` / `player_id` — 非ローカライズのモデルID / `Player.NetId` の文字列。追加項目。
   - `generation_pool` — 同じ snapshot のローカル Player 自身の解放済み戦闘生成候補。`{ character_id, player_id, players, multiplayer_constraint, known, cards: [{id,type}], game_assembly_sha256, filter_version: 1, filter_source }`。単独・マルチともに出す。取得失敗は `known:false, cards:[], reason` と warnings。`GetUnlockedCards(Player.UnlockState, run.CardMultiplayerConstraint)` に実人数・`FilterForCombat`・Attack/Skill/Power の filter を適用する。抽選/RNG/カード作成は行わない。SHA256はロードした本体DLLの版、filter出典の正確な文字列と公開範囲の注意は [raw-full.md](raw-full.md#解放済みの戦闘生成-pool追加schema-3) を参照。図鑑の discovered_cards と同一視しない。図鑑は未発見札を NotSeen にし、ラン固有の一覧を直接見せない。年代記の解放画面は解放対象札を表示する。Markdown は件数・人数か unknown と理由だけ。追加なので schema は 3 のまま、旧 MOD は欄を省略。
   - `relics[]` — owned relic entries include boolean `used_up` (`RelicModel.IsUsedUp`) and `melted` (`RelicModel.IsMelted`), including the multiplayer local player. Markdown adds `(used)` / `(melted)` when true in singleplayer outside combat, and during combat. Multiplayer outside combat does not list relics in Markdown. Feature-detect these additive fields; schema stays at 3. Older builds omit them. Melted wax is a separate state, not a synonym for consumed or every disabled relic.
   - `deck_count` — number of cards in the master deck. Present on every screen, combat included (combat clones the deck into the draw pile, so the deck itself stays intact).
   - `deck` — the master deck itself, one entry per card: `index` (position in this list), `id`, `name`, `type`, `cost`, `star_cost`, `description`, `rarity`, `is_upgraded`, `keywords`. **Outside combat only** — during a fight the hand plus `draw_pile` / `discard_pile` / `exhaust_pile` already enumerate every card. Empty (and `deck_count` 0) before a run's starting deck is dealt out. Markdown renders it as `### Deck (N cards)` with identical copies collapsed into one `×N` line.
-- `battle` — combat state (`monster` / `elite` / `boss`, and included for context on the overlays a fight can open): `round`, `turn`, `is_play_phase`, `enemies`.
+- `battle` — combat state (`monster` / `elite` / `boss`, and included for context on the overlays a fight can open): `round`, `turn`, `is_play_phase`, `can_end_turn`, `end_turn_blocked_reason`, `enemies`.
   - `enemies[].alive` — **on every enemy**. Almost always `true`: a killed enemy leaves the fight and stops being listed. The exception is a corpse the game refuses to remove — a Decimillipede segment held by `REATTACH_POWER` — which stays listed with `alive: false` and `hp: 0`, keeping the `entity_id` it already had. **Filter targets on `alive`, not on `hp > 0`**; `play_card` / `use_potion` already refuse a dead target.
   - `enemies[].revive` — present only when that corpse is scheduled to come back: `{ in_turns, hp, power_id, power_name }`. `in_turns` counts enemy turns until it heals itself back up (2 on the turn it dies, 1 on the turn before it stands up, when its `intents` also show `Heal`); `hp` is what it returns with. Both are `null` when they cannot be read. A corpse kept in the fight by a power that never revives it has `alive: false` and no `revive`. Markdown marks the enemy heading `— DEAD` and prints a `⚠ WAITING TO REVIVE in N enemy turn(s) at H HP` line.
 
-Every card object carries `is_upgraded`, `is_upgradable`, `upgrade_level` and `max_upgrade_level` (a card can have more than one upgrade level, so `is_upgraded` does not mean "no upgrade left"). On the screens where an upgrade or a pick is being decided — `card_select` with `screen_type: "upgrade"`, `hand_select` with `mode: "upgrade_select"`, and `card_reward` — a card that still has an upgrade left also carries `upgrade_preview`: `{ name, cost, star_cost, description, keywords }` of the card as it would read after one upgrade, built from the game's own upgraded clone. It is absent everywhere else (combat hand, piles, deck list) to keep the payload small.
+Every card object carries `is_upgraded`, `is_upgradable`, `upgrade_level` and `max_upgrade_level` (a card can have more than one upgrade level, so `is_upgraded` does not mean "no upgrade left"). Serialized card objects in hand, deck, piles, rewards, card selections, bundles, and glossary card items also include `upgrade_preview_type`, `upgrade_preview_cost`, `upgrade_preview_star_cost`, and `upgrade_preview_description`. On the screens where an upgrade or a pick is being decided — `card_select` with `screen_type: "upgrade"`, `hand_select` with `mode: "upgrade_select"`, and `card_reward` — a card that still has an upgrade left also carries `upgrade_preview`: `{ name, cost, star_cost, description, keywords }` of the card as it would read after one upgrade, built from the game's own upgraded clone. It is absent everywhere else (combat hand, piles, deck list) to keep the payload small. Hand cards also include `requires_target` and `valid_targets` for enemy-targeted cards. Shop card items expose the same fields with a `card_` prefix, for example `card_upgrade_preview_description`.
 
 | `state_type` | Screen | Available Actions |
 |---|---|---|
@@ -73,8 +96,8 @@ Every card object carries `is_upgraded`, `is_upgradable`, `upgrade_level` and `m
 | `map` | Map navigation and annotation | `choose_map_node`, `map_draw`, `map_clear_drawings` |
 | `event` | Event or Ancient encounter | `choose_event_option`, `advance_dialogue` |
 | `rest_site` | Rest site | `choose_rest_option`, `proceed` |
-| `shop` | Shop (auto-opens inventory) | `shop_open`, `shop_purchase`, `sell_potion`, `proceed` |
-| `fake_merchant` | Fake Merchant event (relic-only shop) | `shop_open`, `shop_purchase`, `sell_potion`, `proceed` |
+| `shop` | Shop (`shop_open` opens the inventory; `can_proceed` is true when `proceed` can close it and leave) | `shop_open`, `shop_purchase`, `sell_potion`, `proceed` |
+| `fake_merchant` | Fake Merchant event (relic-only shop; same `shop_open` / `can_proceed` behavior) | `shop_open`, `shop_purchase`, `sell_potion`, `proceed` |
 | `treasure` | Treasure room (auto-opens chest) | `claim_treasure_relic`, `proceed` |
 | `card_select` | Deck card selection overlay (transform, upgrade, enchant, remove, choose-a-card) | `select_card`, `confirm_selection`, `cancel_selection` |
 | `bundle_select` | Card bundle choice overlay | `select_bundle`, `confirm_bundle_selection`, `cancel_bundle_selection` |
@@ -113,6 +136,14 @@ that is either `"ok"` or `"error"`. A client only needs that one key:
 
 `error` is present if and only if `status` is `"error"`. GET responses return state payloads and
 are not covered by this contract (`GET /` is the exception and reports `"status": "ok"`).
+
+Failed actions also carry `error_code`. Missing/unknown main-menu `menu_select` options and unknown
+non-menu actions return HTTP 400, gameplay actions posted with no active run return HTTP 409 with
+`error_code: "run_not_in_progress"`, and older generic action failures use `error_code: "action_error"`.
+If a tutorial or blocking popup is visible during a run, gameplay actions return HTTP 409 with
+`error_code: "blocking_popup_active"`; use the advertised `menu_select` option first. Timeline blocks
+return HTTP 409 with `error_code: "timeline_manual_action_required"`. Transports that could not run the
+action at all return the structured 503 described under Errors below.
 
 ### Waiting for the Game to Settle
 
@@ -167,12 +198,26 @@ This applies to GET endpoints too; every request is served from the game's main 
 | `menu_select` | `option`: string, `seed`?: string, `ascension`?: int | Choose an advertised menu option. Options are case-insensitive. Submenus include `back` where visible, including `profile_select` options `profile_1`, `profile_2`, `profile_3`, and `back`. Blocking popups expose normalized button labels such as `ignore` or `back`. On `settings` (opened with `settings` from the main menu, or from the pause menu during a run) the only option is `back` (aliases `close`, `resume`), which leaves the screen and returns to whatever was underneath; settings values themselves cannot be changed through the API. On `pause` the options are `resume` (aliases `back`, `close`, `continue`) to close the menu and return to the run, `settings` and `compendium` (both left again with `back`), `give_up` (alias `abandon`) which **abandons the run permanently** — it opens the game's confirmation popup, reported next as `menu_screen: "popup"`, and is never auto-confirmed, so answer it with `yes` / `no` — `save_and_quit` (alias `main_menu`) which saves and returns to the main menu, where `continue` resumes the run, and `disconnect` in multiplayer. On the screens the pause menu opens (`compendium` and below) the only option is `back`. `game_over` supports `main_menu` only; `continue` returns an error. Supplying `seed` in unsupported contexts such as standard singleplayer character select returns an error and does not start a run — a seeded run must go through `custom` (`main` -> `singleplayer` -> `custom` -> character ID -> `embark` with `seed`), whose screen is reported as `custom_run`. If Timeline has pending obtained epochs that require manual reveal, it may appear in `blocked_options`; selecting `timeline` returns `manual_action_required: true` with `pending_epoch_ids` instead of opening Timeline — use the `timeline_reveal_epochs` action to clear them. Multiplayer flow: on `multiplayer_join` use `refresh` / `back` / `join_<index>` / `join_<player_id>`. On `multiplayer_load_lobby` use `confirm` (or `embark`) to ready up, `unready` to retract, `back` to leave. On `character_select` while in MP, an additional `unready` option becomes available after readying, plus a `lobby` block in state lists ascension, all_ready, and per-player roster. `ascension` sets the ascension level on character select (applied before `option`, so it can ride along with the character pick or with `confirm`, or be sent alone with an empty `option`); character select state reports the current `ascension`, the unlocked `max_ascension`, and `ascension_selectable`. |
 | `open_pause_menu` (alias `pause`) | (none) | Open the in-run pause menu (the top-bar gear / Esc), the only API route out of a run. Requires a run in progress; returns `already_open: true` if it was already up, and an error if the compendium or settings is stacked on top of it (leave that with `menu_select` `back` first) or if a card is still being played. The next state reports `menu_screen: "pause"`. ⚠️ From there `give_up` **abandons the run permanently** (it asks for confirmation first) and `save_and_quit` ends the session back at the main menu — neither is undoable from the API. |
 | `timeline_reveal_epochs` | (none) | Reveal every obtained-but-unrevealed epoch. A finished run leaves epochs obtained, and the main menu hides `singleplayer` until they are revealed. Call from the main menu and repeat until the response has `done: true`; `pending_epoch_ids` lists what is left. Opens the Timeline, reveals each pending epoch through the game's own reveal path (granting its unlocks and writing progress), then returns to the main menu. Works with no run in progress. |
+On `menu_screen: "timeline"` (already open), `advance` can reveal a visible obtained epoch slot;
+animation or spawn waits return `retry: true` with `pending_epoch_ids`, and pending `ObtainedNoSlot`
+epochs still return `manual_action_required: true` when no queued expansion or visible slot is
+available. The main menu may also advertise `abandon_run`, which opens a confirmation popup. In
+multiplayer, `character_select` gains `unready` after readying and its `lobby` block lists the roster,
+ready states, and ascension.
 
 ### Profiles
 
 `GET /api/v1/profile` returns persistent progress for the active profile, including character stats, discoveries, achievements, epochs, and global run totals.
 
+`GET /api/v1/settings` returns `status: "ok"`, `kind: "settings"`, display, audio, gameplay, language, and mod-loading preferences.
+
+`GET /api/v1/bestiary` returns deterministic reflected monster and encounter metadata with `status`, `kind`, `monster_count`, `encounter_count`, `monsters`, and `encounters`. Profile-specific fight stats are also summarized under `/api/v1/compendium`.
+
+The `/api/v1/glossary/*` endpoints expose active-run pool metadata. They require a run in progress and are scoped to the current run/character context plus shared run pools such as Colorless cards, shared relics, and shared potions, not profile-wide discovered content. Card glossary items include upgrade availability plus upgraded-preview cost and description. Successful responses include `profile_id`, `progress_path`, `resolved_progress_path`, `profile_root`, `save_scope`, `current_run` save context, `kind`, `count`, and `items`; `current_run.run_id` and `current_run.seed` are included when `current_run.save` exposes them. If no run is active, they return HTTP 409 with `error_code: "run_not_in_progress"` and the same profile/save context fields. If run state cannot be read, they return HTTP 503 with `error_code: "run_state_unavailable"` and the same context fields.
+
 `GET /api/v1/compendium` returns the active profile grouped like the in-game Compendium:
+
+The top level includes `status`, `kind: "compendium"`, `profile_id`, `progress_path`, `resolved_progress_path`, `profile_root`, and `save_scope`, matching `/api/v1/profile`.
 
 When a run is active, the response includes `current_run.run_id` in `{save_scope}:profile{profile_id}:{start_time}` format. This identifies the specific run attempt, while `seed` identifies the generated run content.
 
@@ -225,15 +270,18 @@ the generations differ. Reading the generation is constant-time and the main
 multiplayer endpoint never serializes or hashes relic bags.
 
 
-`GET /api/v1/profiles` returns the three profile slots:
+`GET /api/v1/profiles` returns the three profile slots with `status`, `kind`, `count`, and per-slot save context fields (`progress_path`, `resolved_progress_path`, `profile_root`, `save_scope`):
 
 ```json
 {
+  "status": "ok",
+  "kind": "profiles",
   "current_profile_id": 1,
+  "count": 3,
   "profiles": [
-    { "id": 1, "is_current": true, "has_data": true },
-    { "id": 2, "is_current": false, "has_data": false },
-    { "id": 3, "is_current": false, "has_data": true }
+    { "id": 1, "profile_id": 1, "is_current": true, "has_data": true, "progress_path": "modded/profile1/saves/progress.save", "resolved_progress_path": "C:/.../progress.save", "profile_root": "modded/profile1", "save_scope": "modded" },
+    { "id": 2, "profile_id": 2, "is_current": false, "has_data": false, "progress_path": "modded/profile2/saves/progress.save", "resolved_progress_path": "modded/profile2/saves/progress.save", "profile_root": "modded/profile2", "save_scope": "modded" },
+    { "id": 3, "profile_id": 3, "is_current": false, "has_data": true, "progress_path": "modded/profile3/saves/progress.save", "resolved_progress_path": "C:/.../progress.save", "profile_root": "modded/profile3", "save_scope": "modded" }
   ]
 }
 ```
@@ -244,6 +292,8 @@ multiplayer endpoint never serializes or hashes relic bags.
 |---|---|---|
 | `switch` | `profile_id`: 1-3 | Switch through the game profile UI. Empty slots can be used for fresh-profile testing. Cannot be used during a run. |
 | `delete` | `profile_id`: 1-3 | Delete an inactive profile slot. The active profile is rejected. |
+
+Profile action validation uses non-2xx HTTP status codes: invalid profile IDs and unknown actions return HTTP 400; deleting the active profile and switching during a run return HTTP 409 with an `error_code`.
 
 ### Combat
 
@@ -258,18 +308,18 @@ rewards..."` (no `battle`) is the corresponding tail end.
 
 | Action | Parameters | When to Use |
 |---|---|---|
-| `play_card` | `card_uid`?: string, `card_index`?: int, `target`?: string | Play a card from hand. Identify the card by `card_uid` (from state, e.g. `"STRIKE#2"`) — it names the card instance and stays valid for the whole combat — or by `card_index`, which shifts whenever a card leaves the hand. `target` is an `entity_id` (`"JAW_WORM_0"`) or a `combat_id` (`3`), required for single-target cards unless exactly one enemy is alive, in which case it is chosen automatically. MP `AnyAlly` cards take an optional teammate id (`players[].entity_id`, e.g. `"player_1"`; never self; defaults to lowest-HP living teammate). |
-| `use_potion` | `slot`: int (aliases `potion_index`, `index`), `target`?: string | Use a potion. `slot` is the belt slot from state `player.potions[].slot`, not a position in the list. `target` (an `entity_id` or `combat_id`) is required for enemy-targeting potions unless exactly one enemy is alive, in which case it is chosen automatically; a targeted potion is never consumed against nothing. For `AnyPlayer` potions it may also be a teammate id (defaults to self — pass a teammate id to throw it to them). Works outside combat for non-combat-only potions. |
+| `play_card` | `card_uid`?: string, `card_index`?: int, `target`?: string | Play a card from hand when `can_play` is true. Identify the card by `card_uid` (from state, e.g. `"STRIKE#2"`) — it names the card instance and stays valid for the whole combat — or by `card_index`, which shifts whenever a card leaves the hand. `target` is an `entity_id` (`"JAW_WORM_0"`) or a `combat_id` (`3`), required when the card reports `requires_target` (its `valid_targets` lists the legal ones) unless exactly one enemy is alive, in which case it is chosen automatically. MP `AnyAlly` cards take an optional teammate id (`players[].entity_id`, e.g. `"player_1"`; never self; defaults to lowest-HP living teammate). |
+| `use_potion` | `slot`: int (aliases `potion_index`, `index`), `target`?: string | Use a potion when its state says `can_use`. `slot` is the belt slot from state `player.potions[].slot`, not a position in the list. `target` (an `entity_id` or `combat_id`, or a `valid_targets` entry) is required for enemy-targeting potions unless exactly one enemy is alive, in which case it is chosen automatically; a targeted potion is never consumed against nothing. For `AnyPlayer` potions it may also be a teammate id (defaults to self — pass a teammate id to throw it to them). Works outside combat for non-combat-only potions. |
 | `sell_potion` | `slot`: int (aliases `potion_index`, `index`) | Sell a potion to the merchant by using it on them (Foul Potion's 100-gold mode). Only valid in a shop or fake merchant, and only for potions with a merchant interaction; shop state lists those under `sellable_potions`. |
-| `discard_potion` | `slot`: int | Discard a potion to free up the slot. Use when slots are full and you need room for incoming potions. |
-| `end_turn` | _(none)_ | End the player's turn. |
+| `discard_potion` | `slot`: int | Discard a potion when its state says `can_discard`, to free up the slot. Use when slots are full and you need room for incoming potions. |
+| `end_turn` | _(none)_ | End the player's turn when battle state says `can_end_turn`. |
 
 ### In-Combat Hand Selection (`hand_select`)
 
 | Action | Parameters | When to Use |
 |---|---|---|
-| `combat_select_card` | `card_index`: int | Select/deselect a card during "choose a card to exhaust/discard" prompts. |
-| `combat_confirm_selection` | _(none)_ | Confirm the hand card selection. |
+| `combat_select_card` | `card_index`: int | Select/deselect a visible hand card whose `can_select` is true during selection prompts. |
+| `combat_confirm_selection` | _(none)_ | Confirm the hand card selection when the visible confirm button is enabled. |
 
 When `mode` is `upgrade_select`, each selectable card with an upgrade left carries `upgrade_preview` (its upgraded form).
 
@@ -324,7 +374,7 @@ live node anchors.
 
 | Action | Parameters | When to Use |
 |---|---|---|
-| `choose_map_node` | `index`: int | Travel to a node from `next_options`. Empty (and rejected) while the current room is unfinished or a travel is already resolving — see `map.travel_enabled` / `map.travel_in_flight`. |
+| `choose_map_node` | `index`: int | Travel to a node from `next_options` whose `can_travel` is true. Empty (and rejected) while the current room is unfinished or a travel is already resolving — see `map.travel_enabled` / `map.travel_in_flight`. |
 | `map_draw` | `strokes`: array | Add native drawing/eraser polylines. Points may be normalized `{x,y}` values or live node references `{col,row}`. Saved and broadcast in multiplayer. |
 | `map_clear_drawings` | _(none)_ | Clear only the local player's drawings; broadcast reliably in multiplayer. |
 
@@ -332,15 +382,15 @@ live node anchors.
 
 | Action | Parameters | When to Use |
 |---|---|---|
-| `choose_event_option` | `index`: int | Choose an event option by index from state. Also used for "Proceed" options. Locked options error; so do options that are already `was_chosen`, not `is_enabled`, or picked while a room transition is resolving — poll for the next state rather than retrying. |
+| `choose_event_option` | `index`: int | Choose a visible event option by index from state. Also used for "Proceed" options. Locked or disabled options error; so do options that are already `was_chosen`, not `is_enabled`, or picked while a room transition is resolving — poll for the next state rather than retrying. |
 | `advance_dialogue` | _(none)_ | Click through Ancient dialogue until `in_dialogue` is false. |
 
 ### Rest Site (`rest_site`)
 
 | Action | Parameters | When to Use |
 |---|---|---|
-| `choose_rest_option` | `option_id`: str (aliases `id`, `option`) — **preferred**; or `index`: int (alias `option_index`) | Choose rest, smith, or another option. `option_id` matches `rest_site.options[].id` case-insensitively (`HEAL`, `SMITH`, `DIG`, …). `index` is `rest_site.options[].index`, i.e. the position in the game's option list — *not* the on-screen button order. Both are resolved to the same model option and must agree if both are sent. Disabled options are refused; errors list every option as `[index] id (enabled/disabled)`. Replies with `option_id` and `index` of what was clicked. |
-| `proceed` | _(none)_ | Leave the rest site. |
+| `choose_rest_option` | `option_id`: str (aliases `id`, `option`) — **preferred**; or `index`: int (alias `option_index`) | Choose rest, smith, or another enabled option. `option_id` matches `rest_site.options[].id` case-insensitively (`HEAL`, `SMITH`, `DIG`, …). `index` is `rest_site.options[].index`, i.e. the position in the game's option list — *not* the on-screen button order. Both are resolved to the same model option and must agree if both are sent. Disabled options are refused; errors list every option as `[index] id (enabled/disabled)`. Replies with `option_id` and `index` of what was clicked. |
+| `proceed` | _(none)_ | Leave the rest site when the visible proceed button is enabled. |
 
 `rest_site.options[]` carries `index`, `id`, `name`, `description`, `is_enabled` and `has_button`
 (false when the option exists in the run model but no button is drawn yet — markdown appends
@@ -356,14 +406,14 @@ refresh the state after a purchase because those effects can update the inventor
 |---|---|---|
 | `shop_open` | _(none)_ | Open the inventory. State queries never open it automatically. |
 | `shop_purchase` | `index`: int | Buy an item by its index after opening the inventory. Must be stocked and affordable. |
-| `proceed` | _(none)_ | Leave the shop. |
+| `proceed` | _(none)_ | Leave the shop when the visible proceed button is enabled, or close an open inventory first when its visible back button is enabled. |
 
 ### Treasure (`treasure`)
 
 | Action | Parameters | When to Use |
 |---|---|---|
-| `claim_treasure_relic` | `index`: int | Claim a relic from the opened chest. |
-| `proceed` | _(none)_ | Leave the treasure room. |
+| `claim_treasure_relic` | `index`: int | Claim a visible enabled relic from the opened chest. |
+| `proceed` | _(none)_ | Leave the treasure room when the visible proceed button is enabled. |
 
 ### Card Selection Overlay (`card_select`)
 
@@ -374,9 +424,9 @@ it from localized prompt text. Unknown continuations are reported as `origin_spe
 
 | Action | Parameters | When to Use |
 |---|---|---|
-| `select_card` | `index`: int | Grid screens: toggle card selection. Choose-a-card: pick immediately. |
-| `confirm_selection` | _(none)_ | Confirm (for grid screens with preview). Not needed for choose-a-card. |
-| `cancel_selection` | _(none)_ | Cancel preview, skip (choose-a-card), or close screen. |
+| `select_card` | `index`: int | Grid screens: toggle a visible card whose `can_select` is true unless a preview is open. Choose-a-card: pick immediately when `can_select` is true. |
+| `confirm_selection` | _(none)_ | Confirm only when the visible confirm button is enabled. Not needed for choose-a-card. |
+| `cancel_selection` | _(none)_ | Cancel preview, skip (choose-a-card), or close screen when the visible cancel/skip button is enabled. |
 
 On the upgrade screen (`screen_type: "upgrade"`), each card with an upgrade left carries `upgrade_preview` (its upgraded form). The transform/remove screens do not.
 
@@ -408,16 +458,16 @@ short of `min_select`, over `max_select`, or when the press was swallowed by the
 
 | Action | Parameters | When to Use |
 |---|---|---|
-| `select_bundle` | `index`: int | Open a bundle preview. |
-| `confirm_bundle_selection` | _(none)_ | Confirm the previewed bundle. |
-| `cancel_bundle_selection` | _(none)_ | Cancel the bundle preview. |
+| `select_bundle` | `index`: int | Open a visible enabled bundle preview. |
+| `confirm_bundle_selection` | _(none)_ | Confirm the previewed bundle when the visible confirm button is enabled. |
+| `cancel_bundle_selection` | _(none)_ | Cancel the bundle preview when the visible cancel button is enabled. |
 
 ### Relic Selection Overlay (`relic_select`)
 
 | Action | Parameters | When to Use |
 |---|---|---|
-| `select_relic` | `index`: int | Pick a relic (immediate). |
-| `skip_relic_selection` | _(none)_ | Skip the relic choice. |
+| `select_relic` | `index`: int | Pick a visible enabled relic (immediate). |
+| `skip_relic_selection` | _(none)_ | Skip the relic choice when the skip button is visible and enabled. |
 
 ### Crystal Sphere (`crystal_sphere`)
 
@@ -439,8 +489,8 @@ The default `detail=summary` retains the normal low-latency response.
 
 | Action | Parameters | When to Use |
 |---|---|---|
-| `end_turn` | _(none)_ | Vote to end turn. Turn ends when all players vote. |
-| `undo_end_turn` | _(none)_ | Retract end-turn vote (before all players committed). |
+| `end_turn` | _(none)_ | Vote to end turn when battle state says `can_end_turn`. Turn ends when all players vote. |
+| `undo_end_turn` | _(none)_ | Retract end-turn vote when battle state says `can_undo_end_turn` (before all players committed). |
 
 MP battle state additionally exposes the full combat history for ALL players
 (lockstep sync makes remote plays visible locally):

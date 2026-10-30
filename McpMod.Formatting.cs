@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -476,6 +476,7 @@ public static partial class McpMod
                     sb.AppendLine($"- [{card["index"]}]{uid} **{card["name"]}** ({card["cost"]} energy{starCost}) [{card["type"]}] {playable}{keywords} - {card["description"]} (target: {card["target_type"]})");
                     FormatCardTargetPreviews(sb, card);
                     AppendUpgradePreviewLine(sb, card);   // only present while the hand can be upgraded (D-13)
+
                 }
                 sb.AppendLine();
             }
@@ -633,6 +634,7 @@ public static partial class McpMod
         sb.AppendLine("### Deck Information");
         sb.AppendLine();
 
+        FormatPileMarkdown(sb, player, "deck", "deck_count", "Run Deck");
         FormatPileMarkdown(sb, player, "draw_pile", "draw_pile_count", "Draw Pile", " top of pile first");
         FormatPileMarkdown(sb, player, "discard_pile", "discard_pile_count", "Discard Pile");
         FormatPileMarkdown(sb, player, "exhaust_pile", "exhaust_pile_count", "Exhaust Pile");
@@ -672,14 +674,51 @@ public static partial class McpMod
         if (player.TryGetValue(pileKey, out var pileObj) && pileObj is List<Dictionary<string, object?>> pile && pile.Count > 0)
         {
             foreach (var card in pile)
-            {
-                string starCost = card.TryGetValue("star_cost", out var sc) && sc != null ? $" + {sc} star" : "";
-                sb.AppendLine($"- {card["name"]} ({card["cost"]}{starCost}): {card["description"]}");
-            }
+                sb.AppendLine($"- {FormatCardDetails(card, energyLabel: false)}");
         }
         else
             sb.AppendLine("- *(empty)*");
         sb.AppendLine();
+    }
+
+    private static string FormatUpgradeMarker(Dictionary<string, object?> card)
+        => card.TryGetValue("is_upgraded", out var upgraded) && upgraded is true ? "+" : "";
+
+    private static string FormatCardDetails(Dictionary<string, object?> card, bool includeTarget = false, bool energyLabel = true)
+    {
+        string upgraded = FormatUpgradeMarker(card);
+        string cost = card.TryGetValue("cost", out var c) && c != null ? c.ToString()! : "?";
+        string energy = energyLabel ? " energy" : "";
+        string starCost = card.TryGetValue("star_cost", out var sc) && sc != null ? $" + {sc} star" : "";
+        string type = card.TryGetValue("type", out var t) && t != null ? $" [{t}]" : "";
+        string rarity = card.TryGetValue("rarity", out var r) && r != null ? $" {r}" : "";
+        string keywords = FormatKeywordNames(card);
+        string description = card.TryGetValue("description", out var d) && d != null ? $" - {d}" : "";
+        string target = includeTarget && card.TryGetValue("target_type", out var targetObj) && targetObj != null
+            ? $" (target: {targetObj})"
+            : "";
+        return $"**{card.GetValueOrDefault("name")}**{upgraded} ({cost}{energy}{starCost}){type}{rarity}{keywords}{description}{target}";
+    }
+
+    private static string FormatRelicDetails(Dictionary<string, object?> relic, string nameSuffix = "")
+    {
+        string rarity = relic.TryGetValue("rarity", out var r) && r != null ? $" {r}" : "";
+        string keywords = FormatKeywordNames(relic);
+        string description = relic.TryGetValue("description", out var d) && d != null ? $" - {d}" : "";
+        return $"**{relic.GetValueOrDefault("name")}**{nameSuffix}{rarity}{keywords}{description}";
+    }
+
+    private static string FormatKeywordNames(Dictionary<string, object?> item)
+    {
+        if (!item.TryGetValue("keywords", out var kw) || kw is not List<Dictionary<string, object?>> keywords || keywords.Count == 0)
+            return "";
+
+        var names = keywords
+            .Select(keyword => keyword.TryGetValue("name", out var name) ? name?.ToString() : null)
+            .Where(name => !string.IsNullOrWhiteSpace(name))
+            .ToList();
+
+        return names.Count > 0 ? $" [{string.Join(", ", names)}]" : "";
     }
 
     private static void FormatEventMarkdown(StringBuilder sb, Dictionary<string, object?> evt)
@@ -783,11 +822,25 @@ public static partial class McpMod
                 string cardCost = item.TryGetValue("card_cost", out var cc) && cc != null ? cc.ToString()! : "";
                 string cardStarCost = item.TryGetValue("card_star_cost", out var csc) && csc != null ? $" + {csc} star" : "";
                 string cardEnergy = cardCost != "" ? $" ({cardCost} energy{cardStarCost})" : "";
+                string cardUpgrade = "";
+                if (category == "card"
+                    && item.TryGetValue("card_upgrade_preview_description", out var upgradeDesc)
+                    && upgradeDesc != null
+                    && !Equals(upgradeDesc, item.GetValueOrDefault("card_description")))
+                {
+                    string upgradeCost = item.TryGetValue("card_upgrade_preview_cost", out var uc) && uc != null ? uc.ToString()! : "";
+                    string upgradeStar = item.TryGetValue("card_upgrade_preview_star_cost", out var usc) && usc != null ? $" + {usc} star" : "";
+                    string upgradeEnergy = upgradeCost != "" ? $"({upgradeCost} energy{upgradeStar})" : "";
+                    cardUpgrade = upgradeEnergy != ""
+                        ? $" | Upgrade: {upgradeEnergy} {upgradeDesc}"
+                        : $" | Upgrade: {upgradeDesc}";
+                }
+                string itemKeywords = FormatKeywordNames(item);
                 string desc = category switch
                 {
-                    "card" => $"**{item.GetValueOrDefault("card_name")}**{cardEnergy} [{item.GetValueOrDefault("card_type")}] {item.GetValueOrDefault("card_rarity")} - {item.GetValueOrDefault("card_description")}",
-                    "relic" => $"**{item.GetValueOrDefault("relic_name")}** - {item.GetValueOrDefault("relic_description")}",
-                    "potion" => $"**{item.GetValueOrDefault("potion_name")}** - {item.GetValueOrDefault("potion_description")}",
+                    "card" => $"**{item.GetValueOrDefault("card_name")}**{(item.GetValueOrDefault("card_is_upgraded") is true ? "+" : "")}{cardEnergy} [{item.GetValueOrDefault("card_type")}] {item.GetValueOrDefault("card_rarity")}{itemKeywords} - {item.GetValueOrDefault("card_description")}{cardUpgrade}",
+                    "relic" => $"**{item.GetValueOrDefault("relic_name")}** {item.GetValueOrDefault("relic_rarity")}{itemKeywords} - {item.GetValueOrDefault("relic_description")}",
+                    "potion" => $"**{item.GetValueOrDefault("potion_name")}** {item.GetValueOrDefault("potion_rarity")} ({item.GetValueOrDefault("potion_usage")}, target: {item.GetValueOrDefault("potion_target_type")}){itemKeywords} - {item.GetValueOrDefault("potion_description")}",
                     "card_removal" => "**Remove a card** from your deck",
                     _ => "Unknown item"
                 };
@@ -1050,7 +1103,7 @@ public static partial class McpMod
         if (relicSelect.TryGetValue("relics", out var relicsObj) && relicsObj is List<Dictionary<string, object?>> relics)
         {
             foreach (var relic in relics)
-                sb.AppendLine($"- [{relic["index"]}] **{relic["name"]}** - {relic["description"]}");
+                sb.AppendLine($"- [{relic["index"]}] {FormatRelicDetails(relic)}");
             sb.AppendLine();
         }
 
@@ -1088,7 +1141,7 @@ public static partial class McpMod
         {
             sb.AppendLine("### Already Selected");
             foreach (var card in selected)
-                sb.AppendLine($"- {card["name"]}");
+                sb.AppendLine($"- {FormatCardDetails(card)}");
             sb.AppendLine();
         }
 
@@ -1185,10 +1238,7 @@ public static partial class McpMod
                 if (bundle.TryGetValue("cards", out var cardsObj) && cardsObj is List<Dictionary<string, object?>> cards)
                 {
                     foreach (var card in cards)
-                    {
-                        string starCost = card.TryGetValue("star_cost", out var sc) && sc != null ? $" + {sc} star" : "";
-                        sb.AppendLine($"  **{card["name"]}** ({card["cost"]} energy{starCost}) [{card["type"]}] {card["rarity"]} - {card["description"]}");
-                    }
+                        sb.AppendLine($"  {FormatCardDetails(card)}");
                 }
             }
             sb.AppendLine();
@@ -1205,10 +1255,7 @@ public static partial class McpMod
             {
                 sb.AppendLine("### Preview Cards");
                 foreach (var card in previewCards)
-                {
-                    string starCost = card.TryGetValue("star_cost", out var sc) && sc != null ? $" + {sc} star" : "";
-                    sb.AppendLine($"- **{card["name"]}** ({card["cost"]} energy{starCost}) [{card["type"]}] {card["rarity"]} - {card["description"]}");
-                }
+                    sb.AppendLine($"- {FormatCardDetails(card)}");
                 sb.AppendLine();
             }
         }
@@ -1270,10 +1317,7 @@ public static partial class McpMod
         {
             sb.AppendLine("## Treasure Relics");
             foreach (var relic in relics)
-            {
-                string rarity = relic.TryGetValue("rarity", out var r) && r != null ? $" ({r})" : "";
-                sb.AppendLine($"- [{relic["index"]}] **{relic["name"]}**{rarity} - {relic["description"]}");
-            }
+                sb.AppendLine($"- [{relic["index"]}] {FormatRelicDetails(relic)}");
             sb.AppendLine();
             sb.AppendLine("Use `treasure_claim_relic(relic_index)` to claim a relic.");
         }

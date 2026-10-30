@@ -30,7 +30,7 @@ public static partial class McpMod
         }
         catch (Exception ex)
         {
-            SendError(response, 500, $"Failed to read map drawings: {ex.Message}");
+            SendError(response, 500, $"Failed to read map drawings: {ex.Message}", "mapdrawings_read_failed");
         }
     }
 

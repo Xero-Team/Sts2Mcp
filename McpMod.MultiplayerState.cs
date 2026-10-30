@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
@@ -20,6 +20,7 @@ using MegaCrit.Sts2.Core.Nodes.GodotExtensions;
 using MegaCrit.Sts2.Core.Nodes.Rooms;
 using MegaCrit.Sts2.Core.Nodes.Screens;
 using MegaCrit.Sts2.Core.Nodes.Screens.CardSelection;
+using MegaCrit.Sts2.Core.Nodes.Screens.GameOverScreen;
 using MegaCrit.Sts2.Core.Nodes.Screens.Map;
 using MegaCrit.Sts2.Core.Nodes.Screens.Overlays;
 using MegaCrit.Sts2.Core.Nodes.Screens.TreasureRoomRelic;
@@ -33,7 +34,7 @@ public static partial class McpMod
     /// <summary>Called through BuildMultiplayerGameState(), which brackets it with the warning collector.</summary>
     private static Dictionary<string, object?> BuildMultiplayerGameStateCore(bool fullDetail = false)
     {
-        var result = NewStateResult();
+        var result = NewStateResult(kind: "multiplayer_state");
         var tree = Engine.GetMainLoop() as SceneTree;
 
         // Surface blocking FTUE/tutorial/popup prompts before normal run state, so MP
@@ -44,7 +45,7 @@ public static partial class McpMod
         {
             var ftueState = BuildVisibleFtueState(tree.Root);
             if (ftueState != null)
-                return ftueState;
+                return WithStateEnvelope(ftueState, "multiplayer_state");
         }
 
         if (!RunManager.Instance.IsInProgress)
@@ -129,6 +130,15 @@ public static partial class McpMod
             // as the room it came from and nobody can act on it.
             result["state_type"] = "rewards";
             result["rewards"] = BuildRewardsState(rewardsScreen, runState);
+        }
+        else if (topOverlay is NGameOverScreen)
+        {
+            result["state_type"] = "game_over";
+            result["game_over"] = new Dictionary<string, object?>
+            {
+                ["message"] = "Run ended.",
+                ["options"] = new List<string> { "main_menu" }
+            };
         }
         else if (topOverlay is IOverlayScreen
                  && topOverlay is not NRewardsScreen
@@ -298,6 +308,10 @@ public static partial class McpMod
         }
         catch { }
 
+        // Fork addition: the same active-run context singleplayer reports, so a client
+        // can correlate a co-op state read with the save files it came from.
+        result["current_run"] = BuildActiveRunContext();
+
         // All players summary (always included for multiplayer)
         // Only the top-level roster follows `detail=full`. Room-local `players`
         // arrays remain compact summaries so a response never duplicates every
@@ -328,8 +342,26 @@ public static partial class McpMod
         battle["next_creature_id"] = NextCreatureId(combatState);
         battle["round"] = combatState.RoundNumber;
         battle["turn"] = combatState.CurrentSide.ToString().ToLower();
+        // IsCombatPlayPhase() instead of the compiled IsPlayPhase property the fork
+        // used: STS2 0.107 removed that accessor (see McpMod.Helpers.cs).
         battle["is_play_phase"] = IsCombatPlayPhase();
+        battle["player_actions_disabled"] = CombatManager.Instance.PlayerActionsDisabled;
         battle["all_players_ready"] = CombatManager.Instance.AllPlayersReadyToEndTurn();
+
+        var localPlayer = LocalContext.GetMe(runState);
+        if (localPlayer != null)
+        {
+            var isReady = CombatManager.Instance.IsPlayerReadyToEndTurn(localPlayer);
+            battle["local_player_ready_to_end_turn"] = isReady;
+
+            var endTurnBlockedReason = GetMultiplayerEndTurnBlockedReason(localPlayer);
+            battle["can_end_turn"] = endTurnBlockedReason == null;
+            battle["end_turn_blocked_reason"] = endTurnBlockedReason;
+
+            var undoBlockedReason = GetMultiplayerUndoEndTurnBlockedReason(localPlayer);
+            battle["can_undo_end_turn"] = undoBlockedReason == null;
+            battle["undo_end_turn_blocked_reason"] = undoBlockedReason;
+        }
 
         battle["enemies"] = BuildEnemyList(combatState);
 
@@ -589,6 +621,48 @@ public static partial class McpMod
             });
         }
         return result;
+    }
+
+    private static string? GetMultiplayerEndTurnBlockedReason(Player player)
+    {
+        if (!CombatManager.Instance.IsInProgress)
+            return "NotInCombat";
+        if (!IsCombatPlayPhase())
+            return "NotInPlayPhase";
+        if (CombatManager.Instance.PlayerActionsDisabled)
+            return "PlayerActionsDisabled";
+        if (!player.Creature.IsAlive)
+            return "PlayerDead";
+        if (CombatManager.Instance.IsPlayerReadyToEndTurn(player))
+            return "AlreadyReady";
+
+        var hand = NCombatRoom.Instance?.Ui?.Hand;
+        if (hand != null && hand.InCardPlay)
+            return "CardInPlay";
+        if (hand != null && hand.CurrentMode != NPlayerHand.Mode.Play)
+            return "HandSelectionMode";
+        if (player.Creature.CombatState == null)
+            return "NoCombatState";
+
+        return null;
+    }
+
+    private static string? GetMultiplayerUndoEndTurnBlockedReason(Player player)
+    {
+        if (!CombatManager.Instance.IsInProgress)
+            return "NotInCombat";
+        if (!IsCombatPlayPhase())
+            return "NotInPlayPhase";
+        if (CombatManager.Instance.PlayerActionsDisabled)
+            return "PlayerActionsDisabled";
+        if (!player.Creature.IsAlive)
+            return "PlayerDead";
+        if (!CombatManager.Instance.IsPlayerReadyToEndTurn(player))
+            return "NotReady";
+        if (player.Creature.CombatState == null)
+            return "NoCombatState";
+
+        return null;
     }
 
     private static Dictionary<string, object?> BuildMultiplayerMapState(RunState runState)

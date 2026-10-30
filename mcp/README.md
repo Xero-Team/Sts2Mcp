@@ -4,16 +4,26 @@
 
 | Tool | Scope | Description |
 |---|---|---|
+| `get_api_index()` | General | Get mod status, bound prefixes, and HTTP endpoint index |
 | `get_game_state(format?)` | General | Get current game state (`markdown` or `json`) |
-| `menu_select(option, seed?)` | General | Select a visible menu/game-over option |
+| `menu_select(option, seed?)` | General | Select a visible menu/game-over option, including `abandon_run` when advertised |
 | `open_pause_menu()` | General | Open the in-run pause menu (resume / settings / compendium / give_up / save_and_quit) |
-| `get_profile()` | Profiles | Get active profile progress |
-| `get_compendium()` | Profiles | Get active profile progress grouped like the in-game Compendium |
+| `timeline_reveal_epochs()` | General | Reveal obtained-but-unrevealed timeline epochs from the main menu (repeat until `done`) |
+| `get_settings()` | General | Get current settings and preferences |
+| `get_profile()` | Profiles | Get active profile progress plus save/run context |
+| `get_compendium()` | Profiles | Get Compendium-shaped profile progress plus save/run context |
+| `get_playtest_metrics(...)` | Profiles | Summarize the local playtest ledger (filters: character, build, ascension, time window) |
 | `search_wiki(query, item_type?, limit?)` | Profiles | Fuzzy-search discovered card and relic wiki entries |
+| `get_bestiary()` | Profiles | Get deterministic monster and encounter metadata with counts |
+| `get_glossary_cards()` | Active Pool | Get active-run card pool metadata with current-run save context |
+| `get_glossary_relics()` | Active Pool | Get active-run relic pool metadata with current-run save context |
+| `get_glossary_potions()` | Active Pool | Get active-run potion pool metadata with current-run save context |
+| `get_glossary_keywords()` | Active Pool | Get active-run keyword metadata with current-run save context |
 | `list_profiles()` | Profiles | List profile slots and active slot |
 | `switch_profile(profile_id)` | Profiles | Switch to a profile slot through the game UI |
 | `delete_profile(profile_id)` | Profiles | Delete an inactive profile slot |
 | `use_potion(slot, target?, wait?)` | General | Use a potion (works in and out of combat) |
+| `sell_potion(slot)` | General | Sell a merchant-interaction potion (Foul Potion's 100-gold mode) |
 | `discard_potion(slot)` | General | Discard a potion to free up the slot |
 | `proceed_to_map(wait?)` | General | Proceed from rewards/rest site/shop/treasure to the map |
 | `combat_play_card(card_index, target?, card_uid?, wait?)` | Combat | Play a card from hand |
@@ -23,6 +33,7 @@
 | `rewards_claim(reward_index)` | Rewards | Claim a reward from the post-combat screen |
 | `rewards_pick_card(card_index)` | Rewards | Select a card from the card reward screen |
 | `rewards_skip_card()` | Rewards | Skip the card reward |
+| `rewards_card_alternative(option_id)` | Rewards | Take an alternative option from `card_reward.alternatives` (Skip, SACRIFICE, …) |
 | `get_map_drawings()` | Map | Read strokes and live node drawing positions from the dedicated endpoint |
 | `map_choose_node(node_index)` | Map | Choose a map node to travel to |
 | `map_draw(strokes)` | Map | Draw/erase normalized polylines or paths through map-node references |
@@ -70,6 +81,22 @@ The Compendium response is profile-scoped, not run-state-scoped. It works from t
 
 `search_wiki(query, item_type="all", limit=10)` is the selective wiki lookup. It fuzzy-matches names and IDs such as `ironclad perfect strike` or `silver spoon`, but it searches only cards and relics discovered by the active profile. The default response is capped at 10 entries; callers may pass a higher or lower `limit`, and the mod clamps oversized requests. Card matches include `base` and `upgraded` blocks so agents can compare pre-upgrade and post-upgrade text without asking for the full card library.
 
+### Response Envelope and Errors
+
+`get_api_index()` returns `status`, `kind: api_index`, `version`, `endpoint_count`, bound listener prefixes, and the advertised HTTP routes.
+
+`get_game_state()` and `mp_get_game_state()` JSON responses include `status: ok`, `kind` (`singleplayer_state` or `multiplayer_state`), `state_type`, and the active-run context fields when a run is in progress.
+
+Profile, profile-list, and Compendium tools include `status`, `kind`, `profile_id`, `progress_path`, `resolved_progress_path`, `profile_root`, and `save_scope`; profile and Compendium responses also include `current_run` when a run is active, so callers can distinguish the active profile, save scope, local save location, and current run attempt. Save/path context fields are normalized with forward slashes, including Windows absolute paths.
+
+Profile switch/delete failures are surfaced as structured endpoint errors with HTTP 400 for invalid input and HTTP 409 for state conflicts such as deleting the active profile or switching during a run. POST validation failures preserve endpoint `error_code` values such as `invalid_json`, `missing_action`, `invalid_action_type`, `missing_profile_id`, `invalid_profile_id_type`, and `invalid_action_payload`.
+
+Route-level failures preserve endpoint `error_code` values such as `method_not_allowed`, `not_found`, and `internal_error`. Read endpoint startup/data-availability failures preserve `save_manager_unavailable`, `settings_data_unavailable`, and `profile_data_unavailable`. Read endpoint exceptions preserve endpoint-specific codes such as `settings_read_failed`, `bestiary_build_failed`, `glossary_build_failed`, `profile_build_failed`, `profiles_read_failed`, `compendium_build_failed`, `singleplayer_state_read_failed`, and `multiplayer_state_read_failed`.
+
+Menu/action dispatch failures also use structured endpoint errors: missing or unknown main-menu selections and unknown actions return HTTP 400, gameplay actions sent without an active run return HTTP 409, Timeline manual-reveal blocks return HTTP 409 with `error_code: timeline_manual_action_required`, and blocking tutorial/popup overlays return HTTP 409 with `error_code: blocking_popup_active`. Older generic action failures carry the stable fallback `error_code: action_error` instead of omitting an error code. MCP wrappers preserve those structured JSON error bodies and add `http_status` so callers can handle endpoint failures without parsing a flat text prefix.
+
+Glossary tools require an active run. They include the current character context plus shared run pools such as Colorless cards, shared relics, and shared potions. Card glossary items include energy/star costs, upgrade availability, plus upgraded-preview cost and description. Successful responses include `profile_id`, `progress_path`, `resolved_progress_path`, `profile_root`, `save_scope`, `current_run` save context, `kind`, `count`, and `items`; `current_run.run_id` and `current_run.seed` are included when `current_run.save` exposes them. The HTTP endpoints return `run_not_in_progress` with HTTP 409 when called from the main menu, or `run_state_unavailable` with HTTP 503 if the active run state cannot be read, while still including the active profile/save context fields.
+
 ## Multiplayer
 
 All multiplayer tools are prefixed with `mp_`. They route through `/api/v1/multiplayer` and are only available during multiplayer (co-op) runs. The endpoints automatically guard against cross-mode calls.
@@ -82,7 +109,7 @@ All multiplayer tools are prefixed with `mp_`. They route through `/api/v1/multi
 | `mp_combat_undo_end_turn()` | Combat | Retract end-turn vote |
 | `mp_use_potion(slot, target?)` | General | Use a potion from the local player's slots |
 | `mp_discard_potion(slot)` | General | Discard a potion from the local player's slots |
-| `mp_proceed_to_map()` | General | Proceed from current screen to the map |
+| `mp_proceed_to_map()` | General | Proceed from rewards/rest site/shop/fake merchant/treasure to the map |
 | `mp_map_vote(node_index)` | Map | Vote for a map node (travel when all agree) |
 | `mp_map_draw(strokes)` | Map | Draw/erase strokes and broadcast them to peers |
 | `mp_map_clear_drawings()` | Map | Clear local drawings and broadcast the clear |

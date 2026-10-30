@@ -34,3 +34,6 @@ PULL_REQUEST_DRAFT.md
 /.idea/.idea.STS2_MCP/.idea/indexLayout.xml
 /.idea/.idea.STS2_MCP/.idea/vcs.xml
 /.idea/sts2-mcp.iml
+
+# Local planning
+todo.md

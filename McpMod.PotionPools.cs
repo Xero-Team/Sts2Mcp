@@ -47,7 +47,7 @@ public static partial class McpMod
         }
         catch (Exception ex)
         {
-            SendError(response, 500, $"Failed to build potion pools: {ex.Message}");
+            SendError(response, 500, $"Failed to build potion pools: {ex.Message}", "potionpools_build_failed");
         }
     }
 

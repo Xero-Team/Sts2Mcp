@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Net;
@@ -55,7 +55,6 @@ public static partial class McpMod
         if (manager is not { IsInProgress: true }) return false;
         return manager.DebugOnlyGetState()?.CurrentSide == MegaCrit.Sts2.Core.Combat.CombatSide.Player;
     }
-
 
     private static CardModel? SafeBuildUpgradedCardPreview(CardModel card)
     {
@@ -188,18 +187,31 @@ public static partial class McpMod
     }
 
     internal static void SendError(
-        HttpListenerResponse response, int statusCode, string message, bool pretty = false)
+        HttpListenerResponse response, int statusCode, string message, bool pretty = false,
+        string? errorCode = null)
     {
         response.StatusCode = statusCode;
         // "status" is carried here too so a client never has to branch on the HTTP code:
         // transport-level failures (bad JSON, unknown route, wrong method) read exactly
         // like the action-level failures produced by Error().
-        SendJson(response, new Dictionary<string, object?>
+        var data = new Dictionary<string, object?>
         {
             ["status"] = "error",
             ["error"] = message
-        }, pretty);
+        };
+        if (!string.IsNullOrWhiteSpace(errorCode))
+            data["error_code"] = errorCode;
+        SendJson(response, data, pretty);
     }
+
+    /// <summary>
+    /// Error-code-first shorthand kept for the fork's call sites
+    /// (<c>SendError(response, 409, "...", "run_not_in_progress")</c>). Both overloads
+    /// share the implementation above, so the wire shape is identical.
+    /// </summary>
+    internal static void SendError(
+        HttpListenerResponse response, int statusCode, string message, string errorCode)
+        => SendError(response, statusCode, message, false, errorCode);
 
     /// <summary>
     /// 503 for "the game's main thread never picked this up". `retry: true` is the contract:
@@ -218,9 +230,22 @@ public static partial class McpMod
         }, pretty);
     }
 
-    private static Dictionary<string, object?> Error(string message)
+    internal static void SendReadResultJson(HttpListenerResponse response, object result, bool pretty = false)
     {
-        return new Dictionary<string, object?> { ["status"] = "error", ["error"] = message };
+        if (result is Dictionary<string, object?> data
+            && data.TryGetValue("status", out var status)
+            && status as string == "error")
+        {
+            response.StatusCode = data.TryGetValue("error_code", out var errorCode)
+                ? (errorCode as string) switch
+                {
+                    "save_manager_unavailable" or "settings_data_unavailable" or "profile_data_unavailable" => 503,
+                    _ => 500
+                }
+                : 500;
+        }
+
+        SendJson(response, result, pretty);
     }
 
     private static bool IsCombatPlayPhase()
@@ -327,6 +352,33 @@ public static partial class McpMod
             result["status"] = result.ContainsKey("error") ? "error" : "ok";
         return result;
     }
+
+    private static Dictionary<string, object?> Error(
+        string message,
+        string? errorCode = null,
+        [CallerFilePath] string callerFilePath = "")
+    {
+        var data = new Dictionary<string, object?> { ["status"] = "error", ["error"] = message };
+        if (string.IsNullOrWhiteSpace(errorCode)
+            && (callerFilePath.EndsWith("McpMod.Actions.cs", StringComparison.Ordinal)
+                || callerFilePath.EndsWith("McpMod.MultiplayerActions.cs", StringComparison.Ordinal)))
+        {
+            errorCode = "action_error";
+        }
+        if (!string.IsNullOrWhiteSpace(errorCode))
+            data["error_code"] = errorCode;
+        return data;
+    }
+
+    private static Dictionary<string, object?> WithStateEnvelope(Dictionary<string, object?> state, string kind)
+    {
+        state.TryAdd("status", "ok");
+        state.TryAdd("kind", kind);
+        return state;
+    }
+
+    private static string? NormalizePathForJson(string? path)
+        => string.IsNullOrWhiteSpace(path) ? path : path.Replace('\\', '/');
 
     private static object? GetInstanceFieldValue(object source, string fieldName)
     {
