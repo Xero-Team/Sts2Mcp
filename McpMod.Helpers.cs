@@ -210,12 +210,7 @@ public static partial class McpMod
             string? valueless = query[null];
             if (valueless == null)
                 return false;
-            foreach (string part in valueless.Split(','))
-            {
-                if (part.Trim().Equals("pretty", StringComparison.OrdinalIgnoreCase))
-                    return true;
-            }
-            return false;
+            return valueless.Split(',').Any(part => part.Trim().Equals("pretty", StringComparison.OrdinalIgnoreCase));
         }
 
         return value.Length == 0
@@ -1139,12 +1134,8 @@ public static partial class McpMod
             return openFtue;
         }
 
-        foreach (var ftue in FindAll<MegaCrit.Sts2.Core.Nodes.Ftue.NAcceptTutorialsFtue>(root))
-        {
-            if (IsFtueNodeActive(ftue) || ReferenceEquals(openModal, ftue))
-                return ftue;
-        }
-        return null;
+        return FindAll<MegaCrit.Sts2.Core.Nodes.Ftue.NAcceptTutorialsFtue>(root)
+            .FirstOrDefault(ftue => IsFtueNodeActive(ftue) || ReferenceEquals(openModal, ftue));
     }
 
     private static bool IsAnyFtueVisible(Node root)
@@ -1434,13 +1425,7 @@ public static partial class McpMod
             return null;
         }
 
-        foreach (var button in FindAll<NClickableControl>(ftue))
-        {
-            if (IsPopupButtonActionable(button))
-                return button;
-        }
-
-        return null;
+        return FindAll<NClickableControl>(ftue).FirstOrDefault(IsPopupButtonActionable);
     }
 
     // One run-modifier tickbox on the custom-run screen.

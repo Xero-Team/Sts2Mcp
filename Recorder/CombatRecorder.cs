@@ -1422,9 +1422,8 @@ internal static class CombatRecorder
             if (Directory.Exists(runDir))
                 foreach (var d in Directory.GetDirectories(runDir))
                     names.Add(Path.GetFileName(d));
-            foreach (var d in ReservedDirs)
-                if (string.Equals(Path.GetDirectoryName(d), runDir, StringComparison.Ordinal))
-                    names.Add(Path.GetFileName(d));
+            foreach (var d in ReservedDirs.Where(d => string.Equals(Path.GetDirectoryName(d), runDir, StringComparison.Ordinal)))
+                names.Add(Path.GetFileName(d));
             {
                 foreach (var n in names)
                 {

@@ -69,13 +69,11 @@ internal static class RecorderPatches
         Patch(typeof(MegaCrit.Sts2.Core.DevConsole.DevConsole), nameof(MegaCrit.Sts2.Core.DevConsole.DevConsole.ProcessCommand),
             prefix: nameof(ConsolePrefix), parameters: new[] { typeof(string) });
         // Counted only: AC2 asks that recording sends nothing to Sentry (docs/recording.md).
-        foreach (var m in AccessTools.GetDeclaredMethods(typeof(SentryService)))
+        foreach (var m in AccessTools.GetDeclaredMethods(typeof(SentryService))
+                     .Where(m => string.Equals(m.Name, nameof(SentryService.CaptureException), StringComparison.Ordinal)))
         {
-            if (string.Equals(m.Name, nameof(SentryService.CaptureException), StringComparison.Ordinal))
-            {
-                Harmony.Patch(m, prefix: new HarmonyMethod(typeof(RecorderPatches), nameof(SentryPrefix)));
-                AppliedList.Add($"SentryService.CaptureException({m.GetParameters().Length})");
-            }
+            Harmony.Patch(m, prefix: new HarmonyMethod(typeof(RecorderPatches), nameof(SentryPrefix)));
+            AppliedList.Add($"SentryService.CaptureException({m.GetParameters().Length})");
         }
     }
 

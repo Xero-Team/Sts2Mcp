@@ -26,8 +26,8 @@ public static partial class McpMod
     private static void RefreshRewardRun()
     {
         _rewardSession.CheckRun(RunManager.Instance.DebugOnlyGetState());
-        foreach (var pair in _cardRewardParents.ToArray())
-            if (!_rewardSession.Contains(pair.Value)) _cardRewardParents.Remove(pair.Key);
+        foreach (var pair in _cardRewardParents.ToArray().Where(pair => !_rewardSession.Contains(pair.Value)))
+            _cardRewardParents.Remove(pair.Key);
     }
 
     // Shared by state and claim_reward: exactly the same enabled-button order as the legacy API.

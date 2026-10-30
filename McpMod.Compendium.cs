@@ -571,11 +571,10 @@ public static partial class McpMod
 
         foreach (var steamRoot in steamRoots)
         {
-            foreach (var accountRoot in Directory.GetDirectories(steamRoot).OrderBy(path => path, StringComparer.OrdinalIgnoreCase))
-            {
-                if (yielded.Add(accountRoot))
-                    yield return accountRoot;
-            }
+            foreach (var accountRoot in Directory.GetDirectories(steamRoot)
+                         .OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
+                         .Where(yielded.Add))
+                yield return accountRoot;
         }
     }
 

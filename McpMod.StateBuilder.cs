@@ -3056,10 +3056,10 @@ public static partial class McpMod
     {
         try
         {
-            foreach (var potion in player.PotionSlots)
-                if (potion != null && HandUpgradePotionIds.Contains(potion.Id.Entry)) return true;
-            foreach (var card in hand)
-                if (HandUpgradeCardIds.Contains(card.Id.Entry)) return true;
+            if (player.PotionSlots.Any(potion => potion != null && HandUpgradePotionIds.Contains(potion.Id.Entry)))
+                return true;
+            if (hand.Any(card => HandUpgradeCardIds.Contains(card.Id.Entry)))
+                return true;
         }
         catch (Exception ex)
         {
@@ -3292,11 +3292,8 @@ public static partial class McpMod
         var cardHolders = FindAllSortedByPosition<NCardHolder>(container);
         if (cardHolders.Count > 0)
         {
-            foreach (var holder in cardHolders)
+            foreach (var card in cardHolders.Select(holder => holder.CardModel).OfType<CardModel>())
             {
-                var card = holder.CardModel;
-                if (card == null) continue;
-
                 var cardInfo = BuildCardInfo(card);
                 cardInfo["index"] = previewCards.Count;
                 previewCards.Add(cardInfo);
@@ -3304,11 +3301,8 @@ public static partial class McpMod
             return;
         }
 
-        foreach (var holder in FindAll<NPreviewCardHolder>(container))
+        foreach (var card in FindAll<NPreviewCardHolder>(container).Select(holder => holder.CardModel).OfType<CardModel>())
         {
-            var card = holder.CardModel;
-            if (card == null) continue;
-
             var cardInfo = BuildCardInfo(card);
             cardInfo["index"] = previewCards.Count;
             previewCards.Add(cardInfo);
@@ -4457,10 +4451,8 @@ public static partial class McpMod
 
         var travelable = GetTravelableMapPoints(mapScreen);
 
-        int index = 0;
-        foreach (var nmp in travelable)
+        foreach (var (pt, index) in travelable.Select((nmp, index) => (pt: nmp.Point, index)))
         {
-            var pt = nmp.Point;
             var option = new Dictionary<string, object?>(StringComparer.Ordinal)
             {
                 ["index"] = index,
@@ -4485,7 +4477,6 @@ public static partial class McpMod
                 option["leads_to"] = children;
 
             nextOptions.Add(option);
-            index++;
         }
         return nextOptions;
     }
@@ -5555,12 +5546,11 @@ public static partial class McpMod
         if (previewCardsContainer != null)
         {
             int previewIndex = 0;
-            foreach (var holder in FindAll<NPreviewCardHolder>(previewCardsContainer)
-                         .Where(holder => IsNodeVisible(holder)))
+            foreach (var card in FindAll<NPreviewCardHolder>(previewCardsContainer)
+                         .Where(holder => IsNodeVisible(holder))
+                         .Select(holder => holder.CardModel)
+                         .OfType<CardModel>())
             {
-                var card = holder.CardModel;
-                if (card == null) continue;
-
                 var cardInfo = BuildCardInfo(card);
                 cardInfo["index"] = previewIndex;
                 previewCards.Add(cardInfo);
@@ -5693,10 +5683,8 @@ public static partial class McpMod
                 var selectedCards = new List<Dictionary<string, object?>>();
                 var selectedHolders = FindAll<NSelectedHandCardHolder>(selectedContainer);
                 int selIdx = 0;
-                foreach (var holder in selectedHolders)
+                foreach (var card in selectedHolders.Select(holder => holder.CardModel).OfType<CardModel>())
                 {
-                    var card = holder.CardModel;
-                    if (card == null) continue;
                     selectedCards.Add(new Dictionary<string, object?>(StringComparer.Ordinal)
                     {
                         ["index"] = selIdx,

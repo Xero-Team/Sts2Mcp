@@ -299,9 +299,8 @@ public static partial class McpMod
         var sharedPool = ModelDb.RelicPool<SharedRelicPool>();
         AddRelicsFromPool(sharedPool, "Shared", result, seen);
 
-        foreach (var player in runState.Players)
+        foreach (var character in runState.Players.Select(player => player.Character))
         {
-            var character = player.Character;
             if (character == null || character.RelicPool == null) continue;
             var pool = character.RelicPool;
             var poolName = SafeGetText(() => character.Title) ?? "Unknown";
@@ -350,9 +349,8 @@ public static partial class McpMod
         var sharedPool = ModelDb.PotionPool<SharedPotionPool>();
         AddPotionsFromPool(sharedPool, "Shared", result, seen);
 
-        foreach (var player in runState.Players)
+        foreach (var character in runState.Players.Select(player => player.Character))
         {
-            var character = player.Character;
             if (character == null || character.PotionPool == null) continue;
             var pool = character.PotionPool;
             var poolName = SafeGetText(() => character.Title) ?? "Unknown";
@@ -407,23 +405,23 @@ public static partial class McpMod
         foreach (var potion in ModelDb.PotionPool<SharedPotionPool>().AllPotions)
             AddKeywordTips(potion.ExtraHoverTips, keywords);
 
-        foreach (var player in runState.Players)
+        foreach (var character in runState.Players.Select(player => player.Character))
         {
-            var cardPool = player.Character?.CardPool;
+            var cardPool = character?.CardPool;
             if (cardPool != null)
             {
                 foreach (var card in cardPool.AllCards)
                     AddKeywordTips(card.HoverTips, keywords);
             }
 
-            var relicPool = player.Character?.RelicPool;
+            var relicPool = character?.RelicPool;
             if (relicPool != null)
             {
                 foreach (var relic in relicPool.AllRelics)
                     AddKeywordTips(relic.HoverTipsExcludingRelic, keywords);
             }
 
-            var potionPool = player.Character?.PotionPool;
+            var potionPool = character?.PotionPool;
             if (potionPool != null)
             {
                 foreach (var potion in potionPool.AllPotions)

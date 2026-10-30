@@ -125,13 +125,13 @@ internal static class RecordObserve
                 runRng[type.ToString()] = (int)RngCounter.GetValue(run.Rng.GetRng(type))!;
         }
         var players = new JsonArray();
-        foreach (var p in run.Players)
+        foreach (var playerRng in run.Players.Select(p => p.PlayerRng))
         {
-            var pr = new JsonObject { ["seed"] = p.PlayerRng.Seed.ToString() };
+            var pr = new JsonObject { ["seed"] = playerRng.Seed.ToString() };
             if (RngCounter != null)
             {
                 foreach (var type in Enum.GetValues<MegaCrit.Sts2.Core.Entities.Rngs.PlayerRngType>())
-                    pr[type.ToString()] = (int)RngCounter.GetValue(p.PlayerRng.GetRng(type))!;
+                    pr[type.ToString()] = (int)RngCounter.GetValue(playerRng.GetRng(type))!;
             }
             players.Add(pr);
         }

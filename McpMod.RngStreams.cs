@@ -1,6 +1,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Linq;
 using System.Net;
 using System.Reflection;
 using MegaCrit.Sts2.Core.Context;
@@ -195,15 +196,8 @@ public static partial class McpMod
 
         if (!_rngSetDictField.TryGetValue(type, out var dictField))
         {
-            dictField = null;
-            foreach (var field in type.GetFields(BindingFlags.NonPublic | BindingFlags.Instance))
-            {
-                if (typeof(IDictionary).IsAssignableFrom(field.FieldType))
-                {
-                    dictField = field;
-                    break;
-                }
-            }
+            dictField = type.GetFields(BindingFlags.NonPublic | BindingFlags.Instance)
+                .FirstOrDefault(field => typeof(IDictionary).IsAssignableFrom(field.FieldType));
             _rngSetDictField[type] = dictField;
         }
 
