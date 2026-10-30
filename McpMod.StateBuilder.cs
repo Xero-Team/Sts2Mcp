@@ -3050,6 +3050,23 @@ public static partial class McpMod
         target[keywordsKey] = BuildHoverTips(relic.HoverTipsExcludingRelic);
     }
 
+    /// <summary>
+    /// One row in a "choose a relic" list: the shared relic summary plus the two fields those
+    /// screens add. Every row is visible by construction (the holders were filtered on it), and
+    /// `canKey` names the screen's own flag - the relic-select screen says `can_select`, the
+    /// treasure chest says `can_claim`.
+    /// </summary>
+    private static Dictionary<string, object?> BuildRelicChoiceEntry(
+        RelicModel relic, int index, string canKey, bool can,
+        [CallerMemberName] string caller = "")
+    {
+        var entry = new Dictionary<string, object?>(StringComparer.Ordinal) { ["index"] = index };
+        AddRelicSummary(entry, relic, caller: caller);
+        entry["is_visible"] = true;
+        entry[canKey] = can;
+        return entry;
+    }
+
     private static void AddPotionSummary(
         Dictionary<string, object?> target, PotionModel potion, string prefix = "potion_",
         [CallerMemberName] string caller = "")
@@ -6285,17 +6302,7 @@ public static partial class McpMod
             if (relic == null)
                 continue;
 
-            relics.Add(new Dictionary<string, object?>(StringComparer.Ordinal)
-            {
-                ["index"] = index,
-                ["id"] = relic.Id.Entry,
-                ["name"] = SafeGetText(() => relic.Title),
-                ["description"] = SafeGetText(() => relic.DynamicDescription),
-                ["rarity"] = relic.Rarity.ToString(),
-                ["is_visible"] = true,
-                ["can_select"] = holder.IsEnabled,
-                ["keywords"] = BuildHoverTips(relic.HoverTipsExcludingRelic)
-            });
+            relics.Add(BuildRelicChoiceEntry(relic, index, "can_select", holder.IsEnabled));
             index++;
         }
         state["relics"] = relics;
@@ -6488,18 +6495,10 @@ public static partial class McpMod
             {
                 RelicModel? relic = holder.Relic?.Model;
                 if (relic == null)
-                    continue;
-                relics.Add(new Dictionary<string, object?>(StringComparer.Ordinal)
                 {
-                    ["index"] = index,
-                    ["id"] = relic.Id.Entry,
-                    ["name"] = SafeGetText(() => relic.Title),
-                    ["description"] = SafeGetText(() => relic.DynamicDescription),
-                    ["rarity"] = relic.Rarity.ToString(),
-                    ["is_visible"] = true,
-                    ["can_claim"] = holder.IsEnabled,
-                    ["keywords"] = BuildHoverTips(relic.HoverTipsExcludingRelic)
-                });
+                    continue;
+                }
+                relics.Add(BuildRelicChoiceEntry(relic, index, "can_claim", holder.IsEnabled));
                 index++;
             }
             state["relics"] = relics;
