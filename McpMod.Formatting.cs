@@ -1182,8 +1182,17 @@ public static partial class McpMod
             sb.AppendLine($"*{promptObj}*");
         }
 
-        // How many are picked out of how many the screen wants. Without this line a caller
-        // on a multi-card screen cannot tell whether confirming will do anything.
+        AppendCardSelectCounts(sb, cardSelect);
+        AppendCardSelectCards(sb, cardSelect);
+        AppendCardSelectFooter(sb, cardSelect);
+    }
+
+    /// <summary>
+    /// How many are picked out of how many the screen wants. Without this line a caller on a
+    /// multi-card screen cannot tell whether confirming will do anything.
+    /// </summary>
+    private static void AppendCardSelectCounts(StringBuilder sb, Dictionary<string, object?> cardSelect)
+    {
         if (cardSelect.TryGetValue("selected_count", out var selCountObj) && selCountObj is int selCount)
         {
             string wanted = "";
@@ -1195,20 +1204,26 @@ public static partial class McpMod
             sb.AppendLine(CultureInfo.InvariantCulture, $"**Selected: {selCount}{wanted}**");
         }
         sb.AppendLine();
+    }
 
-        if (cardSelect.TryGetValue("cards", out var cardsObj) && cardsObj is List<Dictionary<string, object?>> cards)
+    private static void AppendCardSelectCards(StringBuilder sb, Dictionary<string, object?> cardSelect)
+    {
+        if (!cardSelect.TryGetValue("cards", out var cardsObj) || cardsObj is not List<Dictionary<string, object?>> cards)
+            return;
+
+        sb.AppendLine("### Cards");
+        foreach (var card in cards)
         {
-            sb.AppendLine("### Cards");
-            foreach (var card in cards)
-            {
-                string starCost = card.TryGetValue("star_cost", out var sc) && sc != null ? $" + {sc} star" : "";
-                string selected = card.TryGetValue("selected", out var selObj) && selObj is true ? "[x] " : "";
-                sb.AppendLine($"- {selected}[{card["index"]}] **{card["name"]}** ({card["cost"]} energy{starCost}) [{card["type"]}] {card["rarity"]} - {card["description"]}");
-                AppendUpgradePreviewLine(sb, card);
-            }
-            sb.AppendLine();
+            string starCost = card.TryGetValue("star_cost", out var sc) && sc != null ? $" + {sc} star" : "";
+            string selected = card.TryGetValue("selected", out var selObj) && selObj is true ? "[x] " : "";
+            sb.AppendLine($"- {selected}[{card["index"]}] **{card["name"]}** ({card["cost"]} energy{starCost}) [{card["type"]}] {card["rarity"]} - {card["description"]}");
+            AppendUpgradePreviewLine(sb, card);
         }
+        sb.AppendLine();
+    }
 
+    private static void AppendCardSelectFooter(StringBuilder sb, Dictionary<string, object?> cardSelect)
+    {
         bool preview = cardSelect.TryGetValue("preview_showing", out var pv) && pv is true;
         bool canConfirm = cardSelect.TryGetValue("can_confirm", out var cc) && cc is true;
         bool canCancel = cardSelect.TryGetValue("can_cancel", out var cn) && cn is true;
@@ -1216,20 +1231,27 @@ public static partial class McpMod
         if (preview)
         {
             sb.AppendLine("**Preview is showing** - the next action should be `confirm_selection` to finish, or `cancel_selection` to go back. Do not select the same card again unless you intend to deselect it.");
-            if (cardSelect.TryGetValue("preview_cards", out var previewCardsObj) && previewCardsObj is List<Dictionary<string, object?>> previewCards && previewCards.Count > 0)
-            {
-                sb.AppendLine("### Preview Cards");
-                foreach (var card in previewCards)
-                {
-                    string starCost = card.TryGetValue("star_cost", out var sc) && sc != null ? $" + {sc} star" : "";
-                    sb.AppendLine($"- **{card["name"]}** ({card["cost"]} energy{starCost}) [{card["type"]}] {card["rarity"]} - {card["description"]}");
-                }
-                sb.AppendLine();
-            }
+            AppendPreviewCards(sb, cardSelect);
         }
         else
         {
             sb.AppendLine($"**Select cards** using `select_card(index)`. Can confirm: {(canConfirm ? "Yes" : "No")} | Can cancel: {(canCancel ? "Yes" : "No")}");
+        }
+        sb.AppendLine();
+    }
+
+    private static void AppendPreviewCards(StringBuilder sb, Dictionary<string, object?> cardSelect)
+    {
+        if (!cardSelect.TryGetValue("preview_cards", out var previewCardsObj)
+            || previewCardsObj is not List<Dictionary<string, object?>> previewCards
+            || previewCards.Count == 0)
+            return;
+
+        sb.AppendLine("### Preview Cards");
+        foreach (var card in previewCards)
+        {
+            string starCost = card.TryGetValue("star_cost", out var sc) && sc != null ? $" + {sc} star" : "";
+            sb.AppendLine($"- **{card["name"]}** ({card["cost"]} energy{starCost}) [{card["type"]}] {card["rarity"]} - {card["description"]}");
         }
         sb.AppendLine();
     }
