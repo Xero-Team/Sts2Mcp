@@ -4650,23 +4650,48 @@ public static partial class McpMod
     private static Dictionary<string, object?> BuildMapState(RunState runState)
     {
         var state = new Dictionary<string, object?>(StringComparer.Ordinal);
-
         var map = runState.Map;
-        var visitedCoords = runState.VisitedMapCoords;
         var marks = CollectMapMarks(runState);
-        if (marks.Count > 0)
-        {
-            state["marked_nodes"] = marks
-                .OrderBy(kv => kv.Key.Item1).ThenBy(kv => kv.Key.Item2)
-                .Select(kv => new Dictionary<string, object?>(StringComparer.Ordinal)
-                {
-                    ["col"] = kv.Key.Item1,
-                    ["row"] = kv.Key.Item2,
-                    ["marked_by"] = kv.Value
-                })
-                .ToList();
-        }
+        AppendMapMarks(state, marks);
+        AppendMapPosition(state, map, runState.VisitedMapCoords);
+        // `visited` only carries the map-point TYPE, so point_history is the only
+        // place a "?" reports the room it became.
+        state["point_history"] = BuildMapPointHistory(runState);
+        AppendMapTravelState(state, marks);
 
+        // Map-point layout includes per-run jitter. Expose the live visual
+        // anchors in the same normalized coordinate space accepted by map_draw.
+        var drawingNodePositions = BuildMapDrawingNodePositions(NMapScreen.Instance);
+        var nodeSet = BuildMapNodeSet(runState, map, marks, drawingNodePositions);
+        state["nodes"] = nodeSet.Nodes;
+
+        var encountersSeen = BuildEncountersSeen(runState);
+        if (encountersSeen.Count > 0)
+            state["encounters_seen"] = encountersSeen;
+        AppendMapBossSummary(state, map, nodeSet);
+        return state;
+    }
+
+    private static void AppendMapMarks(
+        Dictionary<string, object?> state, Dictionary<(int, int), List<string>> marks)
+    {
+        if (marks.Count == 0)
+            return;
+        state["marked_nodes"] = marks
+            .OrderBy(kv => kv.Key.Item1).ThenBy(kv => kv.Key.Item2)
+            .Select(kv => new Dictionary<string, object?>(StringComparer.Ordinal)
+            {
+                ["col"] = kv.Key.Item1,
+                ["row"] = kv.Key.Item2,
+                ["marked_by"] = kv.Value
+            })
+            .ToList();
+    }
+
+    /// <summary>Where the player is and everywhere they have been this act.</summary>
+    private static void AppendMapPosition(
+        Dictionary<string, object?> state, ActMap map, IReadOnlyList<MapCoord> visitedCoords)
+    {
         // Current position
         if (visitedCoords.Count > 0)
         {
@@ -4691,15 +4716,16 @@ public static partial class McpMod
             });
         }
         state["visited"] = visited;
+    }
 
-        // What each visited point actually resolved into. `visited` above only
-        // carries the map-point TYPE, so this is the only place a "?" reports
-        // the room it became.
-        state["point_history"] = BuildMapPointHistory(runState);
-
-        // Next options - read travelable state from UI nodes. Empty whenever the
-        // current room is unfinished or a travel is already resolving, so the
-        // two flags below say WHY rather than leaving a client guessing.
+    /// <summary>
+    /// The travel options and the flags that explain an empty list. next_options is
+    /// empty whenever the current room is unfinished or a travel is already resolving,
+    /// so the three flags below say WHY rather than leaving a client guessing.
+    /// </summary>
+    private static void AppendMapTravelState(
+        Dictionary<string, object?> state, Dictionary<(int, int), List<string>> marks)
+    {
         state["next_options"] = BuildMapNextOptions(marks);
         var mapScreen = NMapScreen.Instance;
         state["travel_enabled"] = mapScreen != null && mapScreen.IsTravelEnabled;
@@ -4708,11 +4734,26 @@ public static partial class McpMod
         // resolving behind this map. See GetTravelableMapPoints.
         state["transition_in_flight"] = IsRunTransitionInFlight();
         state["drawing_coordinate_space"] = BuildMapDrawingCoordinateSpace();
+    }
 
-        // Map-point layout includes per-run jitter. Expose the live visual
-        // anchors in the same normalized coordinate space accepted by map_draw.
-        var drawingNodePositions = BuildMapDrawingNodePositions(mapScreen);
+    /// <summary>The full map, plus the boss identity each boss node needs.</summary>
+    private sealed record MapNodeSet(
+        List<Dictionary<string, object?>> Nodes,
+        string? PrimaryBossId,
+        string? PrimaryBossName,
+        Dictionary<string, object?>? SecondBoss);
 
+    /// <summary>
+    /// All nodes organized for planning: the start, the grid, and both bosses. Boss
+    /// identity comes from the live act's EncounterModel - BossEncounter throws if the
+    /// act hasn't finished setup yet, so guard the access.
+    /// </summary>
+    private static MapNodeSet BuildMapNodeSet(
+        RunState runState,
+        ActMap map,
+        Dictionary<(int, int), List<string>> marks,
+        Dictionary<(int col, int row), Vector2> drawingNodePositions)
+    {
         // Full map - all nodes organized for planning
         var nodes = new List<Dictionary<string, object?>>();
 
@@ -4724,8 +4765,6 @@ public static partial class McpMod
         foreach (var pt in map.GetAllMapPoints())
             nodes.Add(BuildMapNode(pt, marks, drawingNodePositions));
 
-        // Boss identity comes from the live act's EncounterModel — BossEncounter
-        // throws if the act hasn't finished setup yet, so guard the access.
         EncounterModel? bossEncounter = null;
         TryDo("map.boss", () => { bossEncounter = runState.Act.BossEncounter; });
         var secondBossEncounter = runState.Act.SecondBossEncounter;
@@ -4747,18 +4786,17 @@ public static partial class McpMod
             secondBoss = BuildBossInfo(map.SecondBossMapPoint, secondBossId, secondBossName);
         }
 
-        state["nodes"] = nodes;
+        return new MapNodeSet(nodes, primaryBossId, primaryBossName, secondBoss);
+    }
 
-        var encountersSeen = BuildEncountersSeen(runState);
-        if (encountersSeen.Count > 0)
-            state["encounters_seen"] = encountersSeen;
-        var primaryBoss = BuildBossInfo(map.BossMapPoint, primaryBossId, primaryBossName);
+    private static void AppendMapBossSummary(
+        Dictionary<string, object?> state, ActMap map, MapNodeSet nodeSet)
+    {
+        var primaryBoss = BuildBossInfo(map.BossMapPoint, nodeSet.PrimaryBossId, nodeSet.PrimaryBossName);
         state["boss"] = primaryBoss;
-        state["bosses"] = secondBoss != null
-            ? new List<Dictionary<string, object?>> { primaryBoss, secondBoss }
+        state["bosses"] = nodeSet.SecondBoss != null
+            ? new List<Dictionary<string, object?>> { primaryBoss, nodeSet.SecondBoss }
             : new List<Dictionary<string, object?>> { primaryBoss };
-
-        return state;
     }
 
     /// <summary>
