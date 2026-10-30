@@ -84,21 +84,21 @@ The gate is on, so this list is a list of build breakers. Numbers are from the b
 will move as the code does; re-measure with `-p:STS2StrictWarnings=false` and count warnings rather
 than trusting them.
 
-Cleared so far (measured at `c401b2b`): `MA0002` (442), `MA0006` (352),
+Cleared so far (measured at `d1eaa91`): `MA0002` (442), `MA0006` (352),
 `MA0011` (41), `S1144` (27, via the Harmony justification), `S1172` (12),
 `S1481` (7), `S6444` (3), `S8969` (18), `VSTHRD002` (12), the one-line findings
 `MA0004`/`MA0009`/`MA0074`/`S1125`/`S1862`/`S1905`/`S4136`/`S6610`/`CA1805`/
 `CA1820`/`CA1847`/`CA1865`/`CA2244`, and all formatting drift (419 whitespace,
 6 import orders, 2 final newlines). 1538 warnings at the baseline commit are
-592 now; the catch family is the bulk of what is left.
+520 now; the catch family is the bulk of what is left.
 
 | Bucket | Count | Note |
 | --- | --- | --- |
-| `CA1031` catch a more specific exception | 216 | Deliberate in the state builders (a renamed game member must not kill a state read). Route through `TryDo`/`TryRead` in `docs/adr/0005-full-refactor-phases.md`; 59 sites are already converted |
-| `ERP022` swallow exception without observing it | 103 | Same family as `CA1031`; the helper records through `McpMod.Warnings` |
+| `CA1031` catch a more specific exception | 168 | Deliberate in the state builders (a renamed game member must not kill a state read). Route through `TryDo`/`TryRead` in `docs/adr/0005-full-refactor-phases.md`; 83 sites are already converted |
+| `ERP022` swallow exception without observing it | 79 | Same family as `CA1031`; the helper records through `McpMod.Warnings`; 83 sites converted |
 | `MA0051` method too long | 73 | Concentrated in `McpMod.StateBuilder.cs`; extract only where it buys clarity |
 | `EPC12` | 44 | Partly the catch family, partly the transport handlers that only report `ex.Message` |
-| `S3358` nested ternary | 25 | Extract a local or a small method at each site |
+| `S3358` nested ternary | 28 | Extract a local or a small method at each site |
 | `S108` empty `catch` block | 25 | Same family as `CA1031` |
 | `S2486` exception ignored | 21 | Same family as `CA1031` |
 | `S3267` loop could be LINQ | 20 | Only where the query form is clearer than the loop |

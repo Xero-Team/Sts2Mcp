@@ -22,10 +22,11 @@
 - Consequences: every phase ends on a clean build and an exercised in-game path,
   so a phase can be reverted alone. The strict analyzer gate stays off until
   phase 2 finishes, which means a new warning can still reach the branch.
-- Debt: Phase 2 is not finished. 592 warnings remain at `c401b2b`
-  (`CA1031` 216, `ERP022` 103, `MA0051` 73, `EPC12` 44, `S3358` 25, `S108` 25,
-  `S2486` 21, `S3267` 20, the rest single-digit). Two findings need a decision
-  recorded below before phase 2 can proceed.
+- Debt: Phase 2 is not finished. 520 warnings remain at `d1eaa91`
+  (`CA1031` 168, `ERP022` 79, `MA0051` 73, `EPC12` 44, `S3358` 28, `S108` 25,
+  `S2486` 21, `S3267` 20, the rest single-digit). The next slice is the
+  transport handlers: their catch-all is correct at the HTTP boundary, so the
+  fix is a shared handler wrapper, not a per-method suppression.
 
 ## Orphans found while clearing `S1144`
 
