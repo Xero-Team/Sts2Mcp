@@ -47,15 +47,12 @@ public static partial class McpMod
 
         private static void Prefix(object __instance, object rng)
         {
-            try
+            TryDo(() =>
             {
                 var trace = CrystalSphereTraces.GetOrCreateValue(__instance);
                 trace.RngAtStart = RngCoords(rng);
-            }
-            catch
-            {
-                // Diagnostics must never be able to break the event.
-            }
+            });
+            // Diagnostics must never be able to break the event.
         }
     }
 

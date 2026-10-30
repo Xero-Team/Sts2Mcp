@@ -266,7 +266,7 @@ public static partial class McpMod
         var values = new Dictionary<string, object?>(StringComparer.Ordinal);
         foreach (var member in GetRunHistoryMembers(progress.GetType()))
         {
-            try
+            TryDo(() =>
             {
                 object? value = member switch
                 {
@@ -276,8 +276,7 @@ public static partial class McpMod
                 };
                 if (value != null)
                     values[member.Name] = ToJsonSafe(value, 0, 50);
-            }
-            catch { }
+            });
         }
         return values;
     }
@@ -751,8 +750,7 @@ public static partial class McpMod
         {
             if (property.GetIndexParameters().Length != 0)
                 continue;
-            try { obj[property.Name] = ToJsonSafe(property.GetValue(value), depth + 1, maxItems); }
-            catch { }
+            TryDo(() => { obj[property.Name] = ToJsonSafe(property.GetValue(value), depth + 1, maxItems); });
         }
         return obj.Count > 0 ? obj : value.ToString();
     }

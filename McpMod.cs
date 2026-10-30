@@ -622,17 +622,17 @@ public static partial class McpMod
         // main thread must never be reported as an internal error.
         catch (MainThreadUnavailableException ex)
         {
-            try { SendUnavailable(context.Response, ex.Message, WantsPretty(context.Request)); }
-            catch { /* response may already be closed */ }
+            TryDo(() => { SendUnavailable(context.Response, ex.Message, WantsPretty(context.Request)); });
+            /* response may already be closed */
         }
         catch (Exception ex)
         {
-            try
+            TryDo(() =>
             {
                 SendError(context.Response, 500, $"Internal error: {ex.Message}",
                     WantsPretty(context.Request), "internal_error");
-            }
-            catch { /* response may already be closed */ }
+            });
+            /* response may already be closed */
         }
     }
 
@@ -735,7 +735,7 @@ public static partial class McpMod
         catch (Exception ex)
         {
             GD.PrintErr($"[STS2 MCP] HandleGetMultiplayerState: {ex}");
-            try
+            TryDo(() =>
             {
                 response.StatusCode = 500;
                 SendJson(response, new Dictionary<string, object?>(StringComparer.Ordinal)
@@ -744,8 +744,8 @@ public static partial class McpMod
                     ["error"] = $"Failed to read multiplayer game state: {ex.Message}",
                     ["error_code"] = "multiplayer_state_read_failed"
                 }, pretty);
-            }
-            catch { /* response may be unusable */ }
+            });
+            /* response may be unusable */
         }
     }
 
@@ -897,7 +897,7 @@ public static partial class McpMod
         catch (Exception ex)
         {
             GD.PrintErr($"[STS2 MCP] HandleGetState: {ex}");
-            try
+            TryDo(() =>
             {
                 response.StatusCode = 500;
                 SendJson(response, new Dictionary<string, object?>(StringComparer.Ordinal)
@@ -906,8 +906,8 @@ public static partial class McpMod
                     ["error"] = $"Failed to read game state: {ex.Message}",
                     ["error_code"] = "singleplayer_state_read_failed"
                 }, pretty);
-            }
-            catch { /* response may be unusable */ }
+            });
+            /* response may be unusable */
         }
     }
 

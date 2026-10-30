@@ -549,13 +549,12 @@ public static partial class McpMod
         var found = new List<Control>();
         foreach (var name in CardSelectPreviewContainerNames)
         {
-            try
+            TryDo(() =>
             {
                 var container = screen.GetNodeOrNull<Control>(name);
                 if (container?.Visible == true)
                     found.Add(container);
-            }
-            catch (ObjectDisposedException) { }
+            });
         }
         return found;
     }
@@ -1476,12 +1475,11 @@ public static partial class McpMod
         var keys = new List<string>();
         foreach (var entry in entries)
         {
-            try
+            TryDo(() =>
             {
                 if (entry.Tickbox.IsTicked)
                     keys.Add(entry.Key);
-            }
-            catch { }
+            });
         }
         return keys;
     }

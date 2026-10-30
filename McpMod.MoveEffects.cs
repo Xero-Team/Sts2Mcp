@@ -750,13 +750,12 @@ public static partial class McpMod
                 // move names who it is about to shield.
                 if ((op2 == 0x06 || op2 == 0x07) && i + 6 <= il.Length)
                 {
-                    try
+                    TryDo(() =>
                     {
                         var lambda = module.ResolveMethod(BitConverter.ToInt32(il, i + 2));
                         if (lambda != null)
                             scan.PendingRecipient = MonsterTypeTestedBy(lambda) ?? scan.PendingRecipient;
-                    }
-                    catch { }
+                    });
                 }
                 // two-byte opcodes: ldftn/ldvirtftn/initobj/constrained etc.
                 // carry a 4-byte token; the rest of the ones the compiler
@@ -814,8 +813,7 @@ public static partial class McpMod
                 case 0x72:                  // ldstr: a summon's literal slot name
                     {
                         int tok = BitConverter.ToInt32(il, i + 1);
-                        try { scan.LastString = module.ResolveString(tok); }
-                        catch { }
+                        TryDo(() => { scan.LastString = module.ResolveString(tok); });
                         i += 5; break;
                     }
                 case 0x7D:                  // stfld: the async rewrite's hoisted local
@@ -883,7 +881,7 @@ public static partial class McpMod
                     {
                         int tok = BitConverter.ToInt32(il, i + 1);
                         MethodBase? mm = null;
-                        try { mm = module.ResolveMethod(tok); } catch { }
+                        TryDo(() => { mm = module.ResolveMethod(tok); });
                         if (mm != null)
                             HandleCall(mm, monster, scan);
                         i += 5; break;
@@ -1017,7 +1015,7 @@ public static partial class McpMod
             byte op = il[i];
             if ((op == 0x28 || op == 0x6F) && i + 5 <= il.Length)   // call / callvirt
             {
-                try
+                TryDo(() =>
                 {
                     if (method.Module.ResolveMethod(BitConverter.ToInt32(il, i + 1)) is MethodInfo callee)
                     {
@@ -1033,8 +1031,7 @@ public static partial class McpMod
                             CollectPowerReads(callee, found, depth - 1);
                         }
                     }
-                }
-                catch { }
+                });
             }
             i += InstructionLength(il, i);
         }

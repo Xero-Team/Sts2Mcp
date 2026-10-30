@@ -83,8 +83,7 @@ public static partial class McpMod
     {
         var scan = new PredicateScan();
         byte[]? il = null;
-        try { il = method?.GetMethodBody()?.GetILAsByteArray(); }
-        catch { }
+        TryDo(() => { il = method?.GetMethodBody()?.GetILAsByteArray(); });
         if (il == null || method == null)
             return scan;
         var module = method.Module;
@@ -163,26 +162,24 @@ public static partial class McpMod
     {
         if (tokenOffset + 4 > il.Length)
             return;
-        try
+        TryDo(() =>
         {
             var literal = module.ResolveString(BitConverter.ToInt32(il, tokenOffset));
             if (literal != null)
                 scan.Strings.Add(literal);
-        }
-        catch { }
+        });
     }
 
     private static void AddFunctionPointer(Module module, byte[] il, int tokenOffset, PredicateScan scan)
     {
         if (tokenOffset + 4 > il.Length)
             return;
-        try
+        TryDo(() =>
         {
             var target = module.ResolveMethod(BitConverter.ToInt32(il, tokenOffset));
             if (target != null)
                 scan.FunctionPointers.Add(target);
-        }
-        catch { }
+        });
     }
 
     /// <summary>Closure display classes are noise, not tested members.</summary>

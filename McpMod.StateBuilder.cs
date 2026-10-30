@@ -873,15 +873,14 @@ public static partial class McpMod
         // Completed runs on this profile. UnknownMapPointOdds.Roll forces the
         // first three "?" rooms on a brand-new profile, so a client predicting
         // them has to know whether that override is active.
-        try
+        TryDo(() =>
         {
             result["profile"] = new Dictionary<string, object?>(StringComparer.Ordinal)
             {
                 ["number_of_runs"] = SaveManager.Instance.Progress.NumberOfRuns,
                 ["first_run_ironclad_present"] = HasFirstRunIronclad(runState)
             };
-        }
-        catch { }
+        });
 
         // Fork addition: save/run context so a client can tie a state read to its save files.
         result["current_run"] = BuildActiveRunContext();
@@ -1341,7 +1340,7 @@ public static partial class McpMod
         var modifierEntries = GetRunModifierEntries(screen);
         foreach (var entry in modifierEntries)
         {
-            try
+            TryDo(() =>
             {
                 bool ticked = entry.Tickbox.IsTicked;
                 var modifierState = new Dictionary<string, object?>(StringComparer.Ordinal)
@@ -1364,8 +1363,7 @@ public static partial class McpMod
                 });
                 if (ticked)
                     selectedModifiers.Add(entry.Key);
-            }
-            catch { }
+            });
         }
         if (modifiers.Count > 0)
             result["modifiers"] = modifiers;
@@ -1377,7 +1375,7 @@ public static partial class McpMod
         var ascensionPanel = GetInstanceFieldValue(screen, "_ascensionPanel") as NAscensionPanel;
         if (ascensionPanel != null)
         {
-            try
+            TryDo(() =>
             {
                 // Flat fields, as documented in docs/raw-full.md: `ascension` is the level
                 // the run will start at, `max_ascension` the unlocked cap, and
@@ -1394,8 +1392,7 @@ public static partial class McpMod
                     AddAscensionArrowOption(options, ascensionPanel, "_rightArrow", "ascension_up");
                     AddAscensionArrowOption(options, ascensionPanel, "_leftArrow", "ascension_down");
                 }
-            }
-            catch { }
+            });
         }
 
         var confirmBtn = GetInstanceFieldValue(screen, confirmField);
@@ -1430,15 +1427,14 @@ public static partial class McpMod
         // MP lobby block — surfaces roster / ready state / ascension when this screen
         // is part of a host or client lobby. SP runs leave the field absent.
         bool isMp = false;
-        try
+        TryDo(() =>
         {
             if (lobby != null && lobby.NetService != null && lobby.NetService.Type.IsMultiplayer())
             {
                 isMp = true;
                 result["lobby"] = BuildStartRunLobbyState(lobby);
             }
-        }
-        catch { }
+        });
 
         // _unreadyButton is part of the scene in SP too but never becomes enabled there.
         // Only surface it as an option in MP, where it has a real role.
@@ -1839,14 +1835,13 @@ public static partial class McpMod
 
             if (!aboutToBegin)
             {
-                try
+                TryDo(() =>
                 {
                     var runPlayers = lobby.Run?.Players;
                     aboutToBegin = runPlayers != null
                         && runPlayers.Count > 0
                         && runPlayers.All(player => connectedPlayerIds.Contains(player.NetId) && lobby.IsPlayerReady(player.NetId));
-                }
-                catch { }
+                });
             }
 
             info["all_ready"] = aboutToBegin;
@@ -1943,8 +1938,7 @@ public static partial class McpMod
                 var ready = SafeGet(() => GetInstanceMemberValue(player, "isReady"));
                 if (id != null && ready is bool isReady)
                 {
-                    try { result[Convert.ToUInt64(id, CultureInfo.InvariantCulture)] = isReady; }
-                    catch { }
+                    TryDo(() => { result[Convert.ToUInt64(id, CultureInfo.InvariantCulture)] = isReady; });
                 }
             }
             return result;
@@ -1963,13 +1957,12 @@ public static partial class McpMod
             null);
         foreach (var rawId in connectedIds)
         {
-            try
+            TryDo(() =>
             {
                 var id = Convert.ToUInt64(rawId, CultureInfo.InvariantCulture);
                 var ready = SafeGet(() => readyMethod?.Invoke(lobby, new object[] { id })) as bool? ?? false;
                 result[id] = ready;
-            }
-            catch { }
+            });
         }
         return result;
     }
@@ -1998,8 +1991,7 @@ public static partial class McpMod
         // Scripted combat moments disable player input while turn/is_play_phase still
         // look actionable; clients must wait on this instead of hammering errors.
         bool actionsDisabled = false;
-        try { actionsDisabled = CombatManager.Instance.PlayerActionsDisabled; battle["actions_disabled"] = actionsDisabled; }
-        catch { }
+        TryDo(() => { actionsDisabled = CombatManager.Instance.PlayerActionsDisabled; battle["actions_disabled"] = actionsDisabled; });
 
         // Fork addition: name the first blocker so a controller can see why it cannot end the turn.
         var endTurnBlockedReason = GetEndTurnBlockedReason();
@@ -2044,13 +2036,12 @@ public static partial class McpMod
         // reproduce where a summoned creature lands — and, more importantly,
         // when the board is full and a move that summons produces nothing at
         // all. Without it a simulated Living Fog would keep bloating forever.
-        try
+        TryDo(() =>
         {
             var slots = combatState.Encounter?.Slots;
             if (slots != null && slots.Count > 0)
                 battle["encounter_slots"] = new List<string>(slots);
-        }
-        catch { }
+        });
 
         // Run RNG stream coordinates (seed/counter per stream) so the planner
         // can resolve shuffle/target randomness exactly. See McpMod.RngStreams.cs.
@@ -2060,13 +2051,13 @@ public static partial class McpMod
 
         // Gold Axe and other combat-wide counters include every player's card
         // plays. Singleplayer now exposes the same history shape as MP.
-        try { battle["card_plays"] = BuildCardPlaysState(combatState); }
-        catch { /* history unavailable while combat is tearing down */ }
+        TryDo(() => { battle["card_plays"] = BuildCardPlaysState(combatState); });
+        /* history unavailable while combat is tearing down */
 
         // Where every card went this turn and last — drawn/discarded/exhausted/
         // generated, not just played. See BuildCardHistoryState.
-        try { battle["card_history"] = BuildCardHistoryState(combatState); }
-        catch { /* history unavailable while combat is tearing down */ }
+        TryDo(() => { battle["card_history"] = BuildCardHistoryState(combatState); });
+        /* history unavailable while combat is tearing down */
 
         return battle;
     }
@@ -2195,7 +2186,7 @@ public static partial class McpMod
             // Card models query combat history directly for these conditions.
             // Export the owner-scoped values so the native forward model can
             // seed an exact mid-turn search instead of inferring from HP/piles.
-            try
+            TryDo(() =>
             {
                 var history = CombatManager.Instance.History.Entries;
                 state["lost_hp_this_turn"] = history.OfType<DamageReceivedEntry>().Any(entry =>
@@ -2206,12 +2197,9 @@ public static partial class McpMod
                     entry.Creator == player);
                 state["lightning_channeled_this_combat"] = history.OfType<OrbChanneledEntry>().Count(entry =>
                     entry.Actor.Player == player && entry.Orb is LightningOrb);
-            }
-            catch
-            {
-                // History can disappear while combat tears down. The Rust
-                // builder treats omitted counters as zero on those inert states.
-            }
+            });
+            // History can disappear while combat tears down. The Rust
+            // builder treats omitted counters as zero on those inert states.
 
             // Counts every turn THIS player takes, extra turns included (battle.round
             // only ticks on a normal side switch). Clients use it as the "a new player
@@ -2249,7 +2237,7 @@ public static partial class McpMod
             // Turn-history counters for cards whose effects depend on what already
             // happened this turn (Finisher counts attacks; Forgotten Ritual checks
             // exhausts). Mirrors the game's own queries in those card models.
-            try
+            TryDo(() =>
             {
                 var history = CombatManager.Instance.History;
                 var combatStateShared = creature.CombatState;
@@ -2296,12 +2284,9 @@ public static partial class McpMod
                 // left in it should read as discarded.
                 if (combatStateShared != null)
                     state["hand_will_flush"] = Hook.ShouldFlush(combatStateShared, player);
-            }
-            catch
-            {
-                // History unavailable mid-transition - omit rather than fail the
-                // whole state build; the bot treats missing keys as 0/false.
-            }
+            });
+            // History unavailable mid-transition - omit rather than fail the
+            // whole state build; the bot treats missing keys as 0/false.
 
             // Pile contents. Draw pile is serialized in true order (index 0 = next draw).
             // Note: the order is only valid until the next shuffle event (empty-pile
@@ -2313,7 +2298,7 @@ public static partial class McpMod
 
             // Alchemize uses this exact ordered unlocked domain before its
             // rarity and item rolls on CombatPotionGeneration.
-            try
+            TryDo(() =>
             {
                 state["combat_potion_generation_pool"] = player.Character.PotionPool
                     .GetUnlockedPotions(player.UnlockState)
@@ -2321,8 +2306,8 @@ public static partial class McpMod
                     .Where(potion => potion.CanBeGeneratedInCombat)
                     .Select(BuildPotionInfo)
                     .ToList();
-            }
-            catch { /* an unavailable pool must not break combat state */ }
+            });
+            /* an unavailable pool must not break combat state */
             // Card-generation and transformation domains are static for a run and
             // are served by GET /api/v1/cardpools instead; rebuilding them here
             // cost a full pool enumeration per distinct deck card, every poll.
@@ -2994,12 +2979,12 @@ public static partial class McpMod
         // The multiplayer synchronizer already assigns every mutable combat
         // card a stable 16-bit identity. Export the same identity so an MCTS
         // selection can distinguish physical copies with equal card IDs.
-        try
+        TryDo(() =>
         {
             if (card.Pile?.IsCombatPile == true)
                 info["combat_card_id"] = NetCombatCard.FromModel(card).CombatCardIndex;
-        }
-        catch { /* immutable/deck cards intentionally have no combat identity */ }
+        });
+        /* immutable/deck cards intentionally have no combat identity */
         return info;
     }
 
@@ -3701,7 +3686,7 @@ public static partial class McpMod
             ["can_select"] = creature.IsAlive,
             ["status"] = BuildPowersState(creature)
         };
-        try
+        TryDo(() =>
         {
             if (localCreature != null)
             {
@@ -3725,8 +3710,7 @@ public static partial class McpMod
                     && en.Dealer.Side == localCreature.Side
                     && en.Result.Props.IsPoweredAttack());
             }
-        }
-        catch { }
+        });
 
         if (!alive)
         {
@@ -3989,7 +3973,7 @@ public static partial class McpMod
             };
             // Structured effect numbers straight off the intent object —
             // exact, no label parsing needed downstream.
-            try
+            TryDo(() =>
             {
                 if (intent is AttackIntent atk)
                 {
@@ -4008,9 +3992,9 @@ public static partial class McpMod
                 {
                     intentData["card_count"] = status.CardCount;
                 }
-            }
-            catch { /* damage calc may fail outside combat */ }
-            try
+            });
+            /* damage calc may fail outside combat */
+            TryDo(() =>
             {
                 var targets = creature.CombatState?.PlayerCreatures;
                 if (targets != null)
@@ -4035,8 +4019,8 @@ public static partial class McpMod
                     if (hoverTip.Description != null)
                         intentData["description"] = StripRichTextTags(hoverTip.Description);
                 }
-            }
-            catch { /* intent label may fail for some types */ }
+            });
+            /* intent label may fail for some types */
             intents.Add(intentData);
         }
         return intents;

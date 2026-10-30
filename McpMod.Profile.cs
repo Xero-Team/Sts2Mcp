@@ -148,15 +148,12 @@ public static partial class McpMod
             string? path = null;
             string? resolvedPath = null;
             var profileRoot = $"profile{i}";
-            try
+            TryDo(() =>
             {
                 path = GetProfileProgressPath(i);
                 resolvedPath = ResolveProfileProgressPath(i);
                 profileRoot = GetProfileRootFromProgressPath(path, i);
-            }
-            catch
-            {
-            }
+            });
             profileData["has_data"] = resolvedPath != null && File.Exists(resolvedPath);
             profileData["path"] = NormalizePathForJson(path);
             profileData["resolved_path"] = NormalizePathForJson(resolvedPath);

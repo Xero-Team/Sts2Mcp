@@ -298,15 +298,14 @@ public static partial class McpMod
         if (actInfo != null)
             result["act"] = actInfo;
 
-        try
+        TryDo(() =>
         {
             result["profile"] = new Dictionary<string, object?>(StringComparer.Ordinal)
             {
                 ["number_of_runs"] = runState.UnlockState.NumberOfRuns,
                 ["first_run_ironclad_present"] = HasFirstRunIronclad(runState)
             };
-        }
-        catch { }
+        });
 
         // Fork addition: the same active-run context singleplayer reports, so a client
         // can correlate a co-op state read with the save files it came from.
@@ -375,16 +374,13 @@ public static partial class McpMod
         // to enemies.  MP combat is lockstep (ActionQueueSynchronizer replays
         // every peer's actions locally), so the local CombatHistory contains
         // remote players' plays too.
-        try
+        TryDo(() =>
         {
             battle["card_plays"] = BuildCardPlaysState(combatState);
             battle["card_history"] = BuildCardHistoryState(combatState);
             battle["player_damage"] = BuildPlayerDamageState(runState, combatState.RoundNumber);
-        }
-        catch
-        {
-            // History unavailable (e.g. combat tearing down) — omit the fields
-        }
+        });
+        // History unavailable (e.g. combat tearing down) — omit the fields
 
         return battle;
     }
@@ -457,12 +453,12 @@ public static partial class McpMod
         {
             var cardPlay = entry.CardPlay;
             string? target = null;
-            try
+            TryDo(() =>
             {
                 target = cardPlay.Target?.Monster?.Id.Entry
                          ?? SafeGetText(() => cardPlay.Target?.Player?.Character.Title);
-            }
-            catch { /* target creature may be gone */ }
+            });
+            /* target creature may be gone */
 
             plays.Add(new Dictionary<string, object?>(StringComparer.Ordinal)
             {
@@ -849,7 +845,7 @@ public static partial class McpMod
                     // STS2-ShowPlayerHandCards mod). Use BuildCardInfo rather than
                     // BuildCardState so we don't run CanPlay hooks against a
                     // non-local player's card in the local combat context.
-                    try
+                    TryDo(() =>
                     {
                         var cs = player.PlayerCombatState;
                         if (cs != null)
@@ -908,8 +904,8 @@ public static partial class McpMod
                             }
                             catch { /* owner-turn history unavailable — omit it only */ }
                         }
-                    }
-                    catch { /* teammate combat state mid-transition — omit hand */ }
+                    });
+                    /* teammate combat state mid-transition — omit hand */
                 }
             }
             players.Add(entry);

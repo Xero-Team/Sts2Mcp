@@ -163,8 +163,7 @@ public static partial class McpMod
             var pile = __args.OfType<CardPile>().FirstOrDefault();
             var callerType = source?.GetType() ?? SelectionCallerType();
             string? originId = null;
-            try { originId = source?.Id.Entry; }
-            catch { }
+            TryDo(() => { originId = source?.Id.Entry; });
 
             string methodName = __originalMethod.Name;
             string? originType = callerType?.Name;

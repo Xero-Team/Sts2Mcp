@@ -60,12 +60,12 @@ public static partial class McpMod
     private static bool PrefsAreLoaded()
     {
         if (_prefsReady) return true;
-        try
+        TryDo(() =>
         {
             if (NGame.Instance?.MainMenu != null || RunManager.Instance.IsInProgress)
                 _prefsReady = true;
-        }
-        catch { /* scene tree not up yet */ }
+        });
+        /* scene tree not up yet */
         return _prefsReady;
     }
 

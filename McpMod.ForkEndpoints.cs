@@ -539,15 +539,14 @@ public static partial class McpMod
                 ["class"] = type.Name,
             };
 
-            try
+            TryDo(() =>
             {
                 var instance = RuntimeHelpers.GetUninitializedObject(type);
                 var minHp = type.GetProperty("MinInitialHp")?.GetValue(instance);
                 var maxHp = type.GetProperty("MaxInitialHp")?.GetValue(instance);
                 if (minHp != null) entry["min_hp"] = minHp;
                 if (maxHp != null) entry["max_hp"] = maxHp;
-            }
-            catch { }
+            });
 
             var moves = new List<string>();
             foreach (var method in type.GetMethods(bindFlags))
@@ -581,7 +580,7 @@ public static partial class McpMod
                 ["class"] = type.Name,
             };
 
-            try
+            TryDo(() =>
             {
                 var instance = RuntimeHelpers.GetUninitializedObject(type);
                 var roomType = type.GetProperty("RoomType")?.GetValue(instance);
@@ -592,8 +591,7 @@ public static partial class McpMod
                 if (isWeak != null) entry["is_weak"] = isWeak;
                 if (minGold != null) entry["min_gold"] = minGold;
                 if (maxGold != null) entry["max_gold"] = maxGold;
-            }
-            catch { }
+            });
 
             try
             {
