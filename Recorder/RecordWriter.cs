@@ -67,6 +67,10 @@ internal sealed class RecordWriter
         return done.Wait(timeoutMs);
     }
 
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1031:Do not catch general exception types",
+        Justification = "One bad item (disk full, a file removed under us) must not kill the writer thread; the failure is surfaced through Failures and LastError.")]
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("Major Code Smell", "EPC12:Suspicious exception handling",
+        Justification = "Failures and LastError carry the type and the message by design - that is what the status endpoint reports.")]
     private void Run()
     {
         foreach (var item in _queue.GetConsumingEnumerable())

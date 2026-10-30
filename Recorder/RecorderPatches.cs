@@ -79,8 +79,8 @@ internal static class RecorderPatches
 
     internal static void RemoveAll()
     {
-        try { Harmony.UnpatchAll(HarmonyId); }
-        catch { /* nothing else to do */ }
+        // Nothing else to do: the patches are being removed, so a failure has no caller.
+        CombatRecorder.TryRecordQuietDo(() => Harmony.UnpatchAll(HarmonyId));
         AppliedList.Clear();
     }
 
@@ -103,11 +103,9 @@ internal static class RecorderPatches
     }
 
     private static void EventCountPrefix(CombatReplayWriter __instance, out int __state)
-    {
-        __state = -1;
-        try { __state = ReplayOf(__instance)?.events.Count ?? -1; }
-        catch { /* never throw into the game */ }
-    }
+        // A replay that is not there yet is the normal case, and -1 already means "unseen".
+        => __state = CombatRecorder.TryRecordQuiet<int?>(
+            () => ReplayOf(__instance)?.events.Count ?? -1) ?? -1;
 
     private static void GameActionPostfix(CombatReplayWriter __instance, GameAction gameAction, int __state)
         => CombatRecorder.OnGameEvent(__instance, __state, gameAction);
@@ -119,11 +117,9 @@ internal static class RecorderPatches
         => CombatRecorder.OnGameEvent(__instance, __state, null);
 
     private static void ChecksumCountPrefix(CombatReplayWriter __instance, out int __state)
-    {
-        __state = -1;
-        try { __state = ReplayOf(__instance)?.checksumData.Count ?? -1; }
-        catch { /* never throw into the game */ }
-    }
+        // Same as EventCountPrefix: -1 means "the prefix could not see the list".
+        => __state = CombatRecorder.TryRecordQuiet<int?>(
+            () => ReplayOf(__instance)?.checksumData.Count ?? -1) ?? -1;
 
     private static void ChecksumPostfix(CombatReplayWriter __instance, int __state)
         => CombatRecorder.OnChecksum(__instance, __state);
@@ -148,11 +144,9 @@ internal static class RecorderPatches
     private static void ReservePostfix(Player player, uint __result) => CombatRecorder.OnChoiceReserved(player, __result);
 
     private static void ChoiceBegunPrefix(Player chooser, out uint? __state)
-    {
-        __state = null;
-        try { __state = CombatRecorder.OnChoiceBegunPrefix(chooser); }
-        catch { /* never throw into the game */ }
-    }
+        // No state means the postfix records the choice without its reserved id.
+        => __state = CombatRecorder.TryRecordQuiet<uint?>(
+            () => CombatRecorder.OnChoiceBegunPrefix(chooser));
 
     private static void ChoiceBegunPostfix(PlayerChoiceContext __instance, Player chooser, uint? __state)
         => CombatRecorder.OnChoiceBegun(__instance, chooser, __state);

@@ -224,6 +224,10 @@ internal static class CombatRecorder
     /// config enables recording, or later from set_recording. With "record": false in the config
     /// nothing is patched at all - the game runs exactly as with a mod that has no recorder.
     /// </summary>
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1031:Do not catch general exception types",
+        Justification = "Install is all-or-nothing and must report the exception type to its caller instead of escaping the config-driven startup path.")]
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("Major Code Smell", "EPC12:Suspicious exception handling",
+        Justification = "InstallError is a structured field on the status endpoint; it carries the type and the message by design.")]
     internal static bool Install(string by)
     {
         lock (Gate)
@@ -262,20 +266,11 @@ internal static class CombatRecorder
 
     private static void StartDllHash()
     {
-        try
+        _ = Task.Run(() => TryRecordDo("dll_hash", () =>
         {
-            string path = typeof(RunManager).Assembly.Location;
-            _ = Task.Run(() =>
-            {
-                try
-                {
-                    using var fs = File.OpenRead(path);
-                    _dllSha256 = Convert.ToHexString(SHA256.HashData(fs)).ToLowerInvariant();
-                }
-                catch (Exception ex) { NoteFault("dll_hash", ex); }
-            });
-        }
-        catch (Exception ex) { NoteFault("dll_hash", ex); }
+            using var fs = File.OpenRead(typeof(RunManager).Assembly.Location);
+            _dllSha256 = Convert.ToHexString(SHA256.HashData(fs)).ToLowerInvariant();
+        }));
     }
 
     private static void SubscribeCombatEvents()
@@ -379,8 +374,12 @@ internal static class CombatRecorder
         {
             if (string.Equals(k, "action", StringComparison.Ordinal))
                 continue;
-            try { args[k] = JsonNode.Parse(v.GetRawText()); }
-            catch { args[k] = v.GetRawText(); }
+            // A payload the JSON reader rejects is kept as its raw text rather than dropped.
+            var raw = v.GetRawText();
+            JsonNode? value = null;
+            args[k] = TryRecordDo("api_request.args", () => value = JsonNode.Parse(raw))
+                ? value
+                : JsonValue.Create(raw);
         }
         var line = new JsonObject { ["request"] = id, ["action"] = action, ["args"] = args };
         lock (Gate)
@@ -1109,7 +1108,7 @@ internal static class CombatRecorder
     private static void StartTrackingInsideRoom()
     {
         var t = new RoomTracker { Replay = null };
-        try
+        TryRecordDo("start_tracking", () =>
         {
             var ids = RunManager.Instance.PlayerChoiceSynchronizer?.ChoiceIds;
             if (ids != null)
@@ -1125,8 +1124,7 @@ internal static class CombatRecorder
                 if (paused.Id is { } idNow)
                     ActionKeys.AddOrUpdate(paused, new StrongBox<uint>(idNow));
             }
-        }
-        catch (Exception ex) { NoteFault("start_tracking", ex); }
+        });
         _track = t;
     }
 
@@ -1165,6 +1163,10 @@ internal static class CombatRecorder
         });
     }
 
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1031:Do not catch general exception types",
+        Justification = "The process is going away; there is nowhere left to report to and the last file writes may themselves be failing.")]
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "ERP022:Swallowed exception",
+        Justification = "Same as CA1031: the process is exiting, so a fault line could not be written or read.")]
     private static void OnProcessExit()
     {
         try
@@ -1325,6 +1327,10 @@ internal static class CombatRecorder
         _pending = null;
     }
 
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1031:Do not catch general exception types",
+        Justification = "A self-check failure must not stop the record from closing; it is reported inside the record's own self_check block.")]
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("Major Code Smell", "EPC12:Suspicious exception handling",
+        Justification = "The self_check block carries the exception type and message by design - that is what a reader of the record needs.")]
     private static void CloseRecord(string reason, CombatReplay? replay)
     {
         var rec = _rec;
@@ -1416,7 +1422,9 @@ internal static class CombatRecorder
     {
         int max = 0, same = 0;
         string suffix = $"-a{act}f{floor:D2}";
-        try
+        // A directory listing that fails leaves the counters where they were, so the
+        // number is never reused but may not be the smallest free one.
+        TryRecordDo("next_numbers", () =>
         {
             var names = new HashSet<string>(StringComparer.Ordinal);
             if (Directory.Exists(runDir))
@@ -1424,18 +1432,15 @@ internal static class CombatRecorder
                     names.Add(Path.GetFileName(d));
             foreach (var d in ReservedDirs.Where(d => string.Equals(Path.GetDirectoryName(d), runDir, StringComparison.Ordinal)))
                 names.Add(Path.GetFileName(d));
+            foreach (var n in names)
             {
-                foreach (var n in names)
-                {
-                    int dash = n.IndexOf('-');
-                    if (dash > 0 && int.TryParse(n[..dash], CultureInfo.InvariantCulture, out int k))
-                        max = Math.Max(max, k);
-                    if (n.EndsWith(suffix, StringComparison.Ordinal))
-                        same++;
-                }
+                int dash = n.IndexOf('-');
+                if (dash > 0 && int.TryParse(n[..dash], CultureInfo.InvariantCulture, out int k))
+                    max = Math.Max(max, k);
+                if (n.EndsWith(suffix, StringComparison.Ordinal))
+                    same++;
             }
-        }
-        catch (Exception ex) { NoteFault("next_numbers", ex); }
+        });
         return (max + 1, same + 1);
     }
 
@@ -1510,14 +1515,12 @@ internal static class CombatRecorder
 
     private static JsonNode? SafeAt()
     {
-        try { return RecordObserve.At(); }
-        catch (Exception ex) { NoteFault("at", ex); return null; }
+        return TryRecord("at", () => RecordObserve.At());
     }
 
     private static (JsonObject pub, JsonObject hidden)? SafeObserve()
     {
-        try { return RecordObserve.Observe(SlotOf); }
-        catch (Exception ex) { NoteFault("observe", ex); return null; }
+        return TryRecord("observe", () => RecordObserve.Observe(SlotOf));
     }
 
     /// <summary>
@@ -1528,20 +1531,20 @@ internal static class CombatRecorder
     private static void Guard(string where, Action body)
     {
         long start = Stopwatch.GetTimestamp();
-        try { body(); }
-        catch (Exception ex) { NoteFault(where, ex); }
-        finally
+        TryRecordDo(where, body);
+        // Timing is collected whether or not the hook body worked, and is never worth a fault.
+        TryRecordQuietDo(() =>
         {
-            try
-            {
-                var rec = _rec;
-                if (rec != null && rec.HookMicros.Count < 200_000)
-                    rec.HookMicros.Add(Stopwatch.GetElapsedTime(start).TotalMicroseconds);
-            }
-            catch { /* timing only */ }
-        }
+            var rec = _rec;
+            if (rec != null && rec.HookMicros.Count < 200_000)
+                rec.HookMicros.Add(Stopwatch.GetElapsedTime(start).TotalMicroseconds);
+        });
     }
 
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1031:Do not catch general exception types",
+        Justification = "Last-resort reporter: it must not throw into the hook that called it, and there is no other channel left to use.")]
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "ERP022:Swallowed exception",
+        Justification = "Same as CA1031: reporting this failure would mean calling NoteFault from inside NoteFault.")]
     private static void NoteFault(string where, Exception ex)
     {
         try
@@ -1565,7 +1568,92 @@ internal static class CombatRecorder
                 });
             }
         }
-        catch { /* never throw into the game */ }
+        catch
+        {
+            // Never throw into the game - and never call NoteFault again from here.
+        }
+    }
+
+    /// <summary>
+    /// Reads one value for a record line. A recorder must never throw into the game's
+    /// hook, so a failure becomes a recorder fault and the line keeps the same "not
+    /// there" meaning the record contract uses.
+    /// </summary>
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1031:Do not catch general exception types",
+        Justification = "The recorder reads game members by name and must survive any of them changing.")]
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "ERP022:Swallowed exception",
+        Justification = "The exception is routed to NoteFault, which records the type, the message and the site.")]
+    internal static T? TryRecord<T>(string where, Func<T> read)
+    {
+        try
+        {
+            return read();
+        }
+        catch (Exception ex)
+        {
+            NoteFault(where, ex);
+            return default;
+        }
+    }
+
+    /// <summary><see cref="TryRecord{T}"/> for a body whose only outcome is "it worked".</summary>
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1031:Do not catch general exception types",
+        Justification = "The recorder reads game members by name and must survive any of them changing.")]
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "ERP022:Swallowed exception",
+        Justification = "The exception is routed to NoteFault, which records the type, the message and the site.")]
+    internal static bool TryRecordDo(string where, Action action)
+    {
+        try
+        {
+            action();
+            return true;
+        }
+        catch (Exception ex)
+        {
+            NoteFault(where, ex);
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Best-effort recorder work whose failure is not worth a fault line: a timing
+    /// sample, or a reader whose absence is the normal case.
+    /// </summary>
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1031:Do not catch general exception types",
+        Justification = "These reads only feed diagnostics, so a miss changes nothing a consumer acts on.")]
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "ERP022:Swallowed exception",
+        Justification = "A fault line per timing sample would drown the faults that matter.")]
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("Major Code Smell", "S2486:Exceptions should not be ignored",
+        Justification = "Same as ERP022: a missing timing sample is not a compatibility break.")]
+    internal static T? TryRecordQuiet<T>(Func<T> read)
+    {
+        try
+        {
+            return read();
+        }
+        catch (Exception)
+        {
+            return default;
+        }
+    }
+
+    /// <summary><see cref="TryRecordQuiet{T}"/> for a body whose only outcome is "it worked".</summary>
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1031:Do not catch general exception types",
+        Justification = "These reads only feed diagnostics, so a miss changes nothing a consumer acts on.")]
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "ERP022:Swallowed exception",
+        Justification = "A fault line per timing sample would drown the faults that matter.")]
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("Major Code Smell", "S2486:Exceptions should not be ignored",
+        Justification = "Same as ERP022: a missing timing sample is not a compatibility break.")]
+    internal static void TryRecordQuietDo(Action action)
+    {
+        try
+        {
+            action();
+        }
+        catch (Exception)
+        {
+            // Nothing to report: see the justification above.
+        }
     }
 
     // ========================================================================================
@@ -1647,23 +1735,22 @@ internal static class CombatRecorder
     }
 
     private static JsonObject? Outcome()
+        => TryRecord("outcome", OutcomeCore);
+
+    private static JsonObject? OutcomeCore()
     {
-        try
+        var combat = CombatManager.Instance.DebugOnlyGetState();
+        var me = RecordObserve.LocalPlayer();
+        if (combat == null || me == null)
+            return null;
+        return new JsonObject
         {
-            var combat = CombatManager.Instance.DebugOnlyGetState();
-            var me = RecordObserve.LocalPlayer();
-            if (combat == null || me == null)
-                return null;
-            return new JsonObject
-            {
-                ["player_hp"] = me.Creature.CurrentHp,
-                ["player_alive"] = me.Creature.IsAlive,
-                ["enemies_alive"] = combat.Enemies.Count(e => e.IsAlive),
-                ["round"] = combat.RoundNumber,
-                ["turn"] = me.PlayerCombatState?.TurnNumber,
-            };
-        }
-        catch (Exception ex) { NoteFault("outcome", ex); return null; }
+            ["player_hp"] = me.Creature.CurrentHp,
+            ["player_alive"] = me.Creature.IsAlive,
+            ["enemies_alive"] = combat.Enemies.Count(e => e.IsAlive),
+            ["round"] = combat.RoundNumber,
+            ["turn"] = me.PlayerCombatState?.TurnNumber,
+        };
     }
 
     private static JsonObject RunInfo(RunState? run, SerializableRun? save)
@@ -1683,8 +1770,7 @@ internal static class CombatRecorder
 
     private static uint? AsUInt(JsonNode? node)
     {
-        try { return node is JsonValue v && v.TryGetValue(out uint u) ? u : null; }
-        catch { return null; }
+        return TryRecordQuiet<uint?>(() => node is JsonValue v && v.TryGetValue(out uint u) ? u : null);
     }
 
     private static uint? KeyOf(GameAction action) =>
@@ -1721,13 +1807,11 @@ internal static class CombatRecorder
 
     private static int? OwnerSlot(GameAction action)
     {
-        try { return SlotOf(action.OwnerId); }
-        catch { return null; }
+        return TryRecordQuiet<int?>(() => SlotOf(action.OwnerId));
     }
 
     private static int? SafeProfileId()
     {
-        try { return SaveManager.Instance.CurrentProfileId; }
-        catch { return null; }
+        return TryRecordQuiet<int?>(() => SaveManager.Instance.CurrentProfileId);
     }
 }
