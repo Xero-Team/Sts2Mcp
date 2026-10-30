@@ -197,9 +197,9 @@ public static partial class McpMod
     [System.Diagnostics.CodeAnalysis.SuppressMessage("Major Code Smell", "S1144:Unused private types or members should be removed",
         Justification = "Harmony discovers TargetMethods/Prefix/Postfix by attribute, not by a C# call.")]
     [HarmonyPatch(typeof(NSettingsScreen), "_Ready")]
-    static class SettingsScreenReadyPatch
+    private static class SettingsScreenReadyPatch
     {
-        static void Postfix(NSettingsScreen __instance)
+        private static void Postfix(NSettingsScreen __instance)
         {
             // Optional UI injection: a game that moved the settings layout must not make
             // opening the settings screen throw.
@@ -210,9 +210,9 @@ public static partial class McpMod
     [System.Diagnostics.CodeAnalysis.SuppressMessage("Major Code Smell", "S1144:Unused private types or members should be removed",
         Justification = "Harmony discovers TargetMethods/Prefix/Postfix by attribute, not by a C# call.")]
     [HarmonyPatch(typeof(NFastModeTickbox), nameof(NFastModeTickbox.SetFromSettings))]
-    static class FastModeSetFromSettingsPatch
+    private static class FastModeSetFromSettingsPatch
     {
-        static bool Prefix(NFastModeTickbox __instance)
+        private static bool Prefix(NFastModeTickbox __instance)
         {
             if (!IsInInstantModeLine(__instance))
                 return true;
@@ -234,9 +234,9 @@ public static partial class McpMod
     [System.Diagnostics.CodeAnalysis.SuppressMessage("Major Code Smell", "S1144:Unused private types or members should be removed",
         Justification = "Harmony discovers TargetMethods/Prefix/Postfix by attribute, not by a C# call.")]
     [HarmonyPatch(typeof(NFastModeTickbox), "OnTick")]
-    static class FastModeOnTickPatch
+    private static class FastModeOnTickPatch
     {
-        static bool Prefix(NFastModeTickbox __instance)
+        private static bool Prefix(NFastModeTickbox __instance)
         {
             if (!IsInInstantModeLine(__instance))
                 return true;
@@ -255,9 +255,9 @@ public static partial class McpMod
     [System.Diagnostics.CodeAnalysis.SuppressMessage("Major Code Smell", "S1144:Unused private types or members should be removed",
         Justification = "Harmony discovers TargetMethods/Prefix/Postfix by attribute, not by a C# call.")]
     [HarmonyPatch(typeof(NFastModeTickbox), "OnUntick")]
-    static class FastModeOnUntickPatch
+    private static class FastModeOnUntickPatch
     {
-        static bool Prefix(NFastModeTickbox __instance)
+        private static bool Prefix(NFastModeTickbox __instance)
         {
             if (!IsInInstantModeLine(__instance))
                 return true;
@@ -267,7 +267,7 @@ public static partial class McpMod
             return false;
         }
 
-        static void Postfix(NFastModeTickbox __instance)
+        private static void Postfix(NFastModeTickbox __instance)
         {
             // Only for the ORIGINAL Fast Mode tickbox being unticked (→ Normal).
             // Turning Fast Mode off turns Instant Mode off with it, otherwise the reconciler
@@ -287,9 +287,9 @@ public static partial class McpMod
     [System.Diagnostics.CodeAnalysis.SuppressMessage("Major Code Smell", "S1144:Unused private types or members should be removed",
         Justification = "Harmony discovers TargetMethods/Prefix/Postfix by attribute, not by a C# call.")]
     [HarmonyPatch(typeof(NFastModeHoverTip), "_Ready")]
-    static class InstantModeHoverTipPatch
+    private static class InstantModeHoverTipPatch
     {
-        static void Postfix(NFastModeHoverTip __instance)
+        private static void Postfix(NFastModeHoverTip __instance)
         {
             if (!IsInInstantModeLine(__instance))
                 return;

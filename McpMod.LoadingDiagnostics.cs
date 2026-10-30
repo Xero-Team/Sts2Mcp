@@ -146,9 +146,9 @@ public static partial class McpMod
     [System.Diagnostics.CodeAnalysis.SuppressMessage("Major Code Smell", "S1144:Unused private types or members should be removed",
         Justification = "Harmony discovers TargetMethods/Prefix/Postfix by attribute, not by a C# call.")]
     [HarmonyPatch(typeof(NetLoadingHandle), MethodType.Constructor, typeof(INetGameService))]
-    static class NetLoadingHandleCtorPatch
+    private static class NetLoadingHandleCtorPatch
     {
-        static void Postfix(NetLoadingHandle __instance)
+        private static void Postfix(NetLoadingHandle __instance)
         {
             // Diagnostics must never be able to break the transition they observe.
             TryDo("loading_handle.diagnostics.open", () => NoteLoadingHandleOpened(__instance));
@@ -158,9 +158,9 @@ public static partial class McpMod
     [System.Diagnostics.CodeAnalysis.SuppressMessage("Major Code Smell", "S1144:Unused private types or members should be removed",
         Justification = "Harmony discovers TargetMethods/Prefix/Postfix by attribute, not by a C# call.")]
     [HarmonyPatch(typeof(NetLoadingHandle), nameof(NetLoadingHandle.Dispose))]
-    static class NetLoadingHandleDisposePatch
+    private static class NetLoadingHandleDisposePatch
     {
-        static void Postfix(NetLoadingHandle __instance)
+        private static void Postfix(NetLoadingHandle __instance)
         {
             // Diagnostics must never be able to break the transition they observe.
             TryDo("loading_handle.diagnostics.close", () => NoteLoadingHandleClosed(__instance));
