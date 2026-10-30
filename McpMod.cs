@@ -682,10 +682,11 @@ public static partial class McpMod
         // run-mode-specific dispatcher.
         if (string.Equals(action, "menu_select", StringComparison.Ordinal))
         {
+            if (!TryReadMenuSelectPayload(response, parsed, pretty, out string option, out string? seed))
+                return;
+
             RunHandler(response, () =>
             {
-                var option = parsed.TryGetValue("option", out var optElem) ? optElem.GetString() ?? "" : "";
-                var seed = parsed.TryGetValue("seed", out var seedElem) ? seedElem.GetString() : null;
                 int? ascension = ReadOptionalInt(parsed, "ascension");
                 var result = RunOnMainThreadBlocking(() => ExecuteMenuSelect(option, seed, ascension));
                 SendJson(response, EnsureStatus(result), pretty);
@@ -709,6 +710,41 @@ public static partial class McpMod
         if (elem.ValueKind == JsonValueKind.String && int.TryParse(elem.GetString(), CultureInfo.InvariantCulture, out int parsedNumber))
             return parsedNumber;
         return null;
+    }
+
+    /// <summary>
+    /// Reads the menu_select payload. A present field with the wrong JSON type is a client
+    /// error: <see cref="JsonElement.GetString" /> throws on it, which used to surface as a
+    /// 500 instead of the documented <c>invalid_action_payload</c>.
+    /// </summary>
+    private static bool TryReadMenuSelectPayload(
+        HttpListenerResponse response, Dictionary<string, JsonElement> parsed, bool pretty,
+        out string option, out string? seed)
+    {
+        option = "";
+        seed = null;
+
+        if (parsed.TryGetValue("option", out var optionElem))
+        {
+            if (optionElem.ValueKind != JsonValueKind.String)
+            {
+                SendError(response, 400, "'option' field must be a string", pretty, "invalid_action_payload");
+                return false;
+            }
+            option = optionElem.GetString() ?? "";
+        }
+
+        if (parsed.TryGetValue("seed", out var seedElem))
+        {
+            if (seedElem.ValueKind is not (JsonValueKind.String or JsonValueKind.Null))
+            {
+                SendError(response, 400, "'seed' field must be a string", pretty, "invalid_action_payload");
+                return false;
+            }
+            seed = seedElem.ValueKind == JsonValueKind.Null ? null : seedElem.GetString();
+        }
+
+        return true;
     }
 
     private static void HandleGetState(HttpListenerRequest request, HttpListenerResponse response)
@@ -1143,10 +1179,11 @@ public static partial class McpMod
         // Handle menu actions separately (no run required)
         if (string.Equals(action, "menu_select", StringComparison.Ordinal))
         {
+            if (!TryReadMenuSelectPayload(response, parsed, pretty, out string option, out string? seed))
+                return "invalid_action_payload";
+
             return RunActionHandler(response, () =>
             {
-                var option = parsed.TryGetValue("option", out var optElem) ? optElem.GetString() ?? "" : "";
-                var seed = parsed.TryGetValue("seed", out var seedElem) ? seedElem.GetString() : null;
                 int? ascension = ReadOptionalInt(parsed, "ascension");
                 var result = ExecuteWithOptionalWait(request, parsed,
                     Recorder.CombatRecorder.InHandler(apiRequest, () => ExecuteMenuSelect(option, seed, ascension)));
