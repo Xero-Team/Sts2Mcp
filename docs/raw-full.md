@@ -3,6 +3,7 @@
 HTTP API served by the STS2_MCP mod on `localhost:15526`. No authentication. Local use only.
 
 **Endpoints:**
+- `GET  /` — health check: `{ "message", "status", "version", "commit", "schema_version" }`
 - `GET  /api/v1/singleplayer` — read current game state
 - `POST /api/v1/singleplayer` — perform a game action
 - `GET  /api/v1/multiplayer` — read multiplayer game state
@@ -21,13 +22,41 @@ The endpoints are mutually exclusive: calling singleplayer during a multiplayer 
 
 ### Query Parameters
 
-| Parameter | Values             | Default | Description     |
-|-----------|--------------------|---------|-----------------|
-| `format`  | `json`, `markdown` | `json`  | Response format |
+| Parameter | Values                                        | Default | Description                                                     |
+|-----------|-----------------------------------------------|---------|-----------------------------------------------------------------|
+| `format`  | `json`, `markdown`                            | `json`  | Response format                                                 |
+| `pretty`  | `1`, `true`, `yes` (or present with no value) | off     | Indent the JSON. Off by default — compact output is ~32% smaller |
+
+JSON responses are compact by default; `pretty` opts into indentation for that one request. It works on
+every JSON-returning endpoint, on POST as well as GET (e.g. `POST /api/v1/singleplayer?pretty=1`), and on
+error responses. It has no effect on `format=markdown`.
 
 ### Common Top-Level Fields
 
-Every response (except `menu`) includes these top-level fields alongside the state-specific data:
+Every response — `menu` and error-ish states included — carries the build stamp:
+
+```jsonc
+{
+  "state_type": "...",      // Screen identifier (see sections below)
+  "mod_version": "0.4.0",   // Mod version
+  "mod_commit": "2de67cd",  // Git commit built from ("<sha>-dirty" from an edited tree); null if unknown
+  "schema_version": 3       // Contract version — see below
+}
+```
+
+`schema_version` is bumped **only** when an existing field or action changes meaning or is removed.
+Purely additive changes (new fields, actions, parameters, `state_type`s) do not bump it, so
+feature-detect additions by presence and use `schema_version` only to notice a breaking change.
+
+- **3** — `map.next_encounters` was removed because it exposed future rooms before the player
+  could see them. `map.encounters_seen` reports only travelled encounters.
+- **2** — `battle.enemies` is no longer "the living enemies": a corpse the game keeps in the
+  fight (a Decimillipede segment waiting to reattach) is listed with `alive: false`. Filter on
+  the new `alive` field instead of assuming every entry is a valid target.
+- **1** — initial contract.
+
+Every response except `menu` additionally includes these top-level fields alongside the
+state-specific data:
 
 ```jsonc
 {
@@ -35,12 +64,56 @@ Every response (except `menu`) includes these top-level fields alongside the sta
   "run": {
     "act": 1,               // Current act (1-indexed)
     "floor": 3,             // Total floors visited
+    "player_count": 1,
+    "card_multiplayer_constraint": "SingleplayerOnly",
     "ascension": 0          // Ascension level
   },
   "player": { ... },        // Full player state (see Player Object below)
   // ... state-specific fields
 }
 ```
+
+### 解放済みの戦闘生成 pool（追加、schema 3）
+
+`player.generation_pool` は単独プレイとマルチのローカル `player` に入る。
+`BuildPlayerState` と同じ snapshot で、その Player 自身の `UnlockState` を使う。
+対象の照合用に `player.character_id` / `player.player_id`、`run.player_count` /
+`run.card_multiplayer_constraint` も追加した。ID は表示名や配列添字ではない。
+
+```jsonc
+"generation_pool": {
+  "character_id": "IRONCLAD",
+  "player_id": "1", // Player.NetId.ToString()
+  "players": 1,
+  "multiplayer_constraint": "SingleplayerOnly",
+  "known": true,
+  "cards": [ { "id": "UPPERCUT", "type": "Attack" } ], // 例示。実際には全候補
+  "game_assembly_sha256": "9cb4f1ad8c9f284aa8fec3122ffd6d780bbf543d875c817abdd12ff63fbf12b4",
+  "filter_version": 1,
+  "filter_source": "CardPoolModel.GetUnlockedCards(Player.UnlockState,IRunState.CardMultiplayerConstraint);CardFactory.FilterForPlayerCount;CardFactory.FilterForCombat;OrobicAcid.OnUse:Attack,Skill,Power"
+}
+```
+
+`GetUnlockedCards` の結果に実人数の filter、`CardFactory.FilterForCombat`、
+Attack/Skill/Power の型 filter を適用し、ID の昇順で出す。`FilterForPlayerCount` は private
+なので、人数 > 1 では SingleplayerOnly、そうでなければ MultiplayerOnly を除く同じ条件を実装した。
+抽選、戦闘カード作成、RNG の読み取りはしない。ID と型だけを載せ、本文・コストは複製しない。
+`game_assembly_sha256` は実際にロードした `CardModel` の assembly ファイルから初回に計算して保持する。
+`filter_version` はこの pool 契約の版であり、state の schema とは別。
+
+取得中に例外が出た場合は `known: false, cards: []` と `reason`（例外の型とメッセージ）、
+state の `warnings` を返す。取得前に失敗したメタデータは欠落しうる。部分一覧を known=true にしない。
+旧 MOD にはこの欄が無い。取得不能と空一覧を同一視せず、欄の存在を検出すること。
+Markdown は単独・マルチのローカル player について件数・人数、または unknown と理由の1行だけを出す。
+追加項目なので schema は 3 のまま。
+
+出典は sts2-9cb4f1ad の `OrobicAcid.OnUse`、`CardPoolModel.GetUnlockedCards`、
+`CardFactory.FilterForCombat/FilterForPlayerCount`。これは discovered_cards とは別の情報。
+`NCardLibraryGrid.GetCardVisibility` は profile の解放条件と発見条件を分け、解放済みでも未発見なら
+NotSeen にする。図鑑がこのラン固有の候補ID一覧をそのまま見せるとは言えない。
+解放対象札は各 Epoch の `QueueUnlocks` → `NTimelineScreen.QueueCardUnlock` →
+`NUnlockCardsScreen.Open` で表示される。保存ランの `Player.UnlockState` は profile の現在値と
+異なりうる（`UnlockState` の契約、`Player.FromSerializable`）。未来の抽選結果・山札順は含まない。
 
 ### Player Object
 
@@ -49,6 +122,8 @@ Always present at the top level (except `menu`). Contains everything about the l
 ```jsonc
 {
   "character": "The Ironclad",
+  "character_id": "IRONCLAD", // Stable model ID (not localized)
+  "player_id": "1",          // Player.NetId as a string
   "hp": 72,
   "max_hp": 80,
   "block": 0,
@@ -88,6 +163,8 @@ Always present at the top level (except `menu`). Contains everything about the l
       "name": "Burning Blood",
       "description": "At the end of combat, heal 6 HP.",
       "counter": null,       // Number if relic shows a counter, null otherwise
+      "used_up": false,      // RelicModel.IsUsedUp: the relic has been used up
+      "melted": false,       // RelicModel.IsMelted: a separate melted-wax state
       "keywords": [ /* Keyword Objects */ ]
     }
   ],
@@ -105,6 +182,17 @@ Always present at the top level (except `menu`). Contains everything about the l
   "max_potion_slots": 3      // Belt capacity. Default 3, grows with belt-expanding relics (e.g. Potion Belt: +2). Use to detect a full belt: len(potions) >= max_potion_slots.
 }
 ```
+
+Owned relics always include boolean `used_up` and `melted`, in singleplayer and the
+multiplayer local `player` object (both use `BuildPlayerState`). Markdown marks true
+values with `(used)` and `(melted)` in singleplayer outside combat, and during combat.
+Multiplayer outside combat does not list relics in Markdown. These fields are additive:
+feature-detect their presence; the schema stays at 3. Older builds omit them.
+`melted` is separate from consumption: `RelicModel.HoverTip` exposes the melted
+notice, and `UpdateTexture` gives it a dark-red tint. The grey inventory tint comes
+from `RelicStatus.Disabled` in `NRelicInventoryHolder.RefreshStatus`; for example,
+`LizardTail.WasUsed` sets that status when consumed. These booleans do not claim to
+encode every reason a relic can be disabled.
 
 ### Card Object (in hand)
 
@@ -346,6 +434,7 @@ Run state or room type not recognized.
         "entity_id": "JAW_WORM_0",    // Synthesized ID for targeting
         "combat_id": 42,               // Internal combat ID
         "name": "Jaw Worm",
+        "alive": true,                 // Always present. false = dead but still in the fight
         "hp": 44,
         "max_hp": 44,
         "block": 0,
@@ -358,6 +447,25 @@ Run state or room type not recognized.
             "description": "Deals 11 damage."  // Hover tip description
           }
         ]
+      },
+      {
+        // A dead enemy the game keeps in the fight (a Decimillipede segment waiting to
+        // reattach). Listed so the revive is visible; it cannot be targeted while dead.
+        "entity_id": "DECIMILLIPEDE_SEGMENT_1",
+        "combat_id": 44,
+        "name": "Decimillipede Segment",
+        "alive": false,
+        "hp": 0,
+        "max_hp": 46,
+        "block": 0,
+        "status": [ /* still carries REATTACH_POWER */ ],
+        "revive": {                    // Present only when it is actually coming back
+          "in_turns": 2,               // Enemy turns until it heals back up; null if unknown
+          "power_id": "REATTACH_POWER",
+          "power_name": "Reattach",
+          "hp": 25                     // HP it returns with; null when not readable
+        },
+        "intents": []                  // Becomes a Heal intent on the turn before the revive
       }
     ]
   },
@@ -365,6 +473,20 @@ Run state or room type not recognized.
   "player": { ... }  // Includes hand, energy, piles, orbs during combat
 }
 ```
+
+**Dead enemies.** `enemies[]` normally holds only living creatures, because the game drops a
+killed enemy from the fight. A few powers refuse that — `ReattachPower` on a Decimillipede
+segment is the one that matters — and their owner stays in the fight as a corpse. Those
+corpses are listed with `alive: false` and `hp: 0`, keeping the `entity_id` they already had,
+so a caller that never meets one sees no change. Filter on `alive` (not on `hp > 0`) to get
+the targetable enemies; `play_card` and `use_potion` already refuse a dead target.
+
+`revive` is present only when the corpse is actually scheduled to come back: `in_turns` is
+read off the monster's move chain (2 the turn it dies, 1 the turn before it stands up, and
+its `intents` then show `Heal`), and `hp` is the amount it heals for. A corpse held in the
+fight by something that never revives it (`DieForYouPower`, `IllusionPower`) has `alive: false`
+and no `revive`, and neither does the last segment of a Decimillipede — with no living peer
+left to reattach to, the fight is over rather than about to restart.
 
 ### `hand_select` — In-Combat Card Selection
 
@@ -436,6 +558,42 @@ Appears after combat ends or when triggered by events (e.g. TheFutureOfPotions, 
 }
 ```
 
+### 報酬 ID と選択状態（加算契約、schema 3）
+
+`rewards.items` の既存キーと有効ボタンだけを列挙する挙動は維持する。
+各 item に `reward_id` / `selection_state` / `claimable` / `skipped` /
+`reward_consumed` / `last_selection` / `last_option_id` を追加する。
+`rewards.screen_revision` は現在の一覧と選択状態を表す opaque な文字列。
+`rewards.selection_history` は同じセッションで観測した報酬の ID と上記状態を保持し、
+取得後に `items` から消えた報酬も `claimed` として確認できる。履歴に報酬の中身は含めない。
+`claimable` は現在の有効ボタンの有無であり、ポーション枠など取得条件の保証ではない。
+
+`reward_id` はプロセスごとのランダム epoch と単調番号から生成する。
+シード・抽選・メモリアドレスとは無関係で、同じ画面の同じ Reward オブジェクトに対して固定。
+他の報酬取得で index が詰まっても残存 ID は変わらない。
+報酬画面の終了、マップの開封、別の報酬画面、ランの変更で登録を破棄し、再起動でも別 epoch となる。
+一時的なカード三択・デッキ選択・一時停止の表示だけでは親セッションを破棄しない。
+
+| selection_state | 意味 |
+|---|---|
+| `unopened` | 画面生成から追跡できた未開封の報酬 |
+| `opened` | 開封・選択中。操作送信だけで取得済みにはしない |
+| `skipped` | Skip の選択結果と親の RewardSkipped 通知を観測。親は未消費で再開封可能 |
+| `claimed` | 親の RewardClaimed 通知を観測。カード取得と alternative による完了は last_selection で区別 |
+| `unknown` | 観測欠落、中断、選択失敗等。未閲覧／完了へ決め打ちしない |
+
+`skipped` は selection_state が `skipped` のとき true。
+`reward_consumed` は `claimed` で true、`skipped` で false、それ以外は null（または欠落）。
+`last_selection` は `card` / `skip` / `alternative` / `direct` / `interrupted` / `unknown` 等。
+`last_option_id` に `Skip` / `SACRIFICE` / `REROLL` 等の表示中の option ID が入る。
+REROLL は同じ親のまま `opened` に戻り、SACRIFICE は親の完了通知が来るまでは完了にしない。
+手動の再開封は許可し、再開封すると `opened` になる。GET は Skip 状態を消去せず、報酬を選択／完了しない。
+
+`card_reward.parent_reward_id` は対応する親 ID（親を特定できない直接表示では null／欠落）。
+`card_reward.selection_state` も追加する。対応が不明なら `unknown`。
+未開封カードの中身、次の報酬、生成候補・抽選結果の先読みは追加しない。
+Markdown にも ID・revision・選択状態・親 ID を表示する。新項目のない入力も表示できる。
+
 ### `card_reward` — Card Reward Selection
 
 Pick one card to add to your deck. Appears after claiming a card reward, or directly during events (e.g. Draft modifier at Neow).
@@ -505,7 +663,22 @@ Pick one card to add to your deck. Appears after claiming a card reward, or dire
     },
     "bosses": [
       { "col": 3, "row": 15, "id": "ENCOUNTER.VANTOM_BOSS", "name": "Vantom" }
-    ]
+    ],
+    // What this act has ALREADY served. There is no "next encounter" field: the game does
+    // not show that before the room is entered. Omitted entirely before the first room.
+    "encounters_seen": {
+      "act": 1,
+      "monster": [
+        { "floor": 2, "id": "NIBBITS_WEAK", "name": "Nibbits", "monsters": ["Nibbit", "Nibbit"] }
+      ],
+      "elite": [
+        { "floor": 8, "id": "BYRDONIS_ELITE", "name": "Byrdonis", "monsters": ["Byrdonis"] }
+      ],
+      "event": [
+        { "floor": 1, "id": "NEOW", "name": "Neow" }
+      ]
+      // "elite_cycle": 1   // only once the act's elite pool has wrapped at least once
+    }
   },
   "run": { ... },
   "player": { ... }
@@ -551,10 +724,12 @@ Pick one card to add to your deck. Appears after claiming a card reward, or dire
     "options": [
       {
         "index": 0,
-        "id": "rest",
+        "id": "HEAL",
         "name": "Rest",
         "description": "Heal 30% of max HP.",
-        "is_enabled": true
+        "is_enabled": true,
+        "has_button": true   // false = the option exists in the run model but no
+                             // button is drawn; choose_rest_option refuses it
       }
     ],
     "can_proceed": false
@@ -699,13 +874,13 @@ Chest is auto-opened on first state query.
 
 ### `card_select` — Card Selection Overlay
 
-Covers deck transforms, upgrades, removals, and choose-a-card effects. Appears on top of any room.
+Covers deck transforms, upgrades, enchants, removals, and choose-a-card effects. Appears on top of any room.
 
 ```jsonc
 {
   "state_type": "card_select",
   "card_select": {
-    "screen_type": "transform",  // transform, upgrade, select, simple_select, choose
+    "screen_type": "transform",  // transform, upgrade, enchant, select, simple_select, choose
     "prompt": "Choose 2 cards to Transform.",
     "cards": [
       {
@@ -718,12 +893,20 @@ Covers deck transforms, upgrades, removals, and choose-a-card effects. Appears o
         "description": "Deal 6 damage.",
         "rarity": "Common",
         "is_upgraded": false,
+        "selected": false,       // in the screen's own selection set (grid screens only)
         "keywords": [ /* Keyword Objects */ ]
       }
     ],
-    "preview_showing": false,    // true when selection is complete and preview is displayed
+    "selected_count": 0,         // how many cards the screen currently holds selected
+    "required_count": 2,         // the N of a "choose N" prompt; null when a range is accepted
+    "min_select": 2,             // the two ends of that range (equal when required_count is set)
+    "max_select": 2,
+    "preview_showing": false,    // true when the preview panel is up (step two, see below)
     "can_confirm": false,        // true when confirm button is available
     "can_cancel": true           // true when close/cancel button is available
+
+    // "selected_outside_grid": only present when the grid is scrolled and a selected card
+    // falls outside the window listed in "cards".
 
     // For "choose" type: picking is immediate (no confirm needed).
     // can_skip indicates if a skip button exists.
@@ -732,6 +915,11 @@ Covers deck transforms, upgrades, removals, and choose-a-card effects. Appears o
   "player": { ... }
 }
 ```
+
+**Grid screens have two steps.** Cards are picked first; then a preview panel opens — by itself once
+`max_select` is reached, or when `confirm_selection` presses the screen's own confirm — and only the
+preview's own confirm applies the selection. `selected` comes from the screen's selection set, not from the
+grid highlight, so it stays `true` during the preview (the game drops the highlight there but keeps the card).
 
 ### `bundle_select` — Card Bundle Selection Overlay
 
@@ -1057,9 +1245,98 @@ All POST requests use a JSON body with an `"action"` field and action-specific p
 
 ### Error Response
 
+Action failures — the action was understood but could not be performed — are returned with
+**HTTP 200**:
+
 ```jsonc
 { "status": "error", "error": "Card requires a target. Provide 'target' with an entity_id." }
 ```
+
+Transport failures — invalid JSON, a missing `action` field, an unknown route, a wrong HTTP method,
+the wrong run mode for the endpoint, or an unhandled exception — use an **HTTP 4xx/5xx** code but the
+same body shape:
+
+```jsonc
+// HTTP 400
+{ "status": "error", "error": "Missing 'action' field" }
+```
+
+So every POST response body carries `status` (`"ok"` or `"error"`), and `error` is present if and
+only if `status` is `"error"`. Branching on `status` alone is enough; the HTTP code only distinguishes
+*where* the failure happened.
+
+### Unavailable Response (HTTP 503)
+
+```jsonc
+{ "error": "timed out after 10000 ms waiting for the game's main thread", "status": "error", "retry": true }
+```
+
+Every request — GET included — is executed on the game's main thread, which is pumped once per
+rendered frame. A `503` with `"retry": true` means the request **was not executed**: the main thread
+did not answer within 10 s, or more than 32 requests are already queued, which only happens when the
+game is not processing frames (scene load, hang, minimized or paused app). Nothing was applied to the
+run, so the same request may be sent again once the game is responsive. Contrast with `500`, where
+the action ran and threw.
+
+### Waiting for the Game to Settle
+
+A POST returns as soon as the action has been dispatched on the main thread. Whether the animation,
+card resolution and redraw it started have finished is *not* in the response, so a client that acts
+on the reply is reading pre-resolution numbers — enemy HP before a multi-hit landed, a hand that has
+not been redrawn. The usual workaround is a GET poll loop on `is_resolving`; `"wait": true` moves
+that loop into the server, so one round trip both performs the action and returns the settled state.
+
+```json
+{ "action": "play_card", "card_uid": "STRIKE_IRONCLAD#1", "target": "NIBBIT_0", "wait": true }
+```
+
+| Parameter | Type | Default | Meaning |
+|---|---|---|---|
+| `wait` | bool | `false` | Wait for the game to settle before answering. Truthy forms: `true`, `1`, `"1"`, `"true"`, `"yes"`, `"on"`. Also readable from the query string (`?wait=1`, or a bare `?wait`). |
+| `wait_timeout_ms` | int | `10000` | Upper bound on the wait, clamped to `500`–`30000`. |
+| `include_state` | bool | `true` when `wait` is set | Whether to embed the settled state. |
+
+Response, with the wait's own fields appended after the action's:
+
+```jsonc
+{
+  "status": "ok",
+  "message": "Playing 'Strike' targeting Nibbit",
+  "waited_ms": 431,
+  "polls": 6,
+  "settled": true,
+  "changed": true,
+  "state": { "state_type": "monster", "...": "..." }
+}
+```
+
+| Field | Meaning |
+|---|---|
+| `waited_ms` | Wall-clock duration of the wait. |
+| `polls` | Number of state reads performed. |
+| `settled` | `true` if the game came to rest; `false` means the timeout was reached and the state may still be mid-resolution. |
+| `changed` | Whether anything observable moved compared with the state read just before the action. `false` means the action was a no-op. |
+| `state` | The final state, identical in shape to `GET /api/v1/singleplayer`. Omitted when `include_state` is `false`, and when the wait could not read a state at all. |
+| `wait_error` | Present only when the wait itself failed (the main thread stopped answering, or the state could not be built). The action already ran, so this is not a `503`. |
+
+**The settle rule.** Every ~60 ms the server re-reads the state on the main thread and calls it
+settled when `is_resolving` is false and, for `monster` / `elite` / `boss`, `battle.is_play_phase`
+is true. It must look settled for **3 consecutive polls** (~180 ms) before the wait returns: a click
+only takes effect on the following frame, and between two queued actions the game looks idle for a
+single frame — one poll would routinely return a mid-resolution state. This mirrors the
+empirically tuned loop every operator client ends up writing.
+
+**The no-change rule.** A cheap fingerprint (state type, menu screen, floor, round, player HP /
+block / energy, the uids in hand, each enemy's HP and block, the number of options on screen) is
+taken just before the action and compared on every poll. If it has not moved within the first
+**3000 ms**, the wait stops and returns `settled: true, changed: false` rather than burning the
+whole timeout on an action the game ignored.
+
+The wait never runs when the action returned `"status": "error"`, and a state that cannot be built
+(it throws while a scene is swapping) counts as "not settled" and is simply polled again.
+
+This is a **singleplayer-only** feature: `POST /api/v1/multiplayer` ignores `wait`,
+`wait_timeout_ms` and `include_state`.
 
 ---
 
@@ -1165,19 +1442,35 @@ Confirm the in-combat hand card selection.
 
 ### `claim_reward`
 
-Claim a reward from the rewards screen.
+現在の報酬画面で ID を解決して操作を送る。推奨は ID 指定。
 
 ```json
-{ "action": "claim_reward", "index": 0 }
+{ "action": "claim_reward", "reward_id": "<rewards.items[].reward_id>", "wait": true }
 ```
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
-| `index` | int | Yes | 0-based reward index |
+| `reward_id` | string | ID または index | 現在の画面の有効報酬 ID。推奨 |
+| `index` | int | ID または index | 互換の現在一覧の 0 始まり位置。別名 `reward_index` |
+| `screen_revision` | string | No | state の値をそのまま送る。古い値は ID 指定でも拒否 |
 
-Gold, potion, and relic rewards are claimed immediately. Card rewards open the `card_reward` screen.
+存在しない／別画面／取得済み／現在無効な ID はエラー。index へのフォールバックはしない。
+ID と index を併記して別の報酬を指す場合もエラー。revision + index で古い一覧を検出できる。
+**revision なしの旧 index 要求は古いか識別できず、現在位置として実行する。完全な安全保証はない。**
+ポーション満杯のエラーは維持する。金・ポーション・レリック等は直接取得を開始し、card は三択を開く。
+`special_card` は特定カードの直接取得であり、card の三択とは別の報酬。
 
-**Note:** Claiming a reward may change indices of remaining rewards.
+成功応答の `status:ok` と `action_stage:submitted` は操作送信を表し、取得完了の保証ではない。
+claim 応答に `reward_id` / `screen_revision`、カード選択／alternative 応答に `parent_reward_id` を追加する。
+`wait:true` では UI の解決待ち後に `outcome_observed` / `selection_state` / `reward_consumed` を付ける。
+`claimed` または `skipped` を確認できた場合のみ `action_stage:resolved` と
+`claimable` / `selection_closed` を出す。タイムアウト・観測欠落・セッション終了時は成功を取得完了へ読み替えず、
+`outcome_observed:false` とし、消費状態は不明にする。`settled:true` だけも取得完了を保証しない。
+開封された三択・デッキ選択は入力待ちであり、その入力を待つためにサーバの settle 待ちを継続しない。
+
+出典: `NRewardButton.GetReward`、`NRewardsScreen.RewardCollectedFrom / RewardSkippedFrom`、
+`CardReward.OnSelect / Populate`、`NCardRewardSelectionScreen.OptionSelected`、
+`CardRewardAlternative.Generate`、`SpecialCardReward.OnSelect`。
 
 ### `select_card_reward`
 
@@ -1193,7 +1486,13 @@ Pick a card from the card reward selection screen.
 
 ### `skip_card_reward`
 
-Skip the card reward (if a skip/bowl option is available).
+表示中の `Skip` option を選ぶ。カード三択を閉じ、親報酬は未消費で残り得る。
+SACRIFICE や他の alternative の代用にはしない。
+応答の `closes_selection_without_consuming_reward:true` は UI option の動作契約を表す。
+実際の完了確認は `wait:true` 後の `outcome_observed:true` / `selection_closed:true` /
+`reward_consumed:false` と同じ `parent_reward_id` で行う。待機なしの `submitted` は送信段階。
+自動進行側は同じ親 ID の `skipped` を自動再開封対象から外し、他の報酬は個別に処理する。
+明示的な再開封は可能。新項目のない旧 state は unknown と扱う。
 
 ```json
 { "action": "skip_card_reward" }
@@ -1238,12 +1537,25 @@ Call repeatedly until `in_dialogue` becomes `false` and event options appear.
 Choose a rest site option (rest, smith, etc.).
 
 ```json
-{ "action": "choose_rest_option", "index": 0 }
+{ "action": "choose_rest_option", "option_id": "SMITH" }
 ```
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
-| `index` | int | Yes | 0-based index matching the option's `index` from state (disabled options return an error) |
+| `option_id` | string | One of the two | Matches the option's `id` from state, case-insensitively (`HEAL`, `SMITH`, `DIG`, …). Aliases: `id`, `option`. **Preferred** |
+| `index` | int | One of the two | 0-based index matching the option's `index` from state. Alias: `option_index` |
+
+The option is resolved in `RestSiteRoom.Options` (the same list the state numbers) and the
+button is then looked up from that option, so the on-screen order of the buttons cannot make
+this press a different option than the one asked for. Disabled options, unknown ids, and an
+`option_id` that disagrees with a supplied `index` all return an error listing every option as
+`[index] id (enabled/disabled)`.
+
+Success adds the `option_id` and `index` of what was clicked:
+
+```json
+{ "status": "ok", "message": "Selecting rest site option: Smith", "option_id": "SMITH", "index": 1 }
+```
 
 ### `shop_purchase`
 
@@ -1284,8 +1596,18 @@ Select a card in a card selection overlay.
 | `index` | int | Yes | 0-based card index in the grid |
 
 **Behavior varies by screen type:**
-- Grid screens (transform, upgrade, select): toggles selection. When enough cards are selected, a preview may appear.
+- Grid screens (transform, upgrade, enchant, select): toggles selection through the game's own
+  `OnCardClicked`, so a card that is already selected comes back out. Once `max_select` cards are selected,
+  the screen opens its preview by itself.
 - Choose-a-card screens (potions, effects): picks the card immediately.
+
+On grid screens the result carries the outcome read back from the screen: `selected` (true when the card is
+now in the selection), `selected_count`, `min_select` / `max_select`, and `preview_showing` when the press
+opened the preview.
+
+Returns `status: error` when the press would not land: while a preview is open (use `confirm_selection` or
+`cancel_selection` — pressing through it corrupts the preview row), and when the screen refuses the press
+because its selection is already full.
 
 ### `confirm_selection`
 
@@ -1295,7 +1617,14 @@ Confirm card selection (grid screens only).
 { "action": "confirm_selection" }
 ```
 
-Checks preview containers first, then main confirm button. Not needed for choose-a-card screens.
+With a preview open, presses the preview's own confirm, which applies the selection. Otherwise presses the
+screen's confirm, which on most of these screens **opens the preview** rather than applying anything — the
+message says which of the two happened, so a two-step screen needs two calls. Not needed for choose-a-card
+screens.
+
+Returns `status: error` rather than an `ok` that does nothing when fewer than `min_select` or more than
+`max_select` cards are selected, when no confirm button is enabled, or when the press was swallowed (the
+screen is still open and no preview appeared).
 
 ### `cancel_selection`
 
@@ -1306,7 +1635,8 @@ Cancel or close the card selection overlay.
 ```
 
 **Behavior:**
-- If a preview is showing: cancels back to the selection grid.
+- If a preview is showing: cancels back to the selection grid. This also **clears the selection** — the game's
+  own cancel empties the set, so the grid comes back with nothing selected.
 - For choose-a-card screens: clicks the skip button (if available).
 - Otherwise: closes the selection screen (if cancellation is allowed).
 

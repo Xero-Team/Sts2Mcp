@@ -18,10 +18,36 @@ public static partial class McpMod
         else
             sb.AppendLine($"# Game State: {stateType}");
         sb.AppendLine();
+        // So a pasted markdown state says which build produced it, without a second request.
+        string modVersion = state.TryGetValue("mod_version", out var mv) ? mv?.ToString() ?? Version : Version;
+        string modCommit = state.TryGetValue("mod_commit", out var mc) ? mc?.ToString() ?? "" : "";
+        string schema = state.TryGetValue("schema_version", out var sv) ? sv?.ToString() ?? "" : "";
+        sb.AppendLine($"mod {modVersion}{(modCommit.Length > 0 ? "+" + modCommit : "")}{(schema.Length > 0 ? " · schema " + schema : "")}");
+        sb.AppendLine();
 
         if (state.TryGetValue("run", out var runObj) && runObj is Dictionary<string, object?> run)
         {
             sb.AppendLine($"**Act {run["act"]}** | Floor {run["floor"]} | Ascension {run["ascension"]}");
+            sb.AppendLine();
+        }
+
+        // Loud on purpose: every number below is read live, so a state taken mid-animation
+        // reports pre-resolution values.
+        if (state.TryGetValue("is_resolving", out var resolving) && resolving is true)
+        {
+            string why = state.TryGetValue("resolving_reasons", out var rr) && rr is List<string> rl && rl.Count > 0
+                ? $" ({string.Join(", ", rl)})" : "";
+            sb.AppendLine($"> ⚠ **STILL RESOLVING{why}** — values below may be pre-resolution. Re-read until is_resolving is false.");
+            sb.AppendLine();
+        }
+
+        // A pasted markdown state is often all a reader gets, so it has to say when parts
+        // of it could not be built - otherwise a field that failed reads as a field that
+        // is not there.
+        if (state.TryGetValue("warnings", out var warningsObj) && warningsObj is List<string> warnings && warnings.Count > 0)
+        {
+            var head = string.Join(" | ", warnings.GetRange(0, Math.Min(3, warnings.Count)));
+            sb.AppendLine($"> ⚠ **{warnings.Count} state warning(s)** — {head}");
             sb.AppendLine();
         }
 
@@ -37,10 +63,24 @@ public static partial class McpMod
             return sb.ToString();
         }
 
+        // A "message" is a note about the screen, not a replacement for it. Returning
+        // here dropped every following section, which is why some screens (treasure
+        // among them) rendered as a single line of prose with no contents at all.
         if (state.TryGetValue("message", out var msg) && msg != null)
         {
             sb.AppendLine(msg.ToString());
-            return sb.ToString();
+            sb.AppendLine();
+        }
+
+        if (state.GetValueOrDefault("player") is Dictionary<string, object?> poolPlayer
+            && poolPlayer.GetValueOrDefault("generation_pool") is Dictionary<string, object?> pool)
+        {
+            string summary = pool.GetValueOrDefault("known") is true
+                && pool.GetValueOrDefault("cards") is List<Dictionary<string, object?>> cards
+                ? $"{cards.Count} cards (Attack/Skill/Power), {pool.GetValueOrDefault("players")} player(s)"
+                : $"unknown: {pool.GetValueOrDefault("reason")}";
+            sb.AppendLine($"Generation pool: {summary}");
+            sb.AppendLine();
         }
 
         // Multiplayer players summary (top-level)
@@ -84,9 +124,12 @@ public static partial class McpMod
             FormatListSection(sb, "Relics", topPlayer, "relics", r =>
             {
                 string counter = r.TryGetValue("counter", out var c) && c != null ? $" [{c}]" : "";
-                return $"- **{r["name"]}**{counter}: {r["description"]}";
+                string used = r.GetValueOrDefault("used_up") is true ? " (used)" : "";
+                string melted = r.GetValueOrDefault("melted") is true ? " (melted)" : "";
+                return $"- **{r["name"]}**{counter}{used}{melted}: {r["description"]}";
             });
             FormatPotionsSection(sb, topPlayer);
+            FormatMasterDeckMarkdown(sb, topPlayer);
         }
 
         if (state.TryGetValue("battle", out var battleObj) && battleObj is Dictionary<string, object?> battle)
@@ -237,12 +280,10 @@ public static partial class McpMod
         // Ascension / seed / run modifiers — the start-a-run screens (character_select
         // and custom_run). In MP the lobby block above already carries the synced
         // ascension, but the panel is the local source of truth on both screens.
-        if (state.TryGetValue("ascension", out var ascObj) &&
-            ascObj is Dictionary<string, object?> ascension)
+        if (state.TryGetValue("ascension", out var ascObj) && ascObj is int ascensionLevel)
         {
-            var level = ascension.GetValueOrDefault("level")?.ToString() ?? "0";
-            var max = ascension.GetValueOrDefault("max")?.ToString();
-            sb.AppendLine($"**Ascension:** {level}{(max != null ? $" / {max}" : "")}");
+            var max = state.GetValueOrDefault("max_ascension")?.ToString();
+            sb.AppendLine($"**Ascension:** {ascensionLevel}{(max != null ? $" / {max}" : "")}");
             sb.AppendLine();
         }
 
@@ -412,11 +453,13 @@ public static partial class McpMod
             sb.AppendLine($"**{player["character"]}** - HP: {player["hp"]}/{player["max_hp"]} | Block: {player["block"]} | Energy: {player["energy"]}/{player["max_energy"]}{stars} | Gold: {player["gold"]}");
             sb.AppendLine();
 
-            FormatListSection(sb, "Status", player, "status", p => $"- **{p["name"]}** ({FormatStatusAmount(p["amount"])}): {p["description"]}");
+            FormatListSection(sb, "Status", player, "status", p => $"- **{p["name"]}** ({FormatStatusAmountWithDisplay(p)}): {p["description"]}");
             FormatListSection(sb, "Relics", player, "relics", r =>
             {
                 string counter = r.TryGetValue("counter", out var c) && c != null ? $" [{c}]" : "";
-                return $"- **{r["name"]}**{counter}: {r["description"]}";
+                string used = r.GetValueOrDefault("used_up") is true ? " (used)" : "";
+                string melted = r.GetValueOrDefault("melted") is true ? " (melted)" : "";
+                return $"- **{r["name"]}**{counter}{used}{melted}: {r["description"]}";
             });
             FormatPotionsSection(sb, player);
 
@@ -429,7 +472,10 @@ public static partial class McpMod
                     string keywords = card.TryGetValue("keywords", out var kw) && kw is List<Dictionary<string, object?>> kwList && kwList.Count > 0
                         ? $" [{string.Join(", ", kwList.Select(k => k["name"]?.ToString()))}]" : "";
                     string starCost = card.TryGetValue("star_cost", out var sc) && sc != null ? $" + {sc} star" : "";
-                    sb.AppendLine($"- [{card["index"]}] **{card["name"]}** ({card["cost"]} energy{starCost}) [{card["type"]}] {playable}{keywords} - {card["description"]} (target: {card["target_type"]})");
+                    string uid = card.TryGetValue("uid", out var u) && u != null ? $" `{u}`" : "";
+                    sb.AppendLine($"- [{card["index"]}]{uid} **{card["name"]}** ({card["cost"]} energy{starCost}) [{card["type"]}] {playable}{keywords} - {card["description"]} (target: {card["target_type"]})");
+                    FormatCardTargetPreviews(sb, card);
+                    AppendUpgradePreviewLine(sb, card);   // only present while the hand can be upgraded (D-13)
                 }
                 sb.AppendLine();
             }
@@ -459,8 +505,17 @@ public static partial class McpMod
             sb.AppendLine("## Enemies");
             foreach (var enemy in enemies)
             {
-                sb.AppendLine($"### {enemy["name"]} (`{enemy["entity_id"]}`)");
+                string combatIdTag = enemy.TryGetValue("combat_id", out var cid) && cid != null
+                    ? $" / combat_id `{cid}`" : "";
+                // A dead enemy is only listed at all when the game is keeping it in the
+                // fight, so it has to be unmistakable in the heading: it cannot be
+                // targeted, and it may be about to stand back up.
+                bool alive = enemy.GetValueOrDefault("alive") is not bool a || a;
+                string deadTag = alive ? "" : " — DEAD";
+                sb.AppendLine($"### {enemy["name"]} (`{enemy["entity_id"]}`{combatIdTag}){deadTag}");
                 sb.AppendLine($"HP: {enemy["hp"]}/{enemy["max_hp"]} | Block: {enemy["block"]}");
+                if (!alive)
+                    sb.AppendLine(FormatReviveLine(enemy));
 
                 if (enemy.TryGetValue("intents", out var intentsObj) && intentsObj is List<Dictionary<string, object?>> intents && intents.Count > 0)
                 {
@@ -475,10 +530,102 @@ public static partial class McpMod
                     })));
                 }
 
-                FormatListSection(sb, "Status", enemy, "status", p => $"  - **{p["name"]}** ({FormatStatusAmount(p["amount"])}): {p["description"]}");
+                FormatListSection(sb, "Status", enemy, "status", p => $"  - **{p["name"]}** ({FormatStatusAmountWithDisplay(p)}): {p["description"]}");
                 sb.AppendLine();
             }
         }
+    }
+
+    /// <summary>
+    /// The one line that says whether a corpse is staying down. "Waiting to revive" is
+    /// the whole point of listing it: a Decimillipede segment is back two enemy turns
+    /// after it falls, and a plan made without that spends those turns on the wrong
+    /// segment.
+    /// </summary>
+    private static string FormatReviveLine(Dictionary<string, object?> enemy)
+    {
+        if (enemy.GetValueOrDefault("revive") is not Dictionary<string, object?> revive)
+            return "**Down, and staying down** (no revive scheduled) - cannot be targeted.";
+
+        object? turns = revive.GetValueOrDefault("in_turns");
+        object? hp = revive.GetValueOrDefault("hp");
+        string at = hp != null ? $" at {hp} HP" : "";
+        string by = revive.GetValueOrDefault("power_name") is object p ? $" ({p})" : "";
+        string when = turns != null ? $"in {turns} enemy turn(s)" : "on an unknown turn";
+        return $"**⚠ WAITING TO REVIVE** {when}{at}{by} - cannot be targeted until it is back.";
+    }
+
+    /// <summary>
+    /// Resolved damage per living enemy, as the game would apply it right now
+    /// (Strength, Pen Nib, Vulnerable, Weak all folded in). The card's own text bakes
+    /// in an inconsistent subset of those, so this is the line to compute lethal from.
+    /// </summary>
+    private static void FormatCardTargetPreviews(StringBuilder sb, Dictionary<string, object?> card)
+    {
+        if (!card.TryGetValue("vs_targets", out var vtObj)
+            || vtObj is not List<Dictionary<string, object?>> targets
+            || targets.Count == 0)
+            return;
+
+        var parts = targets.Select(t =>
+        {
+            string label = t.GetValueOrDefault("target")?.ToString() ?? "?";
+            if (!t.TryGetValue("damage", out var dmg) || dmg == null)
+                return $"{label}: -";
+            string hits = t.TryGetValue("hits", out var h) && h != null
+                ? $" x{h} = {t.GetValueOrDefault("total_damage")}" : "";
+            // A damage cap turns a big hit into a wasted card; say so on the same line.
+            string cap = "";
+            if (t.TryGetValue("damage_cap", out var capObj) && capObj is Dictionary<string, object?> c)
+            {
+                cap = c.TryGetValue("effective_damage", out var eff) && eff != null
+                    ? $" ⚠ actually {eff} ({c.GetValueOrDefault("capped_by")})"
+                    : $" ⚠ capped by {c.GetValueOrDefault("capped_by")}";
+            }
+            return $"{label}: {dmg}{hits}{cap}";
+        });
+        sb.AppendLine($"  - resolved damage: {string.Join(", ", parts)}");
+    }
+
+    /// <summary>
+    /// The master deck, out of combat only (in a fight the piles already list every card).
+    /// Identical copies are collapsed into one line with a count - a 30-card deck is mostly
+    /// Strikes and Defends, and printing each one separately buried the cards that matter.
+    /// Keywords are left off here on purpose: the glossary section already explains every
+    /// keyword that appears anywhere in the state, including these cards.
+    /// </summary>
+    private static void FormatMasterDeckMarkdown(StringBuilder sb, Dictionary<string, object?> player)
+    {
+        if (!player.TryGetValue("deck", out var deckObj)
+            || deckObj is not List<Dictionary<string, object?>> deck)
+            return;
+
+        object? countObj = player.GetValueOrDefault("deck_count") ?? deck.Count;
+        sb.AppendLine($"### Deck ({countObj} cards)");
+
+        // Group key has to include the upgrade state: an upgraded Strike is a different card
+        // to reason about, and merging it with its base version would misreport the deck.
+        var seen = new Dictionary<string, int>();
+        var order = new List<(Dictionary<string, object?> Card, string Key)>();
+        foreach (var card in deck)
+        {
+            string key = $"{card.GetValueOrDefault("id")}|{card.GetValueOrDefault("is_upgraded")}";
+            if (seen.TryGetValue(key, out int count))
+            {
+                seen[key] = count + 1;
+                continue;
+            }
+            seen[key] = 1;
+            order.Add((card, key));
+        }
+
+        foreach (var (card, key) in order)
+        {
+            string starCost = card.TryGetValue("star_cost", out var sc) && sc != null ? $" + {sc} star" : "";
+            string copies = seen[key] > 1 ? $" ×{seen[key]}" : "";
+            sb.AppendLine($"- [{card["index"]}] **{card["name"]}**{copies} ({card["cost"]} energy{starCost}) [{card["type"]}] - {card["description"]}");
+        }
+        sb.AppendLine();
     }
 
     private static void FormatDeckPilesMarkdown(StringBuilder sb, Dictionary<string, object?> player)
@@ -511,7 +658,7 @@ public static partial class McpMod
             {
                 sb.AppendLine("  **Status**");
                 foreach (var p in statusList)
-                    sb.AppendLine($"  - **{p["name"]}** ({FormatStatusAmount(p["amount"])}): {p["description"]}");
+                    sb.AppendLine($"  - **{p["name"]}** ({FormatStatusAmountWithDisplay(p)}): {p["description"]}");
             }
         }
         sb.AppendLine();
@@ -579,7 +726,12 @@ public static partial class McpMod
             foreach (var opt in options)
             {
                 string enabled = opt["is_enabled"] is true ? "" : " (DISABLED)";
-                sb.AppendLine($"- [{opt["index"]}] **{opt["name"]}**{enabled} - {opt["description"]}");
+                // Only worth printing when it is false - a model option with no button is
+                // the mismatch that used to make choose_rest_option press the wrong thing.
+                string noButton = opt.TryGetValue("has_button", out var hb) && hb is false
+                    ? " (no button on screen)"
+                    : "";
+                sb.AppendLine($"- [{opt["index"]}] `{opt["id"]}` **{opt["name"]}**{enabled}{noButton} - {opt["description"]}");
             }
             sb.AppendLine();
         }
@@ -595,6 +747,15 @@ public static partial class McpMod
         {
             sb.AppendLine("## Shop");
             sb.AppendLine($"**Note:** {err}");
+            sb.AppendLine();
+        }
+
+        if (shop.TryGetValue("sellable_potions", out var spObj)
+            && spObj is List<Dictionary<string, object?>> sellable && sellable.Count > 0)
+        {
+            sb.AppendLine("### Potions this merchant will buy");
+            foreach (var p in sellable)
+                sb.AppendLine($"- [slot {p["slot"]}] **{p["potion_name"]}** — `sell_potion slot {p["slot"]}`");
             sb.AppendLine();
         }
 
@@ -664,12 +825,54 @@ public static partial class McpMod
 
     private static void FormatMapMarkdown(StringBuilder sb, Dictionary<string, object?> map)
     {
+        // Act boss. Bosses are rolled per act and are known as soon as the map exists,
+        // so this is the single most load-bearing line for planning card picks - it used
+        // to be JSON-only, which made it invisible to the markdown workflow.
+        FormatMapBossMarkdown(sb, map);
+
+        // What this act has already served. NOT what comes next - the game does not show that
+        // before the room is entered, and neither do we (see BuildEncountersSeen).
+        if (map.TryGetValue("encounters_seen", out var esObj) && esObj is Dictionary<string, object?> seen && seen.Count > 0)
+        {
+            var parts = new List<string>();
+            foreach (var key in new[] { "monster", "elite", "event" })
+            {
+                if (seen.GetValueOrDefault(key) is not List<Dictionary<string, object?>> rooms || rooms.Count == 0)
+                    continue;
+                parts.Add($"{key}: " + string.Join(", ", rooms.Select(r =>
+                {
+                    string name = r.TryGetValue("name", out var n) && n != null ? n.ToString()! : r.GetValueOrDefault("id")?.ToString() ?? "?";
+                    string floor = r.TryGetValue("floor", out var f) && f != null ? $" (f{f})" : "";
+                    return $"{name}{floor}";
+                })));
+            }
+            if (parts.Count > 0)
+            {
+                string cycle = seen.GetValueOrDefault("elite_cycle") is int c && c > 0
+                    ? $" - elite pool cycled x{c} (a fought elite can return)" : "";
+                sb.AppendLine("**Fought this act:** " + string.Join(" | ", parts) + cycle);
+                sb.AppendLine();
+            }
+        }
+
         // Path taken
         if (map.TryGetValue("visited", out var visitedObj) && visitedObj is List<Dictionary<string, object?>> visited && visited.Count > 0)
         {
             sb.AppendLine("## Path Taken");
             var parts = visited.Select((v, i) => $"{i + 1}. {v["type"]} ({v["col"]},{v["row"]})");
             sb.AppendLine(string.Join(" → ", parts) + " ← current");
+            sb.AppendLine();
+        }
+
+        if (map.TryGetValue("marked_nodes", out var markedObj)
+            && markedObj is List<Dictionary<string, object?>> markedNodes && markedNodes.Count > 0)
+        {
+            var labels = markedNodes.Select(n =>
+            {
+                var by = n.TryGetValue("marked_by", out var b) && b is List<string> bl ? string.Join("/", bl) : "?";
+                return $"({n["col"]},{n["row"]}) by {by}";
+            });
+            sb.AppendLine($"**Marked rooms:** {string.Join(", ", labels)}");
             sb.AppendLine();
         }
 
@@ -687,7 +890,9 @@ public static partial class McpMod
             sb.AppendLine("## Choose Next Node");
             foreach (var opt in options)
             {
-                sb.AppendLine($"- [{opt["index"]}] **{opt["type"]}** ({opt["col"]},{opt["row"]})");
+                string marked = opt.TryGetValue("marked_by", out var mb) && mb is List<string> mbl && mbl.Count > 0
+                    ? $" [marked by {string.Join(", ", mbl)}]" : "";
+                sb.AppendLine($"- [{opt["index"]}] **{opt["type"]}** ({opt["col"]},{opt["row"]}){marked}");
                 string tree = BuildFuturePathTree(opt, nodeLookup);
                 if (tree.Length > 0)
                     sb.AppendLine($"  Future paths: {tree}");
@@ -700,6 +905,80 @@ public static partial class McpMod
             sb.AppendLine("No travelable nodes available.");
             sb.AppendLine();
         }
+
+        FormatMapGraphMarkdown(sb, map);
+    }
+
+    /// <summary>
+    /// The act's map as an adjacency list, row by row.
+    /// "Future paths" above flattens each level and loses which node leads where, so
+    /// planning a route meant reading the save file's saved_map by hand. The same
+    /// coordinates that choose_map_node accepts are printed here.
+    /// </summary>
+    private static void FormatMapGraphMarkdown(StringBuilder sb, Dictionary<string, object?> map)
+    {
+        if (!map.TryGetValue("nodes", out var nodesObj)
+            || nodesObj is not List<Dictionary<string, object?>> nodes
+            || nodes.Count == 0)
+            return;
+
+        sb.AppendLine("## Map Graph");
+        sb.AppendLine("`(col,row) Type -> children`, one line per row of the act.");
+
+        var byRow = new SortedDictionary<int, List<Dictionary<string, object?>>>();
+        foreach (var node in nodes)
+        {
+            int row = ToInt(node.GetValueOrDefault("row"));
+            if (!byRow.TryGetValue(row, out var list))
+                byRow[row] = list = new List<Dictionary<string, object?>>();
+            list.Add(node);
+        }
+
+        foreach (var (row, rowNodes) in byRow)
+        {
+            var parts = rowNodes
+                .OrderBy(n => ToInt(n.GetValueOrDefault("col")))
+                .Select(n =>
+                {
+                    var childKeys = GetChildKeys(n).OrderBy(k => k).ToList();
+                    string children = childKeys.Count > 0 ? string.Join("/", childKeys) : "-";
+                    string marked = n.TryGetValue("marked_by", out var mb) && mb is List<string> mbl && mbl.Count > 0
+                        ? "*" : "";
+                    return $"({n["col"]},{row}) {n["type"]}{marked} -> {children}";
+                });
+            sb.AppendLine($"- row {row}: {string.Join(" | ", parts)}");
+        }
+        sb.AppendLine();
+    }
+
+    private static int ToInt(object? value)
+        => value is int i ? i : (value == null ? 0 : Convert.ToInt32(value));
+
+    private static void FormatMapBossMarkdown(StringBuilder sb, Dictionary<string, object?> map)
+    {
+        var bosses = map.TryGetValue("bosses", out var bs) && bs is List<Dictionary<string, object?>> bl && bl.Count > 0
+            ? bl
+            : (map.TryGetValue("boss", out var b) && b is Dictionary<string, object?> bd
+                ? new List<Dictionary<string, object?>> { bd }
+                : null);
+        if (bosses == null)
+            return;
+
+        var labels = new List<string>();
+        foreach (var boss in bosses)
+        {
+            string name = boss.TryGetValue("name", out var n) && n != null
+                ? n.ToString()!
+                : (boss.TryGetValue("id", out var i) && i != null ? i.ToString()! : "Unknown");
+            labels.Add($"{name} ({boss["col"]},{boss["row"]})");
+        }
+        if (labels.Count == 0)
+            return;
+
+        sb.AppendLine(labels.Count > 1
+            ? $"**Boss candidates:** {string.Join(" / ", labels)}"
+            : $"**Boss:** {labels[0]}");
+        sb.AppendLine();
     }
 
     /// <summary>
@@ -760,59 +1039,6 @@ public static partial class McpMod
         return keys;
     }
 
-    private static void FormatRewardsMarkdown(StringBuilder sb, Dictionary<string, object?> rewards)
-    {
-        if (rewards.TryGetValue("items", out var itemsObj) && itemsObj is List<Dictionary<string, object?>> items && items.Count > 0)
-        {
-            sb.AppendLine("## Rewards");
-            foreach (var item in items)
-            {
-                string extra = "";
-                if (item.TryGetValue("gold_amount", out var gold) && gold != null)
-                    extra = $" ({gold} gold)";
-                else if (item.TryGetValue("potion_description", out var pDesc) && pDesc != null)
-                    extra = $" - {pDesc}";
-                else if (item.TryGetValue("potion_name", out var pName) && pName != null)
-                    extra = $" ({pName})";
-                sb.AppendLine($"- [{item["index"]}] **{item["type"]}**: {item["description"]}{extra}");
-            }
-            sb.AppendLine();
-        }
-        else
-        {
-            sb.AppendLine("## Rewards");
-            sb.AppendLine("No rewards available.");
-            sb.AppendLine();
-        }
-
-        bool canProceed = rewards.TryGetValue("can_proceed", out var cp) && cp is true;
-        sb.AppendLine($"**Can proceed:** {(canProceed ? "Yes" : "No")}");
-        sb.AppendLine();
-    }
-
-    private static void FormatCardRewardMarkdown(StringBuilder sb, Dictionary<string, object?> cardReward)
-    {
-        sb.AppendLine("## Card Reward Selection");
-        sb.AppendLine("Choose a card to add to your deck:");
-        sb.AppendLine();
-
-        if (cardReward.TryGetValue("cards", out var cardsObj) && cardsObj is List<Dictionary<string, object?>> cards)
-        {
-            foreach (var card in cards)
-            {
-                string starCost = card.TryGetValue("star_cost", out var sc) && sc != null ? $" + {sc} star" : "";
-                string keywords = card.TryGetValue("keywords", out var kw) && kw is List<Dictionary<string, object?>> kwList && kwList.Count > 0
-                    ? $" [{string.Join(", ", kwList.Select(k => k["name"]?.ToString()))}]" : "";
-                sb.AppendLine($"- [{card["index"]}] **{card["name"]}** ({card["cost"]} energy{starCost}) [{card["type"]}] {card["rarity"]}{keywords} - {card["description"]}");
-            }
-            sb.AppendLine();
-        }
-
-        bool canSkip = cardReward.TryGetValue("can_skip", out var cs) && cs is true;
-        sb.AppendLine($"**Can skip:** {(canSkip ? "Yes" : "No")}");
-        sb.AppendLine();
-    }
-
     private static void FormatRelicSelectMarkdown(StringBuilder sb, Dictionary<string, object?> relicSelect)
     {
         sb.AppendLine("## Relic Selection");
@@ -852,6 +1078,7 @@ public static partial class McpMod
             {
                 string starCost = card.TryGetValue("star_cost", out var sc) && sc != null ? $" + {sc} star" : "";
                 sb.AppendLine($"- [{card["index"]}] **{card["name"]}** ({card["cost"]} energy{starCost}) [{card["type"]}] - {card["description"]}");
+                AppendUpgradePreviewLine(sb, card);
             }
             sb.AppendLine();
         }
@@ -876,6 +1103,7 @@ public static partial class McpMod
         {
             "transform" => "Transform",
             "upgrade" => "Upgrade",
+            "enchant" => "Enchant",
             "select" => "Select",
             "simple_select" => "Select",
             _ => screenType
@@ -886,6 +1114,19 @@ public static partial class McpMod
         {
             sb.AppendLine($"*{promptObj}*");
         }
+
+        // How many are picked out of how many the screen wants. Without this line a caller
+        // on a multi-card screen cannot tell whether confirming will do anything.
+        if (cardSelect.TryGetValue("selected_count", out var selCountObj) && selCountObj is int selCount)
+        {
+            string wanted = "";
+            if (cardSelect.TryGetValue("required_count", out var reqObj) && reqObj is int req)
+                wanted = $" of {req} required";
+            else if (cardSelect.TryGetValue("min_select", out var minObj) && minObj is int min
+                     && cardSelect.TryGetValue("max_select", out var maxObj) && maxObj is int max)
+                wanted = $" ({min}-{max} accepted)";
+            sb.AppendLine($"**Selected: {selCount}{wanted}**");
+        }
         sb.AppendLine();
 
         if (cardSelect.TryGetValue("cards", out var cardsObj) && cardsObj is List<Dictionary<string, object?>> cards)
@@ -894,7 +1135,9 @@ public static partial class McpMod
             foreach (var card in cards)
             {
                 string starCost = card.TryGetValue("star_cost", out var sc) && sc != null ? $" + {sc} star" : "";
-                sb.AppendLine($"- [{card["index"]}] **{card["name"]}** ({card["cost"]} energy{starCost}) [{card["type"]}] {card["rarity"]} - {card["description"]}");
+                string selected = card.TryGetValue("selected", out var selObj) && selObj is true ? "[x] " : "";
+                sb.AppendLine($"- {selected}[{card["index"]}] **{card["name"]}** ({card["cost"]} energy{starCost}) [{card["type"]}] {card["rarity"]} - {card["description"]}");
+                AppendUpgradePreviewLine(sb, card);
             }
             sb.AppendLine();
         }
@@ -1051,6 +1294,18 @@ public static partial class McpMod
         return amount?.ToString() ?? "0";
     }
 
+    /// <summary>
+    /// "(2)" normally, "(2, shown as 0)" when the on-screen number is a different
+    /// quantity than the stack count (e.g. Tender shows cards played this turn).
+    /// </summary>
+    private static string FormatStatusAmountWithDisplay(Dictionary<string, object?> power)
+    {
+        string amount = FormatStatusAmount(power.GetValueOrDefault("amount"));
+        if (power.TryGetValue("display_amount", out var shown) && shown != null)
+            return $"{amount}, shown as {FormatStatusAmount(shown)}";
+        return amount;
+    }
+
     private static void FormatListSection(StringBuilder sb, string title, Dictionary<string, object?> parent, string key,
         Func<Dictionary<string, object?>, string> formatter)
     {
@@ -1152,8 +1407,12 @@ public static partial class McpMod
                 {
                     string? name = keyword.GetValueOrDefault("name")?.ToString();
                     string? desc = keyword.GetValueOrDefault("description")?.ToString();
-                    if (name != null && desc != null)
-                        glossary.TryAdd(name, desc);
+                    if (name == null)
+                        continue;
+                    // A keyword with no text used to be dropped from the glossary
+                    // entirely, so it showed up in a card's keyword list with nothing
+                    // to explain it and no sign that the game itself has no text for it.
+                    glossary.TryAdd(name, desc ?? "(no description in game data)");
                 }
             }
             foreach (var (key, value) in dict)
