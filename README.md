@@ -195,7 +195,9 @@ The MCP server exposes the same profile data through `get_profile()`, `get_compe
 
 ### Build & Install
 
-Requires [.NET 9 SDK](https://dotnet.microsoft.com/download/dotnet/9.0) and the base game.
+Requires the [.NET 10 SDK](https://dotnet.microsoft.com/download/dotnet/10.0) and the base game.
+The assembly targets `net9.0` because that is the runtime the game hosts; `global.json` pins the
+SDK to the 10.0 feature band so every checkout builds with the same toolchain.
 
 **Configure the game path once.** Nothing in the build hard-codes it: `Directory.Build.props`
 resolves it from, highest precedence first, `-p:STS2GameDir`, `STS2_GAME_DIR`, then
@@ -254,12 +256,13 @@ out/Sts2Mcp/Sts2Mcp.json          ->  <game_install>/mods/Sts2Mcp.json
 Install dotnet to compile the mod:
 
 ```bash
-brew install dotnet@9
-export DOTNET_ROOT="/opt/homebrew/opt/dotnet@9/libexec"
+brew install dotnet
+export DOTNET_ROOT="$HOMEBREW_PREFIX/opt/dotnet/libexec"
 export PATH="$DOTNET_ROOT:$PATH"
 ```
 
-Homebrew installs `dotnet@9` as keg-only, so the exports above are required for the current session. Add them to `~/.zshrc` to persist across sessions.
+Homebrew's `dotnet` formula is the .NET 10 SDK (aliased `dotnet@10`); set the exports above for the
+current session and add them to `~/.zshrc` to persist across sessions.
 
 Then configure the game path as above and run `make build`, or build with `dotnet` directly (the PowerShell script is Windows-only):
 
