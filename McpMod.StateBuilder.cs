@@ -2183,172 +2183,9 @@ public static partial class McpMod
         // PlayerCombatState can linger after combat while on map/rest/shop. Energy/MaxEnergy getters
         // run hooks (e.g. Hook.ModifyMaxEnergy) that null-ref without a live combat - only serialize
         // combat fields when a fight is actually in progress.
-        bool inCombat = false;
-        if (combatState != null && CombatManager.Instance.IsInProgress)
-        {
-            inCombat = true;
-            state["energy"] = combatState.Energy;
-            state["max_energy"] = combatState.MaxEnergy;
-
-            // This required history has a different predicate and lifetime
-            // from Spite's actual HP loss during the current side's turn.
-            state["damage_not_fully_blocked_this_owner_turn"] = DamageNotFullyBlockedThisOwnerTurn(
-                player, CombatManager.Instance.History.Entries.OfType<DamageReceivedEntry>());
-
-            // Card models query combat history directly for these conditions.
-            // Export the owner-scoped values so the native forward model can
-            // seed an exact mid-turn search instead of inferring from HP/piles.
-            TryDo(() =>
-            {
-                var history = CombatManager.Instance.History.Entries;
-                state["lost_hp_this_turn"] = history.OfType<DamageReceivedEntry>().Any(entry =>
-                    entry.HappenedThisTurn(creature.CombatState)
-                    && entry.Receiver == creature
-                    && entry.Result.UnblockedDamage > 0);
-                state["cards_created_this_combat"] = history.OfType<CardGeneratedEntry>().Count(entry =>
-                    entry.Creator == player);
-                state["lightning_channeled_this_combat"] = history.OfType<OrbChanneledEntry>().Count(entry =>
-                    entry.Actor.Player == player && entry.Orb is LightningOrb);
-            });
-            // History can disappear while combat tears down. The Rust
-            // builder treats omitted counters as zero on those inert states.
-
-            // Counts every turn THIS player takes, extra turns included (battle.round
-            // only ticks on a normal side switch). Clients use it as the "a new player
-            // turn began" edge, which they cannot get from is_play_phase alone: with
-            // Instant Mode the enemy phase can start and finish between two polls.
-            state["turn_number"] = combatState.TurnNumber;
-
-            // Stars (The Regent's resource, conditionally shown)
-            if (player.Character.ShouldAlwaysShowStarCounter || combatState.Stars > 0)
-            {
-                state["stars"] = combatState.Stars;
-            }
-
-            // Hand. "upgrade_preview" rides along only while something in reach can upgrade
-            // cards in hand this turn (D-13): otherwise it is dead weight on every combat state.
-            var hand = new List<Dictionary<string, object?>>();
-            bool previewHandUpgrades = CanUpgradeHandThisTurn(player, combatState.Hand.Cards);
-            int cardIndex = 0;
-            foreach (var card in combatState.Hand.Cards)
-            {
-                var cardState = BuildCardState(card, cardIndex, player);
-                if (previewHandUpgrades) AttachUpgradePreview(cardState, card);
-                hand.Add(cardState);
-                cardIndex++;
-            }
-            state["hand"] = hand;
-
-            // Pile counts
-            state["draw_pile_count"] = combatState.DrawPile.Cards.Count;
-            state["discard_pile_count"] = combatState.DiscardPile.Cards.Count;
-            state["exhaust_pile_count"] = combatState.ExhaustPile.Cards.Count;
-            state["play_pile_count"] = combatState.PlayPile.Cards.Count;
-            state["is_resolving"] = PlayerIsResolvingEffect(player);
-
-            // Turn-history counters for cards whose effects depend on what already
-            // happened this turn (Finisher counts attacks; Forgotten Ritual checks
-            // exhausts). Mirrors the game's own queries in those card models.
-            TryDo(() =>
-            {
-                var history = CombatManager.Instance.History;
-                var combatStateShared = creature.CombatState;
-                state["cards_started_this_turn"] = history.CardPlaysStarted.Count(en =>
-                    en.HappenedThisTurn(combatStateShared) && en.CardPlay.Card.Owner == player);
-                state["skills_started_this_turn"] = history.CardPlaysStarted.Count(en =>
-                    en.HappenedThisTurn(combatStateShared) && en.CardPlay.Card.Owner == player
-                    && en.CardPlay.Card.Type == CardType.Skill);
-                state["card_series_started_this_turn"] = history.CardPlaysStarted.Count(en =>
-                    en.HappenedThisTurn(combatStateShared) && en.CardPlay.Card.Owner == player && en.CardPlay.IsFirstInSeries);
-                state["zero_cost_attacks_started_this_turn"] = history.CardPlaysStarted.Count(en =>
-                    en.HappenedThisTurn(combatStateShared) && en.CardPlay.Card.Owner == player
-                    && en.CardPlay.Card.Type == CardType.Attack && en.CardPlay.Resources.EnergyValue == 0);
-                state["attacks_played_this_turn"] = history.CardPlaysFinished.Count(en =>
-                    en.HappenedThisTurn(combatStateShared)
-                    && en.CardPlay.Card.Type == CardType.Attack
-                    && en.CardPlay.Card.Owner == player);
-                state["energy_spent_this_turn"] = history.Entries.OfType<EnergySpentEntry>()
-                    .Where(en => en.HappenedThisTurn(combatStateShared) && en.Actor.Player == player)
-                    .Sum(en => en.Amount);
-                state["exhausted_this_turn"] = history.Entries.OfType<CardExhaustedEntry>().Any(en =>
-                    en.HappenedThisTurn(combatStateShared) && en.Card.Owner == player);
-                state["cards_drawn_this_turn"] = history.Entries.OfType<CardDrawnEntry>().Count(en =>
-                    en.HappenedThisTurn(combatStateShared) && en.Card.Owner == player && !en.FromHandDraw);
-                state["cards_drawn_this_combat"] = history.Entries.OfType<CardDrawnEntry>().Count(en =>
-                    en.Card.Owner == player);
-                // Stars GAINED this turn (Radiate's hit count). The positive
-                // StarsModifiedEntry sum, which is neither the current Star total
-                // nor the Stars spent - a turn can gain and spend the same Star.
-                state["stars_gained_this_turn"] = history.Entries.OfType<StarsModifiedEntry>()
-                    .Where(en => en.HappenedThisTurn(combatStateShared) && en.Amount > 0 && en.Actor == creature)
-                    .Sum(en => en.Amount);
-                // Times this player took unblocked damage THIS COMBAT (Tear
-                // Asunder's hit count). A count of events, not HP lost, and a
-                // fully blocked hit does not count.
-                state["unblocked_hits_taken_this_combat"] = history.Entries.OfType<DamageReceivedEntry>()
-                    .Count(en => en.Receiver == creature && en.Result.UnblockedDamage > 0);
-                state["doom_applied_this_turn"] = history.Entries.OfType<PowerReceivedEntry>().Any(en =>
-                    en.HappenedThisTurn(combatStateShared)
-                    && en.Applier == creature
-                    && string.Equals(en.Power.GetType().Name, "DoomPower", StringComparison.Ordinal));
-                // Whether the end-of-turn flush will run at all: a hook can
-                // suppress it, in which case the WHOLE hand is kept and no card
-                // left in it should read as discarded.
-                if (combatStateShared != null)
-                    state["hand_will_flush"] = Hook.ShouldFlush(combatStateShared, player);
-            });
-            // History unavailable mid-transition - omit rather than fail the
-            // whole state build; the bot treats missing keys as 0/false.
-
-            // Pile contents. Draw pile is serialized in true order (index 0 = next draw).
-            // Note: the order is only valid until the next shuffle event (empty-pile
-            // reshuffle or an effect that shuffles cards into the draw pile).
-            state["draw_pile"] = BuildPileCardList(combatState.DrawPile.Cards, PileType.Draw);
-            state["discard_pile"] = BuildPileCardList(combatState.DiscardPile.Cards, PileType.Discard);
-            state["exhaust_pile"] = BuildPileCardList(combatState.ExhaustPile.Cards, PileType.Exhaust);
-            state["play_pile"] = BuildPileCardList(combatState.PlayPile.Cards, PileType.Play);
-
-            // Alchemize uses this exact ordered unlocked domain before its
-            // rarity and item rolls on CombatPotionGeneration.
-            TryDo(() =>
-            {
-                state["combat_potion_generation_pool"] = player.Character.PotionPool
-                    .GetUnlockedPotions(player.UnlockState)
-                    .Concat(ModelDb.PotionPool<SharedPotionPool>().GetUnlockedPotions(player.UnlockState))
-                    .Where(potion => potion.CanBeGeneratedInCombat)
-                    .Select(BuildPotionInfo)
-                    .ToList();
-            });
-            /* an unavailable pool must not break combat state */
-            // Card-generation and transformation domains are static for a run and
-            // are served by GET /api/v1/cardpools instead; rebuilding them here
-            // cost a full pool enumeration per distinct deck card, every poll.
-
-            // FORK ADDITION — true pile order (index 0 = top of pile, drawn next), with
-            // raw entry ids rather than localized titles. `draw_pile` above is sorted by
-            // rarity/id to match the in-game display, so it cannot be used to compare
-            // card *sequences* against the emulator. Used by the draw-pile differential
-            // test; keep both, since existing consumers rely on the sorted view.
-            state["draw_pile_ordered"] = BuildOrderedPileList(combatState.DrawPile.Cards);
-            state["discard_pile_ordered"] = BuildOrderedPileList(combatState.DiscardPile.Cards);
-            state["hand_ordered"] = BuildOrderedPileList(combatState.Hand.Cards);
-            // The exhaust pile was missing from this list while `exhaust_pile` and
-            // `exhaust_pile_count` both reported it, so a capture recorded an empty
-            // ordered exhaust however many cards were really in it. Cards that read the
-            // pile's SIZE -- Ashen Strike scales its damage off it -- would have been
-            // captured against a board the fixture could not rebuild.
-            state["exhaust_pile_ordered"] = BuildOrderedPileList(combatState.ExhaustPile.Cards);
-
-            // Orbs
-            AddOrbsState(state, player);
-
-            // Pets (Osty for Necrobinder)
-            var pets = BuildPetsState(player);
-            if (pets.Count > 0)
-            {
-                state["pets"] = pets;
-            }
-        }
+        bool inCombat = combatState != null && CombatManager.Instance.IsInProgress;
+        if (inCombat)
+            AppendPlayerCombatState(state, player, creature, combatState!);
 
         state["gold"] = player.Gold;
 
@@ -2369,6 +2206,216 @@ public static partial class McpMod
         AddDeckState(state, player, inCombat);
 
         return state;
+    }
+
+    /// <summary>
+    /// Everything only a live fight can answer: resources, the turn-history counters cards
+    /// read, the hand and piles, the potion pool, orbs and pets.
+    /// </summary>
+    private static void AppendPlayerCombatState(
+        Dictionary<string, object?> state,
+        Player player,
+        Creature creature,
+        PlayerCombatState combatState)
+    {
+        state["energy"] = combatState.Energy;
+        state["max_energy"] = combatState.MaxEnergy;
+
+        // This required history has a different predicate and lifetime
+        // from Spite's actual HP loss during the current side's turn.
+        state["damage_not_fully_blocked_this_owner_turn"] = DamageNotFullyBlockedThisOwnerTurn(
+            player, CombatManager.Instance.History.Entries.OfType<DamageReceivedEntry>());
+
+        // Card models query combat history directly for these conditions.
+        // Export the owner-scoped values so the native forward model can
+        // seed an exact mid-turn search instead of inferring from HP/piles.
+        AppendOwnerHistoryFlags(state, player, creature);
+        // History can disappear while combat tears down. The Rust
+        // builder treats omitted counters as zero on those inert states.
+
+        // Counts every turn THIS player takes, extra turns included (battle.round
+        // only ticks on a normal side switch). Clients use it as the "a new player
+        // turn began" edge, which they cannot get from is_play_phase alone: with
+        // Instant Mode the enemy phase can start and finish between two polls.
+        state["turn_number"] = combatState.TurnNumber;
+
+        // Stars (The Regent's resource, conditionally shown)
+        if (player.Character.ShouldAlwaysShowStarCounter || combatState.Stars > 0)
+            state["stars"] = combatState.Stars;
+
+        AppendPlayerHand(state, player, combatState);
+        AppendPlayerPileCounts(state, player, combatState);
+
+        // Turn-history counters for cards whose effects depend on what already
+        // happened this turn (Finisher counts attacks; Forgotten Ritual checks
+        // exhausts). Mirrors the game's own queries in those card models.
+        AppendTurnHistoryCounters(state, player, creature);
+
+        AppendPlayerPileLists(state, combatState);
+        // Card-generation and transformation domains are static for a run and
+        // are served by GET /api/v1/cardpools instead; rebuilding them here
+        // cost a full pool enumeration per distinct deck card, every poll.
+        AppendCombatPotionPool(state, player);
+        AppendOrderedPiles(state, combatState);
+
+        // Orbs
+        AddOrbsState(state, player);
+
+        // Pets (Osty for Necrobinder)
+        var pets = BuildPetsState(player);
+        if (pets.Count > 0)
+            state["pets"] = pets;
+    }
+
+    private static void AppendOwnerHistoryFlags(
+        Dictionary<string, object?> state, Player player, Creature creature)
+        => TryDo(() =>
+        {
+            var history = CombatManager.Instance.History.Entries;
+            state["lost_hp_this_turn"] = history.OfType<DamageReceivedEntry>().Any(entry =>
+                entry.HappenedThisTurn(creature.CombatState)
+                && entry.Receiver == creature
+                && entry.Result.UnblockedDamage > 0);
+            state["cards_created_this_combat"] = history.OfType<CardGeneratedEntry>().Count(entry =>
+                entry.Creator == player);
+            state["lightning_channeled_this_combat"] = history.OfType<OrbChanneledEntry>().Count(entry =>
+                entry.Actor.Player == player && entry.Orb is LightningOrb);
+        });
+
+    private static void AppendTurnHistoryCounters(
+        Dictionary<string, object?> state, Player player, Creature creature)
+        => TryDo(() =>
+        {
+            var history = CombatManager.Instance.History;
+            var combatStateShared = creature.CombatState;
+            state["cards_started_this_turn"] = history.CardPlaysStarted.Count(en =>
+                en.HappenedThisTurn(combatStateShared) && en.CardPlay.Card.Owner == player);
+            state["skills_started_this_turn"] = history.CardPlaysStarted.Count(en =>
+                en.HappenedThisTurn(combatStateShared) && en.CardPlay.Card.Owner == player
+                && en.CardPlay.Card.Type == CardType.Skill);
+            state["card_series_started_this_turn"] = history.CardPlaysStarted.Count(en =>
+                en.HappenedThisTurn(combatStateShared) && en.CardPlay.Card.Owner == player && en.CardPlay.IsFirstInSeries);
+            state["zero_cost_attacks_started_this_turn"] = history.CardPlaysStarted.Count(en =>
+                en.HappenedThisTurn(combatStateShared) && en.CardPlay.Card.Owner == player
+                && en.CardPlay.Card.Type == CardType.Attack && en.CardPlay.Resources.EnergyValue == 0);
+            state["attacks_played_this_turn"] = history.CardPlaysFinished.Count(en =>
+                en.HappenedThisTurn(combatStateShared)
+                && en.CardPlay.Card.Type == CardType.Attack
+                && en.CardPlay.Card.Owner == player);
+            state["energy_spent_this_turn"] = history.Entries.OfType<EnergySpentEntry>()
+                .Where(en => en.HappenedThisTurn(combatStateShared) && en.Actor.Player == player)
+                .Sum(en => en.Amount);
+            state["exhausted_this_turn"] = history.Entries.OfType<CardExhaustedEntry>().Any(en =>
+                en.HappenedThisTurn(combatStateShared) && en.Card.Owner == player);
+            state["cards_drawn_this_turn"] = history.Entries.OfType<CardDrawnEntry>().Count(en =>
+                en.HappenedThisTurn(combatStateShared) && en.Card.Owner == player && !en.FromHandDraw);
+            state["cards_drawn_this_combat"] = history.Entries.OfType<CardDrawnEntry>().Count(en =>
+                en.Card.Owner == player);
+            // Stars GAINED this turn (Radiate's hit count). The positive
+            // StarsModifiedEntry sum, which is neither the current Star total
+            // nor the Stars spent - a turn can gain and spend the same Star.
+            state["stars_gained_this_turn"] = history.Entries.OfType<StarsModifiedEntry>()
+                .Where(en => en.HappenedThisTurn(combatStateShared) && en.Amount > 0 && en.Actor == creature)
+                .Sum(en => en.Amount);
+            // Times this player took unblocked damage THIS COMBAT (Tear
+            // Asunder's hit count). A count of events, not HP lost, and a
+            // fully blocked hit does not count.
+            state["unblocked_hits_taken_this_combat"] = history.Entries.OfType<DamageReceivedEntry>()
+                .Count(en => en.Receiver == creature && en.Result.UnblockedDamage > 0);
+            state["doom_applied_this_turn"] = history.Entries.OfType<PowerReceivedEntry>().Any(en =>
+                en.HappenedThisTurn(combatStateShared)
+                && en.Applier == creature
+                && string.Equals(en.Power.GetType().Name, "DoomPower", StringComparison.Ordinal));
+            // Whether the end-of-turn flush will run at all: a hook can
+            // suppress it, in which case the WHOLE hand is kept and no card
+            // left in it should read as discarded.
+            if (combatStateShared != null)
+                state["hand_will_flush"] = Hook.ShouldFlush(combatStateShared, player);
+        });
+    // History unavailable mid-transition - omit rather than fail the
+    // whole state build; the bot treats missing keys as 0/false.
+
+    /// <summary>
+    /// The hand. "upgrade_preview" rides along only while something in reach can upgrade
+    /// cards in hand this turn (D-13): otherwise it is dead weight on every combat state.
+    /// </summary>
+    private static void AppendPlayerHand(
+        Dictionary<string, object?> state, Player player, PlayerCombatState combatState)
+    {
+        var hand = new List<Dictionary<string, object?>>();
+        bool previewHandUpgrades = CanUpgradeHandThisTurn(player, combatState.Hand.Cards);
+        int cardIndex = 0;
+        foreach (var card in combatState.Hand.Cards)
+        {
+            var cardState = BuildCardState(card, cardIndex, player);
+            if (previewHandUpgrades) AttachUpgradePreview(cardState, card);
+            hand.Add(cardState);
+            cardIndex++;
+        }
+        state["hand"] = hand;
+    }
+
+    private static void AppendPlayerPileCounts(
+        Dictionary<string, object?> state, Player player, PlayerCombatState combatState)
+    {
+        // Pile counts
+        state["draw_pile_count"] = combatState.DrawPile.Cards.Count;
+        state["discard_pile_count"] = combatState.DiscardPile.Cards.Count;
+        state["exhaust_pile_count"] = combatState.ExhaustPile.Cards.Count;
+        state["play_pile_count"] = combatState.PlayPile.Cards.Count;
+        state["is_resolving"] = PlayerIsResolvingEffect(player);
+    }
+
+    /// <summary>
+    /// The pile contents. The draw pile is serialized in true order (index 0 = next draw),
+    /// which is only valid until the next shuffle event (empty-pile reshuffle or an effect
+    /// that shuffles cards into the draw pile).
+    /// </summary>
+    private static void AppendPlayerPileLists(
+        Dictionary<string, object?> state, PlayerCombatState combatState)
+    {
+        state["draw_pile"] = BuildPileCardList(combatState.DrawPile.Cards, PileType.Draw);
+        state["discard_pile"] = BuildPileCardList(combatState.DiscardPile.Cards, PileType.Discard);
+        state["exhaust_pile"] = BuildPileCardList(combatState.ExhaustPile.Cards, PileType.Exhaust);
+        state["play_pile"] = BuildPileCardList(combatState.PlayPile.Cards, PileType.Play);
+    }
+
+    /// <summary>
+    /// Alchemize uses this exact ordered unlocked domain before its rarity and item rolls on
+    /// CombatPotionGeneration.
+    /// </summary>
+    private static void AppendCombatPotionPool(
+        Dictionary<string, object?> state, Player player)
+        => TryDo(() =>
+        {
+            state["combat_potion_generation_pool"] = player.Character.PotionPool
+                .GetUnlockedPotions(player.UnlockState)
+                .Concat(ModelDb.PotionPool<SharedPotionPool>().GetUnlockedPotions(player.UnlockState))
+                .Where(potion => potion.CanBeGeneratedInCombat)
+                .Select(BuildPotionInfo)
+                .ToList();
+        });
+    /* an unavailable pool must not break combat state */
+
+    /// <summary>
+    /// FORK ADDITION - true pile order (index 0 = top of pile, drawn next), with raw entry
+    /// ids rather than localized titles. `draw_pile` above is sorted by rarity/id to match
+    /// the in-game display, so it cannot be used to compare card *sequences* against the
+    /// emulator. Used by the draw-pile differential test; keep both, since existing
+    /// consumers rely on the sorted view.
+    /// </summary>
+    private static void AppendOrderedPiles(
+        Dictionary<string, object?> state, PlayerCombatState combatState)
+    {
+        state["draw_pile_ordered"] = BuildOrderedPileList(combatState.DrawPile.Cards);
+        state["discard_pile_ordered"] = BuildOrderedPileList(combatState.DiscardPile.Cards);
+        state["hand_ordered"] = BuildOrderedPileList(combatState.Hand.Cards);
+        // The exhaust pile was missing from this list while `exhaust_pile` and
+        // `exhaust_pile_count` both reported it, so a capture recorded an empty
+        // ordered exhaust however many cards were really in it. Cards that read the
+        // pile's SIZE -- Ashen Strike scales its damage off it -- would have been
+        // captured against a board the fixture could not rebuild.
+        state["exhaust_pile_ordered"] = BuildOrderedPileList(combatState.ExhaustPile.Cards);
     }
 
     // Cached reflection handles for ActModel._rooms and the RoomSet fields.
