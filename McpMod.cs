@@ -739,9 +739,7 @@ public static partial class McpMod
                 {
                     ["status"] = "error",
                     ["error"] = $"Failed to read multiplayer game state: {ex.Message}",
-                    ["error_code"] = "multiplayer_state_read_failed",
-                    ["exception_type"] = ex.GetType().FullName,
-                    ["stack_trace"] = ex.StackTrace
+                    ["error_code"] = "multiplayer_state_read_failed"
                 }, pretty);
             }
             catch { /* response may be unusable */ }
@@ -903,9 +901,7 @@ public static partial class McpMod
                 {
                     ["status"] = "error",
                     ["error"] = $"Failed to read game state: {ex.Message}",
-                    ["error_code"] = "singleplayer_state_read_failed",
-                    ["exception_type"] = ex.GetType().FullName,
-                    ["stack_trace"] = ex.StackTrace
+                    ["error_code"] = "singleplayer_state_read_failed"
                 }, pretty);
             }
             catch { /* response may be unusable */ }
