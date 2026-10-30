@@ -2647,6 +2647,45 @@ Finish the Crystal Sphere minigame.
 
 ---
 
+## Actions added by the absorbed forks
+
+These actions are dispatched by the same `POST /api/v1/singleplayer` route as the rest, and
+each one returns the standard `{"status": "ok" | "error"}` body.
+
+| Action | Parameters | Meaning |
+|---|---|---|
+| `return_to_main_menu` | none | Save and quit the current run to the main menu |
+| `open_pause_menu` | none | Open the in-game pause menu |
+| `resume` | none | Close the pause menu and resume the run |
+| `give_up` | none | Abandon the run from the pause menu |
+| `sell_potion` | `slot` (int) | Sell a potion at the shop |
+| `select_card_reward_alternative` | reward screen indices | Pick the alternative card offered by a reward |
+| `abandon_run` | none | Abandon the run from the main-menu continue screen |
+| `timeline_reveal_epochs` | none | Reveal every obtained Timeline epoch |
+| `set_recording` | `enabled` (bool) | Turn the combat recorder on or off for this session |
+| `set_time_scale` | `scale` (number, 0.25–10.0) | Set the Godot engine time scale (animation speed) |
+| `set_ascension` | `level` (int) | Set the run ascension level on the open character-select screen |
+
+### Debug actions
+
+Debug actions mutate the run directly. They exist for harness work and are not part of a
+normal play flow.
+
+| Action | Parameters | Meaning |
+|---|---|---|
+| `debug_start_encounter` | `encounter` (string, required) | Start the named encounter immediately |
+| `debug_start_event` | `event` (string, required) | Enter the named event |
+| `debug_start_shop` | none | Enter a shop room |
+| `debug_force_play_phase` | none | Push the combat into the player's play phase |
+| `debug_add_card` | `card` (string, required), `pile` (optional) | Add a card to a pile |
+| `debug_add_power` | `power` (string, required), `amount` (number), `target` (optional) | Apply a power to a creature |
+| `debug_enchant_card` | `enchantment` (string, required), `pile` (optional) | Enchant a card in the given pile |
+| `debug_set_energy` | `amount` (int) | Set the player's energy |
+| `debug_set_stars` | `amount` (int) | Set the player's stars (Regent) |
+| `debug_gain_max_hp` | `amount` (int) | Raise max HP by the given amount |
+| `debug_upgrade_deck` | none | Upgrade every card in the deck |
+| `debug_enter_next_act` | none | Advance to the next act |
+
 ## Multiplayer Additions
 
 ### GET — Additional Top-Level Fields

@@ -319,11 +319,20 @@ def extract_action_switches(source: str, marker: str) -> set[str]:
         fail(f"could not parse action switch for {marker}")
     # An arm may spell several aliases ("open_pause_menu" or "pause" => ...).
     arms = re.findall(r'((?:"[a-z_]+"\s*(?:or\s*)?)+)=>', match.group(1))
-    return {name for arm in arms for name in re.findall(r'"([a-z_]+)"', arm)}
+    actions = {name for arm in arms for name in re.findall(r'"([a-z_]+)"', arm)}
+    # Some actions are dispatched before the switch (they need the raw request, or a
+    # handler shared with a route), so read the `action == "..."` guards too.
+    actions |= set(re.findall(r'action\s*==\s*"([a-z_]+)"', section))
+    return actions
 
 
 def audit_action_surface(repo: Path) -> None:
     sp_actions = extract_action_switches((repo / "McpMod.Actions.cs").read_text(encoding="utf-8"), "ExecuteAction")
+    # Transport-level guards in McpMod.cs dispatch a few actions before the switch
+    # (set_time_scale, set_ascension, set_recording, menu_select), because they need the
+    # raw request or share a handler with a route.
+    transport = (repo / "McpMod.cs").read_text(encoding="utf-8")
+    sp_actions |= set(re.findall(r'action\s*==\s*"([a-z_]+)"', transport))
     mp_actions = extract_action_switches((repo / "McpMod.MultiplayerActions.cs").read_text(encoding="utf-8"), "ExecuteMultiplayerAction")
     server = (repo / "mcp" / "server.py").read_text(encoding="utf-8")
     docs = "\n".join(

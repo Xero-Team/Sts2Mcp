@@ -477,6 +477,21 @@ short of `min_select`, over `max_select`, or when the press was swallowed by the
 | `crystal_sphere_click_cell` | `x`: int, `y`: int | Reveal a cell. |
 | `crystal_sphere_proceed` | _(none)_ | Finish the minigame. |
 
+## Actions added by the absorbed forks
+
+Menu, shop, timeline, recorder and debug actions share the `POST /api/v1/singleplayer`
+route. `return_to_main_menu`, `open_pause_menu`, `resume`, `give_up`, `abandon_run`,
+`timeline_reveal_epochs` and `debug_enter_next_act` take no parameters; `sell_potion`
+takes `slot`; `set_recording` takes `enabled`; `set_time_scale` takes `scale`;
+`set_ascension` takes `level`.
+
+Debug actions (`debug_start_encounter`, `debug_start_event`, `debug_start_shop`,
+`debug_force_play_phase`, `debug_add_card`, `debug_add_power`, `debug_enchant_card`,
+`debug_set_energy`, `debug_set_stars`, `debug_gain_max_hp`, `debug_upgrade_deck`) mutate
+the run directly and exist for harness work, not normal play. The two that take a required
+name parameter are `debug_start_encounter` (`encounter`) and `debug_start_event` (`event`);
+`debug_add_card` takes `card` and `debug_enchant_card` takes `enchantment`.
+
 ## Multiplayer Additions
 
 `GET /api/v1/multiplayer?detail=full` expands only the top-level `players`

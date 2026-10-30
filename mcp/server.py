@@ -1761,6 +1761,218 @@ async def mp_crystal_sphere_proceed() -> str:
         return _handle_error(e)
 
 
+# ---------------------------------------------------------------------------
+# Session and debug actions absorbed from the active forks.
+# ---------------------------------------------------------------------------
+
+
+@mcp.tool()
+async def return_to_main_menu(wait: bool = False) -> str:
+    """Save the current run and return to the main menu.
+
+    Unlike open_pause_menu + give_up, this keeps the run on disk, so `continue`
+    can resume it later.
+    """
+    try:
+        return await _post({"action": "return_to_main_menu"}, wait=wait)
+    except Exception as e:
+        return _handle_error(e)
+
+
+@mcp.tool()
+async def set_time_scale(scale: float) -> str:
+    """Set the Godot engine time scale (animation and game speed).
+
+    Args:
+        scale: Multiplier between 0.25 and 10.0. 1.0 is normal speed; values above
+            1.0 fast-forward animations, which shortens the settle time a `wait`
+            request has to cover.
+    """
+    if not 0.25 <= scale <= 10.0:
+        return "Error: scale must be between 0.25 and 10.0."
+    try:
+        return await _post({"action": "set_time_scale", "scale": scale})
+    except Exception as e:
+        return _handle_error(e)
+
+
+@mcp.tool()
+async def set_ascension(level: int) -> str:
+    """Set the run ascension level on the open character-select screen.
+
+    Args:
+        level: Ascension level to select. The cap is per character and is reported
+            as `max_ascension` in the character-select state; asking for more is an
+            error. Select the character first.
+    """
+    if level < 0:
+        return "Error: level must be >= 0."
+    try:
+        return await _post({"action": "set_ascension", "level": level})
+    except Exception as e:
+        return _handle_error(e)
+
+
+@mcp.tool()
+async def debug_start_encounter(encounter: str) -> str:
+    """[Debug] Start the named encounter immediately, skipping map navigation.
+
+    Args:
+        encounter: Encounter id, for example "JAW_WORM_NORMAL". The state names the
+            available ids under `combat_pools` when they are exposed.
+    """
+    try:
+        return await _post({"action": "debug_start_encounter", "encounter": encounter})
+    except Exception as e:
+        return _handle_error(e)
+
+
+@mcp.tool()
+async def debug_start_event(event: str) -> str:
+    """[Debug] Enter the named event.
+
+    Args:
+        event: Event id as used by the game's event registry.
+    """
+    try:
+        return await _post({"action": "debug_start_event", "event": event})
+    except Exception as e:
+        return _handle_error(e)
+
+
+@mcp.tool()
+async def debug_start_shop() -> str:
+    """[Debug] Enter a shop room immediately."""
+    try:
+        return await _post({"action": "debug_start_shop"})
+    except Exception as e:
+        return _handle_error(e)
+
+
+@mcp.tool()
+async def debug_force_play_phase() -> str:
+    """[Debug] Force the current combat into the player's play phase."""
+    try:
+        return await _post({"action": "debug_force_play_phase"})
+    except Exception as e:
+        return _handle_error(e)
+
+
+@mcp.tool()
+async def debug_add_card(card: str, pile: str | None = None) -> str:
+    """[Debug] Add a card to a pile.
+
+    Args:
+        card: Card id, for example "STRIKE_IRONCLAD".
+        pile: Target pile name (hand, draw, discard, exhaust). Defaults to the
+            hand when omitted.
+    """
+    body: dict = {"action": "debug_add_card", "card": card}
+    if pile is not None:
+        body["pile"] = pile
+    try:
+        return await _post(body)
+    except Exception as e:
+        return _handle_error(e)
+
+
+@mcp.tool()
+async def debug_add_power(power: str, amount: int, target: str | None = None) -> str:
+    """[Debug] Apply a power to a creature.
+
+    Args:
+        power: Power id as used by the game.
+        amount: Stack amount to apply.
+        target: entity_id or combat_id; defaults to the player.
+    """
+    body: dict = {"action": "debug_add_power", "power": power, "amount": amount}
+    if target is not None:
+        body["target"] = target
+    try:
+        return await _post(body)
+    except Exception as e:
+        return _handle_error(e)
+
+
+@mcp.tool()
+async def debug_enchant_card(enchantment: str, pile: str | None = None) -> str:
+    """[Debug] Enchant a card in the given pile.
+
+    Args:
+        enchantment: Enchantment id as used by the game.
+        pile: Pile holding the target card. Defaults to the hand when omitted.
+    """
+    body: dict = {"action": "debug_enchant_card", "enchantment": enchantment}
+    if pile is not None:
+        body["pile"] = pile
+    try:
+        return await _post(body)
+    except Exception as e:
+        return _handle_error(e)
+
+
+@mcp.tool()
+async def debug_set_energy(amount: int) -> str:
+    """[Debug] Set the player's energy to an exact value."""
+    try:
+        return await _post({"action": "debug_set_energy", "amount": amount})
+    except Exception as e:
+        return _handle_error(e)
+
+
+@mcp.tool()
+async def debug_set_stars(amount: int) -> str:
+    """[Debug] Set the player's stars to an exact value (the Regent resource).
+
+    Useful for staging a card whose star cost would otherwise be unreachable.
+    """
+    try:
+        return await _post({"action": "debug_set_stars", "amount": amount})
+    except Exception as e:
+        return _handle_error(e)
+
+
+@mcp.tool()
+async def debug_gain_max_hp(amount: int) -> str:
+    """[Debug] Raise the player's max HP by the given amount."""
+    try:
+        return await _post({"action": "debug_gain_max_hp", "amount": amount})
+    except Exception as e:
+        return _handle_error(e)
+
+
+@mcp.tool()
+async def debug_upgrade_deck() -> str:
+    """[Debug] Upgrade every card in the current deck."""
+    try:
+        return await _post({"action": "debug_upgrade_deck"})
+    except Exception as e:
+        return _handle_error(e)
+
+
+@mcp.tool()
+async def debug_enter_next_act() -> str:
+    """[Debug] Advance the run to the next act."""
+    try:
+        return await _post({"action": "debug_enter_next_act"})
+    except Exception as e:
+        return _handle_error(e)
+
+
+@mcp.tool()
+async def set_recording(enabled: bool) -> str:
+    """Turn the combat recorder on or off for this session.
+
+    Args:
+        enabled: True to record, false to stop. The recorder writes into the
+            directory reported by the state's recording fields.
+    """
+    try:
+        return await _post({"action": "set_recording", "enabled": enabled})
+    except Exception as e:
+        return _handle_error(e)
+
+
 def main():
     parser = argparse.ArgumentParser(description="STS2 MCP Server")
     parser.add_argument("--port", type=int, default=DEFAULT_PORT, help="Game HTTP server port")

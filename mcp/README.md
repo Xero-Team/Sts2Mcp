@@ -9,6 +9,22 @@
 | `menu_select(option, seed?)` | General | Select a visible menu/game-over option, including `abandon_run` when advertised |
 | `open_pause_menu()` | General | Open the in-run pause menu (resume / settings / compendium / give_up / save_and_quit) |
 | `timeline_reveal_epochs()` | General | Reveal obtained-but-unrevealed timeline epochs from the main menu (repeat until `done`) |
+| `return_to_main_menu(wait?)` | General | Save the run and return to the main menu (the run stays resumable) |
+| `set_time_scale(scale)` | General | Set the Godot time scale (0.25–10.0) to speed up or slow down animations |
+| `set_ascension(level)` | General | Set the run ascension level on the open character-select screen |
+| `set_recording(enabled)` | Recorder | Turn the combat recorder on or off for this session |
+| `debug_start_encounter(encounter)` | Debug | Start the named encounter immediately |
+| `debug_start_event(event)` | Debug | Enter the named event |
+| `debug_start_shop()` | Debug | Enter a shop room immediately |
+| `debug_force_play_phase()` | Debug | Force the current combat into the play phase |
+| `debug_add_card(card, pile?)` | Debug | Add a card to a pile |
+| `debug_add_power(power, amount, target?)` | Debug | Apply a power to a creature |
+| `debug_enchant_card(enchantment, pile?)` | Debug | Enchant a card in the given pile |
+| `debug_set_energy(amount)` | Debug | Set the player's energy |
+| `debug_set_stars(amount)` | Debug | Set the player's stars |
+| `debug_gain_max_hp(amount)` | Debug | Raise max HP |
+| `debug_upgrade_deck()` | Debug | Upgrade every card in the deck |
+| `debug_enter_next_act()` | Debug | Advance the run to the next act |
 | `get_settings()` | General | Get current settings and preferences |
 | `get_profile()` | Profiles | Get active profile progress plus save/run context |
 | `get_compendium()` | Profiles | Get Compendium-shaped profile progress plus save/run context |
