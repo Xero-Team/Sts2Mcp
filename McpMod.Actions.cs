@@ -1439,165 +1439,209 @@ public static partial class McpMod
             : "auto";
 
         if (overlay is NCardGridSelectionScreen gridScreen)
-        {
-            // Once a card has opened the preview, the grid is no longer the active
-            // interaction surface. Some clients repeat select_card(index) because
-            // older state responses only exposed card indices. Treat that repeated
-            // selection as confirmation instead of emitting a no-op grid signal.
-            foreach (var containerName in new[] { "%UpgradeSinglePreviewContainer", "%UpgradeMultiPreviewContainer", "%PreviewContainer" })
-            {
-                if (gridScreen.GetNodeOrNull<Godot.Control>(containerName)?.Visible == true)
-                {
-                    var confirmResult = ExecuteConfirmSelection();
-                    if (confirmResult.TryGetValue("status", out var status) && string.Equals(status?.ToString(), "ok", StringComparison.Ordinal))
-                    {
-                        confirmResult["message"] =
-                            "Card selection preview was already open; confirming the selected card instead of selecting it again";
-                    }
-                    return confirmResult;
-                }
-
-            }
-
-            var grid = FindFirst<NCardGrid>(gridScreen);
-            if (grid == null && !string.Equals(method, "holder", StringComparison.Ordinal))
-                return Error("Card grid not found in selection screen");
-
-            // While a preview covers the grid the game takes the grid out of the input path
-            // (FocusBehaviorRecursive = Disabled, scrolling off). Firing HolderPressed anyway
-            // still mutates the selection behind the panel, and re-reaching MaxSelect re-runs
-            // PreviewSelection, which appends another copy of every selected card to the
-            // preview row - the "select_card adds instead of toggling" symptom of A-7.
-            if (FindVisibleCardSelectPreview(gridScreen) != null)
-                return Error("A selection preview is open - use confirm_selection to apply it, or cancel_selection to go back to the grid");
-
-            var holders = FindAllSortedByPosition<NGridCardHolder>(gridScreen);
-
-            if (index < 0 || index >= holders.Count)
-                return Error($"Card index {index} out of range ({holders.Count} cards available)");
-
-            var holder = holders[index];
-            var cardModel = holder.CardModel;
-            string cardName = SafeGetText(() => cardModel?.Title) ?? "unknown";
-
-            // NCardGrid.HolderPressed is the signal the grid *emits after* a
-            // holder is pressed. Emitting it directly notifies the grid's
-            // subscribers while skipping the grid's own selection bookkeeping,
-            // so screens that read that bookkeeping never register the click:
-            // the call reports success and the screen sits unchanged. That
-            // stranded runs on "Choose a card to Enchant" and on event screens
-            // like "Choose 2 Common Cards to Add to Your Deck", where every
-            // card could be clicked and Confirm still refused.
-            //
-            // Pressing the holder drives the real signal chain, which is what
-            // the choose-a-card path already does. "grid" remains available via
-            // the method parameter for anything that depends on the old path.
-            bool useHolder = !string.Equals(method, "grid", StringComparison.Ordinal);
-
-            // The screen's own selection set, so the outcome is read back from the game
-            // instead of assumed.
-            var selection = GetCardSelectSelection(gridScreen);
-            bool? wasSelected = (selection != null && cardModel != null) ? selection.Contains(cardModel) : null;
-
-            if (useHolder)
-                holder.EmitSignal(NCardHolder.SignalName.Pressed, holder);
-            else
-                grid!.EmitSignal(NCardGrid.SignalName.HolderPressed, holder);
-
-            // The screen can complete and close on the press itself (NSimpleCardSelectScreen
-            // with RequireManualConfirmation off), leaving nothing to read back.
-            if (!IsCardSelectScreenStillOpen(gridScreen))
-            {
-                return new Dictionary<string, object?>(StringComparer.Ordinal)
-                {
-                    ["status"] = "ok",
-                    ["message"] = $"Selected {cardName} - selection complete, screen closed"
-                };
-            }
-
-            if (selection == null || cardModel == null)
-            {
-                return new Dictionary<string, object?>(StringComparer.Ordinal)
-                {
-                    ["status"] = "ok",
-                    ["message"] = $"Toggling card selection: {cardName}"
-                };
-            }
-
-            bool isSelected = selection.Contains(cardModel);
-            if (wasSelected == isSelected)
-            {
-                // The one screen that ignores a press is NSimpleCardSelectScreen once the set
-                // is full; report that instead of a success for a no-op.
-                var limit = GetCardSelectPrefs(gridScreen);
-                string message;
-                if (isSelected)
-                    message = $"{cardName} is still selected - the screen did not accept the press";
-                else if (limit.HasValue)
-                    message = $"{cardName} was not selected - at most {limit.Value.MaxSelect} card(s) can be selected, deselect one first";
-                else
-                    message = $"{cardName} was not selected - the screen did not accept the press";
-                return Error(message);
-            }
-
-            var toggled = new Dictionary<string, object?>(StringComparer.Ordinal)
-            {
-                ["status"] = "ok",
-                ["message"] = $"{(isSelected ? "Selected" : "Deselected")} {cardName}",
-                ["selected"] = isSelected,
-                ["selected_count"] = selection.Count,
-                // Reported so a caller that sees no effect knows what to retry.
-                ["method"] = useHolder ? "holder" : "grid",
-                ["screen"] = gridScreen.GetType().Name
-            };
-
-            var prefs = GetCardSelectPrefs(gridScreen);
-            if (prefs.HasValue)
-            {
-                toggled["min_select"] = prefs.Value.MinSelect;
-                toggled["max_select"] = prefs.Value.MaxSelect;
-            }
-
-            // Reaching MaxSelect opens the preview by itself on these screens; the caller
-            // needs to know the next action is confirm/cancel, not another select_card.
-            if (FindVisibleCardSelectPreview(gridScreen) != null)
-                toggled["preview_showing"] = true;
-
-            return toggled;
-        }
-        else if (overlay is NChooseACardSelectionScreen chooseScreen)
-        {
-            var holders = FindAllSortedByPosition<NGridCardHolder>(chooseScreen)
-                .Where(holder => holder.CardModel != null)
-                .ToList();
-            if (index < 0 || index >= holders.Count)
-                return Error($"Card index {index} out of range ({holders.Count} cards available)");
-
-            // `SelectHolder` swallows a press inside the screen's 350 ms opening
-            // deadzone without failing, so reporting `ok` here would tell a
-            // client its pick landed when nothing happened at all. See
-            // `ChooseCardScreenAcceptsInput`, which exports the same gate as
-            // `card_select.can_select` so a client can wait instead of guess.
-            if (!ChooseCardScreenAcceptsInput(chooseScreen))
-                return Error("Choose-a-card screen is still inside its 350ms opening deadzone - retry once card_select.can_select is true");
-
-            var holder = holders[index];
-            if (holder.CardModel == null)
-                return Error($"Card index {index} does not contain a card");
-            if (!IsCardHolderSelectable(holder))
-                return Error($"Card index {index} is not selectable");
-
-            string cardName = SafeGetText(() => holder.CardModel?.Title) ?? "unknown";
-            holder.EmitSignal(NCardHolder.SignalName.Pressed, holder);
-
-            return new Dictionary<string, object?>(StringComparer.Ordinal)
-            {
-                ["status"] = "ok",
-                ["message"] = $"Choosing card: {cardName}"
-            };
-        }
+            return ExecuteSelectCardInGrid(gridScreen, index, method);
+        if (overlay is NChooseACardSelectionScreen chooseScreen)
+            return ExecuteSelectCardInChooseScreen(chooseScreen, index);
 
         return Error("No card selection screen is open");
+    }
+
+    private static Dictionary<string, object?> ExecuteSelectCardInGrid(
+        NCardGridSelectionScreen gridScreen, int index, string method)
+    {
+        // Once a card has opened the preview, the grid is no longer the active
+        // interaction surface. Some clients repeat select_card(index) because
+        // older state responses only exposed card indices. Treat that repeated
+        // selection as confirmation instead of emitting a no-op grid signal.
+        var previewResult = ConfirmOpenGridPreview(gridScreen);
+        if (previewResult != null)
+            return previewResult;
+
+        if (!TryResolveGridPress(gridScreen, method, out var grid, out var holders, out var failure))
+            return failure!;
+
+        if (index < 0 || index >= holders.Count)
+            return Error($"Card index {index} out of range ({holders.Count} cards available)");
+
+        var holder = holders[index];
+        var cardModel = holder.CardModel;
+        string cardName = SafeGetText(() => cardModel?.Title) ?? "unknown";
+
+        // Pressing the holder drives the real signal chain, which is what the
+        // choose-a-card path already does. "grid" remains available via the method
+        // parameter for anything that depends on the old path.
+        bool useHolder = !string.Equals(method, "grid", StringComparison.Ordinal);
+
+        // The screen's own selection set, so the outcome is read back from the game
+        // instead of assumed.
+        var selection = GetCardSelectSelection(gridScreen);
+        bool? wasSelected = (selection != null && cardModel != null) ? selection.Contains(cardModel) : null;
+
+        if (useHolder)
+            holder.EmitSignal(NCardHolder.SignalName.Pressed, holder);
+        else
+            grid!.EmitSignal(NCardGrid.SignalName.HolderPressed, holder);
+
+        return DescribeGridPress(gridScreen, selection, cardModel, cardName, wasSelected, useHolder);
+    }
+
+    /// <summary>
+    /// Treats a repeated select_card while the preview is open as the confirmation it was
+    /// meant to be. Null when no preview container is showing.
+    /// </summary>
+    private static Dictionary<string, object?>? ConfirmOpenGridPreview(NCardGridSelectionScreen gridScreen)
+    {
+        foreach (var containerName in new[] { "%UpgradeSinglePreviewContainer", "%UpgradeMultiPreviewContainer", "%PreviewContainer" })
+        {
+            if (gridScreen.GetNodeOrNull<Godot.Control>(containerName)?.Visible != true)
+                continue;
+
+            var confirmResult = ExecuteConfirmSelection();
+            if (confirmResult.TryGetValue("status", out var status) && string.Equals(status?.ToString(), "ok", StringComparison.Ordinal))
+            {
+                confirmResult["message"] =
+                    "Card selection preview was already open; confirming the selected card instead of selecting it again";
+            }
+            return confirmResult;
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// The grid to press and its holders, or the reason there is nothing to press.
+    /// </summary>
+    /// <remarks>
+    /// NCardGrid.HolderPressed is the signal the grid *emits after* a holder is pressed.
+    /// Emitting it directly notifies the grid's subscribers while skipping the grid's own
+    /// selection bookkeeping, so screens that read that bookkeeping never register the
+    /// click: the call reports success and the screen sits unchanged. That stranded runs on
+    /// "Choose a card to Enchant" and on event screens like "Choose 2 Common Cards to Add to
+    /// Your Deck", where every card could be clicked and Confirm still refused. That is why
+    /// the holder press is the default and the grid signal is only kept as an option.
+    ///
+    /// While a preview covers the grid the game takes the grid out of the input path
+    /// (FocusBehaviorRecursive = Disabled, scrolling off). Firing HolderPressed anyway still
+    /// mutates the selection behind the panel, and re-reaching MaxSelect re-runs
+    /// PreviewSelection, which appends another copy of every selected card to the preview row
+    /// - the "select_card adds instead of toggling" symptom of A-7.
+    /// </remarks>
+    private static bool TryResolveGridPress(
+        NCardGridSelectionScreen gridScreen,
+        string method,
+        out NCardGrid? grid,
+        out List<NGridCardHolder> holders,
+        out Dictionary<string, object?>? failure)
+    {
+        failure = null;
+        grid = FindFirst<NCardGrid>(gridScreen);
+        if (grid == null && !string.Equals(method, "holder", StringComparison.Ordinal))
+        {
+            holders = new List<NGridCardHolder>();
+            failure = Error("Card grid not found in selection screen");
+            return false;
+        }
+
+        if (FindVisibleCardSelectPreview(gridScreen) != null)
+        {
+            holders = new List<NGridCardHolder>();
+            failure = Error("A selection preview is open - use confirm_selection to apply it, or cancel_selection to go back to the grid");
+            return false;
+        }
+
+        holders = FindAllSortedByPosition<NGridCardHolder>(gridScreen);
+        return true;
+    }
+
+    private static Dictionary<string, object?> DescribeGridPress(
+        NCardGridSelectionScreen gridScreen,
+        HashSet<CardModel>? selection,
+        CardModel? cardModel,
+        string cardName,
+        bool? wasSelected,
+        bool useHolder)
+    {
+        // The screen can complete and close on the press itself (NSimpleCardSelectScreen
+        // with RequireManualConfirmation off), leaving nothing to read back.
+        if (!IsCardSelectScreenStillOpen(gridScreen))
+            return Ok($"Selected {cardName} - selection complete, screen closed");
+
+        if (selection == null || cardModel == null)
+            return Ok($"Toggling card selection: {cardName}");
+
+        bool isSelected = selection.Contains(cardModel);
+        if (wasSelected == isSelected)
+            return DescribeUnchangedCardPress(gridScreen, cardName, isSelected);
+
+        var toggled = new Dictionary<string, object?>(StringComparer.Ordinal)
+        {
+            ["status"] = "ok",
+            ["message"] = $"{(isSelected ? "Selected" : "Deselected")} {cardName}",
+            ["selected"] = isSelected,
+            ["selected_count"] = selection.Count,
+            // Reported so a caller that sees no effect knows what to retry.
+            ["method"] = useHolder ? "holder" : "grid",
+            ["screen"] = gridScreen.GetType().Name
+        };
+
+        var prefs = GetCardSelectPrefs(gridScreen);
+        if (prefs.HasValue)
+        {
+            toggled["min_select"] = prefs.Value.MinSelect;
+            toggled["max_select"] = prefs.Value.MaxSelect;
+        }
+
+        // Reaching MaxSelect opens the preview by itself on these screens; the caller
+        // needs to know the next action is confirm/cancel, not another select_card.
+        if (FindVisibleCardSelectPreview(gridScreen) != null)
+            toggled["preview_showing"] = true;
+
+        return toggled;
+    }
+
+    /// <summary>
+    /// The press did not change the selection. The one screen that ignores a press is
+    /// NSimpleCardSelectScreen once the set is full, so say which limit refused it instead
+    /// of reporting a success for a no-op.
+    /// </summary>
+    private static Dictionary<string, object?> DescribeUnchangedCardPress(
+        NCardGridSelectionScreen gridScreen, string cardName, bool isSelected)
+    {
+        var limit = GetCardSelectPrefs(gridScreen);
+        if (isSelected)
+            return Error($"{cardName} is still selected - the screen did not accept the press");
+        return limit.HasValue
+            ? Error($"{cardName} was not selected - at most {limit.Value.MaxSelect} card(s) can be selected, deselect one first")
+            : Error($"{cardName} was not selected - the screen did not accept the press");
+    }
+
+    private static Dictionary<string, object?> ExecuteSelectCardInChooseScreen(
+        NChooseACardSelectionScreen chooseScreen, int index)
+    {
+        var holders = FindAllSortedByPosition<NGridCardHolder>(chooseScreen)
+            .Where(holder => holder.CardModel != null)
+            .ToList();
+        if (index < 0 || index >= holders.Count)
+            return Error($"Card index {index} out of range ({holders.Count} cards available)");
+
+        // `SelectHolder` swallows a press inside the screen's 350 ms opening
+        // deadzone without failing, so reporting `ok` here would tell a
+        // client its pick landed when nothing happened at all. See
+        // `ChooseCardScreenAcceptsInput`, which exports the same gate as
+        // `card_select.can_select` so a client can wait instead of guess.
+        if (!ChooseCardScreenAcceptsInput(chooseScreen))
+            return Error("Choose-a-card screen is still inside its 350ms opening deadzone - retry once card_select.can_select is true");
+
+        var holder = holders[index];
+        if (holder.CardModel == null)
+            return Error($"Card index {index} does not contain a card");
+        if (!IsCardHolderSelectable(holder))
+            return Error($"Card index {index} is not selectable");
+
+        string cardName = SafeGetText(() => holder.CardModel?.Title) ?? "unknown";
+        holder.EmitSignal(NCardHolder.SignalName.Pressed, holder);
+
+        return Ok($"Choosing card: {cardName}");
     }
 
     /// <summary>
