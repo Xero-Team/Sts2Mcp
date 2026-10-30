@@ -163,7 +163,7 @@ public static partial class McpMod
         _originalFastModeTickbox = FindChildOfType<NFastModeTickbox>(fastModeLine);
 
         // Duplicate the entire FastMode line and rename
-        var instantLine = (Node)fastModeLine.Duplicate();
+        var instantLine = fastModeLine.Duplicate();
         instantLine.Name = "InstantMode";
 
         // Insert right after FastMode in the VBoxContainer

@@ -451,7 +451,7 @@ public static partial class McpMod
                 continue;
             if (string.Equals(current.Method.DeclaringType?.Name, ownerType, StringComparison.Ordinal) && string.Equals(current.Method.Name, methodName, StringComparison.Ordinal))
                 return true;
-            foreach (var entry in current.GetInvocationList().Where(entry => entry != current))
+            foreach (var entry in current.GetInvocationList().Where(entry => !entry.Equals(current)))
                 pending.Push(entry);
             if (current.Target == null)
                 continue;

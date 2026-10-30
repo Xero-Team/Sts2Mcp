@@ -30,7 +30,7 @@ public static partial class McpMod
         /// no longer observes intermediate animation states, reducing token usage
         /// for AI agents. When false the in-game setting is left untouched.
         /// </summary>
-        public bool InstantMode = false;
+        public bool InstantMode;
     }
 
     private static ModConfig _config = new();

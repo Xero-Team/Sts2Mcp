@@ -41,8 +41,6 @@ public static partial class McpMod
         internal readonly List<string> Strings = new();
         /// <summary>Comparison opcodes, as `ceq` / `cgt` / `clt`, in IL order.</summary>
         internal readonly List<string> Comparisons = new();
-        /// <summary>Whether the body divides (an integer HP fraction).</summary>
-        internal bool HasDivision;
         /// <summary>Whether the body branches (a `||`, `&amp;&amp;` or ternary).</summary>
         internal bool HasBranch;
 
@@ -115,7 +113,6 @@ public static partial class McpMod
                 case 0x1F: scan.Ints.Add((sbyte)il[i + 1]); break;          // ldc.i4.s
                 case 0x20: scan.Ints.Add(BitConverter.ToInt32(il, i + 1)); break;
                 case 0x72: AddString(module, il, i + 1, scan); break;             // ldstr
-                case 0x5B or 0x5C: scan.HasDivision = true; break;          // div / div.un
                 case (>= 0x2B and <= 0x37) or (>= 0x38 and <= 0x44):
                     // br.s/br are the ternary's own join, not a decision.
                     if (op != 0x2B && op != 0x38)

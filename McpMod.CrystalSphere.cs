@@ -12,6 +12,8 @@ namespace STS2_MCP;
 
 public static partial class McpMod
 {
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("Performance", "CA1812:Avoid uninstantiated internal classes",
+        Justification = "Constructed by ConditionalWeakTable.GetOrCreateValue, which the analyzer cannot see.")]
     private sealed class CrystalSphereTrace
     {
         public Dictionary<string, object?>? RngAtStart;

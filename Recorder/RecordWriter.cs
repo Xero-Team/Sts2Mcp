@@ -18,9 +18,12 @@ namespace STS2_MCP.Recorder;
 /// line's bytes in the same file. A line that goes missing or is edited breaks the chain, so
 /// a reader can tell a gap from a record that simply ended.
 /// </summary>
+[System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1001:Types that own disposable fields should be disposable",
+    Justification = "One writer is created for the life of the process and never torn down; the OS reclaims the queue and the open streams at exit, and every line is flushed as it is written.")]
 internal sealed class RecordWriter
 {
-    private abstract record Item;
+    // The queue carries one of four shapes, and the writer thread switches on the type.
+    private interface Item;
     private sealed record Line(string Path, JsonObject Json) : Item;
     private sealed record Raw(string Path, byte[] Bytes) : Item;
     private sealed record Close(string Path) : Item;
@@ -35,7 +38,6 @@ internal sealed class RecordWriter
     private readonly BlockingCollection<Item> _queue = new(new ConcurrentQueue<Item>());
     private readonly Dictionary<string, string> _prevHash = new(StringComparer.Ordinal);
     private readonly Dictionary<string, FileStream> _open = new(StringComparer.Ordinal);
-    private readonly Thread _thread;
 
     private int _failures;
     private string? _lastError;
@@ -47,8 +49,8 @@ internal sealed class RecordWriter
 
     internal RecordWriter()
     {
-        _thread = new Thread(Run) { IsBackground = true, Name = "STS2_MCP_Recorder" };
-        _thread.Start();
+        // The thread is never joined: the writer lives as long as the process does.
+        new Thread(Run) { IsBackground = true, Name = "STS2_MCP_Recorder" }.Start();
     }
 
     internal void AppendLine(string path, JsonObject json) => _queue.Add(new Line(path, json));

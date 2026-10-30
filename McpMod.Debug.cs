@@ -478,7 +478,7 @@ public static partial class McpMod
         };
     }
 
-    private static async Task ApplyPowerAsync(
+    private static Task ApplyPowerAsync(
         Player player,
         PowerModel power,
         Creature target,
@@ -489,7 +489,7 @@ public static partial class McpMod
             LocalContext.NetId!.Value,
             GameActionType.CombatPlayPhaseOnly);
         var task = PowerCmd.Apply(context, power, target, amount, applier: null, cardSource: null);
-        await context.AssignTaskAndWaitForPauseOrCompletion(task);
+        return context.AssignTaskAndWaitForPauseOrCompletion(task);
     }
 
     // Counts room entries that have RUN TO COMPLETION.

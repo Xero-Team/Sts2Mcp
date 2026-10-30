@@ -265,7 +265,7 @@ internal static class CombatRecorder
         try
         {
             string path = typeof(RunManager).Assembly.Location;
-            Task.Run(() =>
+            _ = Task.Run(() =>
             {
                 try
                 {

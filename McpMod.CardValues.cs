@@ -50,7 +50,7 @@ public static partial class McpMod
     //
     // A plain static is safe: every build runs inside RunOnMainThread, so
     // concurrent HTTP requests serialize onto the one Godot main thread.
-    internal static bool UnpoweredValues;
+    private static bool UnpoweredValues;
 
     private static string? SafeGetCardDescription(CardModel card, PileType pile = PileType.Hand)
     {

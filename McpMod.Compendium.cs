@@ -386,9 +386,6 @@ public static partial class McpMod
         return entry;
     }
 
-    private static Dictionary<string, object?>? BuildCurrentRunContext(CompendiumSnapshot snapshot)
-        => BuildCurrentRunContext(snapshot.IsRunInProgress, snapshot.ProfileId, snapshot.SaveScope, snapshot.ProgressPath, snapshot.ProfileRoot);
-
     private static Dictionary<string, object?>? BuildActiveRunContext()
     {
         var saveManager = SaveManager.Instance;
@@ -466,6 +463,9 @@ public static partial class McpMod
 
         return result;
     }
+
+    private static Dictionary<string, object?>? BuildCurrentRunContext(CompendiumSnapshot snapshot)
+        => BuildCurrentRunContext(snapshot.IsRunInProgress, snapshot.ProfileId, snapshot.SaveScope, snapshot.ProgressPath, snapshot.ProfileRoot);
 
     private static int CountMapPoints(JsonElement root)
     {
@@ -572,8 +572,8 @@ public static partial class McpMod
         foreach (var steamRoot in steamRoots)
         {
             foreach (var accountRoot in Directory.GetDirectories(steamRoot)
-                         .OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
-                         .Where(yielded.Add))
+                         .Where(yielded.Add)
+                         .OrderBy(path => path, StringComparer.OrdinalIgnoreCase))
                 yield return accountRoot;
         }
     }
