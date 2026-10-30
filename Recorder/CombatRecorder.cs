@@ -1478,12 +1478,6 @@ internal static class CombatRecorder
         }
     }
 
-    private static void Fault(OpenRecord rec, string fault, string message)
-    {
-        rec.Faults.Add(fault);
-        Emit("recorder_fault", new JsonObject { ["where"] = fault, ["message"] = message });
-    }
-
     private static JsonNode? SafeAt()
     {
         try { return RecordObserve.At(); }

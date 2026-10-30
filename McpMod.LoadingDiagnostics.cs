@@ -136,6 +136,8 @@ public static partial class McpMod
 
     // --- Harmony patches (observe only) ---
 
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("Major Code Smell", "S1144:Unused private types or members should be removed",
+        Justification = "Harmony discovers TargetMethods/Prefix/Postfix by attribute, not by a C# call.")]
     [HarmonyPatch(typeof(NetLoadingHandle), MethodType.Constructor, typeof(INetGameService))]
     static class NetLoadingHandleCtorPatch
     {
@@ -146,6 +148,8 @@ public static partial class McpMod
         }
     }
 
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("Major Code Smell", "S1144:Unused private types or members should be removed",
+        Justification = "Harmony discovers TargetMethods/Prefix/Postfix by attribute, not by a C# call.")]
     [HarmonyPatch(typeof(NetLoadingHandle), nameof(NetLoadingHandle.Dispose))]
     static class NetLoadingHandleDisposePatch
     {

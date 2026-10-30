@@ -43,6 +43,8 @@ public static partial class McpMod
     /// loop behaves, and in multiplayer, where <see cref="ReconcileInstantMode" /> keeps
     /// Instant out of the prefs anyway.</para>
     /// </summary>
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("Major Code Smell", "S1144:Unused private types or members should be removed",
+        Justification = "Harmony discovers TargetMethods/Prefix/Postfix by attribute, not by a C# call.")]
     [HarmonyPatch]
     private static class PunchOffInstantHangPatch
     {

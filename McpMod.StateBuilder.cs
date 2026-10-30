@@ -1917,55 +1917,6 @@ public static partial class McpMod
         result["message"] = "Multiplayer load lobby. Confirm to ready up; once everyone is connected and ready, the run resumes.";
     }
 
-    /// <summary>
-    /// Returns connected load-lobby player IDs and readiness across game versions.
-    /// </summary>
-    private static Dictionary<ulong, bool> GetLoadLobbyPlayers(LoadRunLobby lobby)
-    {
-        var result = new Dictionary<ulong, bool>();
-
-        // v0.110 folds connection and readiness into a Players collection of
-        // LoadRunLobbyPlayer structs. Read its fields without referencing that
-        // beta-only type so the same DLL remains loadable on the main branch.
-        if (SafeGet(() => GetInstanceMemberValue(lobby, "Players")) is IEnumerable players)
-        {
-            foreach (var player in players)
-            {
-                if (player == null)
-                    continue;
-                var id = SafeGet(() => GetInstanceMemberValue(player, "id"));
-                var ready = SafeGet(() => GetInstanceMemberValue(player, "isReady"));
-                if (id != null && ready is bool isReady)
-                {
-                    TryDo(() => { result[Convert.ToUInt64(id, CultureInfo.InvariantCulture)] = isReady; });
-                }
-            }
-            return result;
-        }
-
-        // Main-branch builds expose the connected IDs separately and retain a
-        // method for querying each player's ready flag.
-        if (SafeGet(() => GetInstanceMemberValue(lobby, "ConnectedPlayerIds")) is not IEnumerable connectedIds)
-            return result;
-
-        var readyMethod = lobby.GetType().GetMethod(
-            "IsPlayerReady",
-            BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance,
-            null,
-            new[] { typeof(ulong) },
-            null);
-        foreach (var rawId in connectedIds)
-        {
-            TryDo(() =>
-            {
-                var id = Convert.ToUInt64(rawId, CultureInfo.InvariantCulture);
-                var ready = SafeGet(() => readyMethod?.Invoke(lobby, new object[] { id })) as bool? ?? false;
-                result[id] = ready;
-            });
-        }
-        return result;
-    }
-
     private static Dictionary<string, object?> BuildBattleState(RunState runState, CombatRoom combatRoom)
     {
         var combatState = CombatManager.Instance.DebugOnlyGetState();

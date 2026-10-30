@@ -186,6 +186,8 @@ public static partial class McpMod
 
     // --- Harmony Patches ---
 
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("Major Code Smell", "S1144:Unused private types or members should be removed",
+        Justification = "Harmony discovers TargetMethods/Prefix/Postfix by attribute, not by a C# call.")]
     [HarmonyPatch(typeof(NSettingsScreen), "_Ready")]
     static class SettingsScreenReadyPatch
     {
@@ -196,6 +198,8 @@ public static partial class McpMod
         }
     }
 
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("Major Code Smell", "S1144:Unused private types or members should be removed",
+        Justification = "Harmony discovers TargetMethods/Prefix/Postfix by attribute, not by a C# call.")]
     [HarmonyPatch(typeof(NFastModeTickbox), nameof(NFastModeTickbox.SetFromSettings))]
     static class FastModeSetFromSettingsPatch
     {
@@ -217,6 +221,8 @@ public static partial class McpMod
         }
     }
 
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("Major Code Smell", "S1144:Unused private types or members should be removed",
+        Justification = "Harmony discovers TargetMethods/Prefix/Postfix by attribute, not by a C# call.")]
     [HarmonyPatch(typeof(NFastModeTickbox), "OnTick")]
     static class FastModeOnTickPatch
     {
@@ -235,6 +241,8 @@ public static partial class McpMod
         }
     }
 
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("Major Code Smell", "S1144:Unused private types or members should be removed",
+        Justification = "Harmony discovers TargetMethods/Prefix/Postfix by attribute, not by a C# call.")]
     [HarmonyPatch(typeof(NFastModeTickbox), "OnUntick")]
     static class FastModeOnUntickPatch
     {
@@ -263,6 +271,8 @@ public static partial class McpMod
         }
     }
 
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("Major Code Smell", "S1144:Unused private types or members should be removed",
+        Justification = "Harmony discovers TargetMethods/Prefix/Postfix by attribute, not by a C# call.")]
     [HarmonyPatch(typeof(NFastModeHoverTip), "_Ready")]
     static class InstantModeHoverTipPatch
     {

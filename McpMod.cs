@@ -1324,6 +1324,8 @@ public static partial class McpMod
         }
     }
 
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("Major Code Smell", "S1144:Unused private types or members should be removed",
+        Justification = "scripts/audit_endpoints.py asserts this structured-dispatch guard exists; the action paths stopped calling it in the fork merge and re-wiring it changes HTTP status codes, which needs its own decision.")]
     private static void SendActionResultJson(HttpListenerResponse response, Dictionary<string, object?> result)
     {
         if (result.TryGetValue("status", out var status) && string.Equals(status as string, "error", StringComparison.Ordinal))

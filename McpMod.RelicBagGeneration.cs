@@ -41,6 +41,8 @@ public static partial class McpMod
         return count;
     }
 
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("Major Code Smell", "S1144:Unused private types or members should be removed",
+        Justification = "Harmony discovers TargetMethods/Prefix/Postfix by attribute, not by a C# call.")]
     [HarmonyPatch]
     private static class RelicBagVoidMutationPatch
     {
@@ -63,6 +65,8 @@ public static partial class McpMod
         }
     }
 
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("Major Code Smell", "S1144:Unused private types or members should be removed",
+        Justification = "Harmony discovers TargetMethods/Prefix/Postfix by attribute, not by a C# call.")]
     [HarmonyPatch]
     private static class RelicBagPullMutationPatch
     {
@@ -89,6 +93,8 @@ public static partial class McpMod
         }
     }
 
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("Major Code Smell", "S1144:Unused private types or members should be removed",
+        Justification = "Harmony discovers TargetMethods/Prefix/Postfix by attribute, not by a C# call.")]
     [HarmonyPatch(typeof(RelicGrabBag), "RemoveDisallowedRelicsFromDeques")]
     private static class RelicBagPruneMutationPatch
     {
@@ -106,6 +112,8 @@ public static partial class McpMod
         }
     }
 
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("Major Code Smell", "S1144:Unused private types or members should be removed",
+        Justification = "Harmony discovers TargetMethods/Prefix/Postfix by attribute, not by a C# call.")]
     [HarmonyPatch(typeof(RelicGrabBag), "RefreshRarity")]
     private static class RelicBagRefreshMutationPatch
     {

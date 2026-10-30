@@ -129,11 +129,6 @@ public static partial class McpMod
         return result;
     }
 
-    private static Dictionary<string, object?> BuildMultiplayerGameState()
-    {
-        return BuildMultiplayerGameState(false);
-    }
-
     private static Dictionary<string, object?> BuildMultiplayerGameState(bool fullDetail)
     {
         BeginStateWarnings();

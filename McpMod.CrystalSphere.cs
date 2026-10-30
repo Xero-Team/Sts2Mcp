@@ -27,6 +27,8 @@ public static partial class McpMod
     /// <summary>
     /// Records the event Rng a minigame is built from, before placement spends it.
     /// </summary>
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("Major Code Smell", "S1144:Unused private types or members should be removed",
+        Justification = "Harmony discovers TargetMethods/Prefix/Postfix by attribute, not by a C# call.")]
     [HarmonyPatch]
     private static class CrystalSphereConstructorPatch
     {
@@ -65,6 +67,8 @@ public static partial class McpMod
     /// its next click before the last one finishes would interleave the two
     /// reveal sequences, so the trace says when one is in flight.
     /// </remarks>
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("Major Code Smell", "S1144:Unused private types or members should be removed",
+        Justification = "Harmony discovers TargetMethods/Prefix/Postfix by attribute, not by a C# call.")]
     [HarmonyPatch]
     private static class CrystalSphereClickPatch
     {
