@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using System.Reflection;
+using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
 using Godot;
 using MegaCrit.Sts2.Core.CardSelection;
@@ -3034,6 +3035,38 @@ public static partial class McpMod
         };
     }
 
+    // The "here is a relic/potion" block that merchant stock, event options, reward items and
+    // shop previews all publish. `prefix` picks the key names: a payload that mixes item kinds in
+    // one list namespaces its fields (`relic_id`), one that holds only relics does not (`id`), and
+    // an event option's hover tips are `relic_keywords` even though the rest is namespaced. Kept
+    // in one place so a field added to "what a relic summary is" is added once.
+    //
+    // `caller` is passed through so a warning about a vanished member still names the builder that
+    // asked for the text, not this helper.
+    private static void AddRelicSummary(
+        Dictionary<string, object?> target, RelicModel relic,
+        string prefix = "", string keywordsKey = "keywords", [CallerMemberName] string caller = "")
+    {
+        target[prefix + "id"] = relic.Id.Entry;
+        target[prefix + "name"] = SafeGetText(() => relic.Title, caller);
+        target[prefix + "description"] = SafeGetText(() => relic.DynamicDescription, caller);
+        target[prefix + "rarity"] = relic.Rarity.ToString();
+        target[keywordsKey] = BuildHoverTips(relic.HoverTipsExcludingRelic);
+    }
+
+    private static void AddPotionSummary(
+        Dictionary<string, object?> target, PotionModel potion, string prefix = "potion_",
+        [CallerMemberName] string caller = "")
+    {
+        target[prefix + "id"] = potion.Id.Entry;
+        target[prefix + "name"] = SafeGetText(() => potion.Title, caller);
+        target[prefix + "description"] = SafeGetText(() => potion.DynamicDescription, caller);
+        target[prefix + "rarity"] = potion.Rarity.ToString();
+        target[prefix + "target_type"] = potion.TargetType.ToString();
+        target[prefix + "usage"] = potion.Usage.ToString();
+        target["keywords"] = BuildHoverTips(potion.ExtraHoverTips);
+    }
+
     private static string? GetPotionEpoch(PotionModel potion)
     {
         ModelId id = potion.Id;
@@ -4524,11 +4557,7 @@ public static partial class McpMod
         };
         if (opt.Relic != null)
         {
-            optData["relic_id"] = opt.Relic.Id.Entry;
-            optData["relic_name"] = SafeGetText(() => opt.Relic.Title);
-            optData["relic_description"] = SafeGetText(() => opt.Relic.DynamicDescription);
-            optData["relic_rarity"] = opt.Relic.Rarity.ToString();
-            optData["relic_keywords"] = BuildHoverTips(opt.Relic.HoverTipsExcludingRelic);
+            AddRelicSummary(optData, opt.Relic, prefix: "relic_", keywordsKey: "relic_keywords");
         }
         optData["keywords"] = BuildHoverTips(opt.HoverTips);
         return optData;
@@ -4641,11 +4670,7 @@ public static partial class McpMod
             };
             if (entry.Model is { } relic)
             {
-                item["relic_id"] = relic.Id.Entry;
-                item["relic_name"] = SafeGetText(() => relic.Title);
-                item["relic_description"] = SafeGetText(() => relic.DynamicDescription);
-                item["relic_rarity"] = relic.Rarity.ToString();
-                item["keywords"] = BuildHoverTips(relic.HoverTipsExcludingRelic);
+                AddRelicSummary(item, relic, prefix: "relic_");
             }
             items.Add(item);
             index++;
@@ -4785,11 +4810,7 @@ public static partial class McpMod
             Dictionary<string, object?> item = BuildShopRow(items.Count, "relic", entry.Cost, entry.IsStocked, entry.EnoughGold);
             if (entry.Model is { } relic)
             {
-                item["relic_id"] = relic.Id.Entry;
-                item["relic_name"] = SafeGetText(() => relic.Title);
-                item["relic_description"] = SafeGetText(() => relic.DynamicDescription);
-                item["relic_rarity"] = relic.Rarity.ToString();
-                item["keywords"] = BuildHoverTips(relic.HoverTipsExcludingRelic);
+                AddRelicSummary(item, relic, prefix: "relic_");
             }
             items.Add(item);
         }
@@ -4803,13 +4824,7 @@ public static partial class McpMod
             Dictionary<string, object?> item = BuildShopRow(items.Count, "potion", entry.Cost, entry.IsStocked, entry.EnoughGold);
             if (entry.Model is { } potion)
             {
-                item["potion_id"] = potion.Id.Entry;
-                item["potion_name"] = SafeGetText(() => potion.Title);
-                item["potion_description"] = SafeGetText(() => potion.DynamicDescription);
-                item["potion_rarity"] = potion.Rarity.ToString();
-                item["potion_target_type"] = potion.TargetType.ToString();
-                item["potion_usage"] = potion.Usage.ToString();
-                item["keywords"] = BuildHoverTips(potion.ExtraHoverTips);
+                AddPotionSummary(item, potion);
             }
             items.Add(item);
         }
@@ -5504,22 +5519,12 @@ public static partial class McpMod
         }
         if (reward is PotionReward { Potion: { } potion })
         {
-            item["potion_id"] = potion.Id.Entry;
-            item["potion_name"] = SafeGetText(() => potion.Title);
-            item["potion_description"] = SafeGetText(() => potion.DynamicDescription);
-            item["potion_rarity"] = potion.Rarity.ToString();
-            item["potion_target_type"] = potion.TargetType.ToString();
-            item["potion_usage"] = potion.Usage.ToString();
-            item["keywords"] = BuildHoverTips(potion.ExtraHoverTips);
+            AddPotionSummary(item, potion);
             return;
         }
         if (reward is RelicReward relicReward && GetRelicRewardModel(relicReward) is { } relic)
         {
-            item["relic_id"] = relic.Id.Entry;
-            item["relic_name"] = SafeGetText(() => relic.Title);
-            item["relic_description"] = SafeGetText(() => relic.DynamicDescription);
-            item["relic_rarity"] = relic.Rarity.ToString();
-            item["keywords"] = BuildHoverTips(relic.HoverTipsExcludingRelic);
+            AddRelicSummary(item, relic, prefix: "relic_");
         }
     }
 
