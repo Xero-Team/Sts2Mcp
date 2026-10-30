@@ -56,6 +56,115 @@ def fail(message: str) -> None:
     raise SystemExit(1)
 
 
+# Matches the start of the next route in the transport, in either dispatch
+# style: the old `else if (path == "...")` chain and the newer standalone
+# `if (string.Equals(path, "...")) { ...; return; }` statements.
+_NEXT_ROUTE = re.compile(
+    r'\b(?:else if|if) \(\s*(?:path\s*==|string\.Equals\(\s*path\b)'
+)
+
+# A route may delegate its method check to a `HandleXxx` member.
+_HANDLER_CALL = re.compile(r'\b(Handle[A-Za-z0-9_]+)\s*\(')
+
+# The early "reject methods this route does not serve" guard, in either spelling.
+# Written as a negation, so it is not the same shape as the positive checks.
+_METHOD_GUARD = re.compile(
+    r'request\.HttpMethod\s*!=\s*"GET"'
+    r'|!string\.Equals\(\s*request\.HttpMethod\s*,\s*"GET"'
+)
+
+
+def _equality_patterns(name: str, value: str) -> tuple[re.Pattern[str], re.Pattern[str]]:
+    """Regexes for `name == "value"` and `string.Equals(name, "value", ...)`.
+
+    `value` is inserted as a regex fragment: pass a literal through
+    `re.escape` when the whole string must match. The name is escaped and
+    bounded so `action` does not match `actionName` or `obj.action`.
+    """
+    guard = rf'(?<![\w.]){re.escape(name)}\b'
+    return (
+        re.compile(rf'{guard}\s*==\s*"({value})"'),
+        re.compile(rf'string\.Equals\(\s*{guard}\s*,\s*"({value})"'),
+    )
+
+
+def extract_equality_values(source: str, name: str) -> set[str]:
+    """Every string `name` is compared against, in either spelling."""
+    return {
+        match.group(1)
+        for pattern in _equality_patterns(name, r"[^\"\n]+")
+        for match in pattern.finditer(source)
+    }
+
+
+def find_equality_positions(source: str, name: str, value: str) -> list[int]:
+    """Offsets where `name` is compared against the exact string `value`."""
+    escaped = re.escape(value)
+    return sorted(
+        match.start()
+        for pattern in _equality_patterns(name, escaped)
+        for match in pattern.finditer(source)
+    )
+
+
+def has_equality(source: str, name: str, value: str) -> bool:
+    return bool(find_equality_positions(source, name, value))
+
+
+def extract_route_block(source: str, path: str) -> str | None:
+    """The handler block for one route, whichever equality spelling it uses."""
+    positions = find_equality_positions(source, "path", path)
+    if not positions:
+        return None
+    start = positions[0]
+    end = _NEXT_ROUTE.search(source, start + 1)
+    return source[start:end.start() if end else len(source)]
+
+
+def find_method_guard(source: str) -> int:
+    """Offset of the route's early method rejection, or -1 when it is missing."""
+    match = _METHOD_GUARD.search(source)
+    return match.start() if match else -1
+
+
+def extract_member_body(source: str, name: str) -> str | None:
+    """The text of a class-level member, from its declaration to its closing brace.
+
+    Handlers are declared at 4-space indentation, so the first `\\n    }` after
+    the declaration closes the member. That is cheaper and steadier than
+    counting braces through interpolated strings.
+    """
+    start = re.search(
+        rf"\n    (?:private|internal|public|protected)[^\n]*\b{re.escape(name)}\s*\(",
+        source,
+    )
+    if start is None:
+        return None
+    end = source.find("\n    }", start.end())
+    return source[start.start():end + len("\n    }") if end != -1 else len(source)]
+
+
+def route_serves_method(source: str, block: str, method: str) -> bool:
+    """Whether a route, or the handler it delegates to, serves `method`.
+
+    Two shapes count: a `request.HttpMethod` comparison inside the block, and
+    the `SendGetOnly(...)` wrapper used by the read-only endpoints.
+    """
+    if has_equality(block, "request.HttpMethod", method):
+        return True
+    if method == "GET" and "SendGetOnly(" in block:
+        return True
+    for handler in sorted(set(_HANDLER_CALL.findall(block))):
+        body = extract_member_body(source, handler)
+        if body is None:
+            continue
+        if has_equality(body, "request.HttpMethod", method):
+            return True
+        if method == "GET" and "SendGetOnly(" in body:
+            return True
+    return False
+
+
 def load_json_url(url: str, method: str = "GET", body: bytes | None = None) -> tuple[int, object]:
     headers = {"Accept": "application/json"}
     if body is not None:
@@ -271,7 +380,11 @@ def audit_docs(repo: Path) -> None:
     if extra_index:
         fail(f"BuildEndpointIndex advertises unexpected endpoints: {extra_index}")
 
-    routed_paths = set(re.findall(r'path\s*==\s*"(/api/v1/[^"]+)"', mcp_mod))
+    routed_paths = {
+        path
+        for path in extract_equality_values(mcp_mod, "path")
+        if path.startswith("/api/v1/")
+    }
     expected_paths = {path for _, path in expected}
     missing_routes = sorted(expected_paths - routed_paths)
     extra_routes = sorted(routed_paths - expected_paths)
@@ -281,12 +394,10 @@ def audit_docs(repo: Path) -> None:
         fail(f"HTTP route table includes unexpected paths: {extra_routes}")
 
     for method, path in EXPECTED_ENDPOINTS:
-        path_pos = mcp_mod.find(f'path == "{path}"')
-        if path_pos == -1:
+        block = extract_route_block(mcp_mod, path)
+        if block is None:
             fail(f"could not locate route block for {method} {path}")
-        next_pos = mcp_mod.find("else if (path ==", path_pos + 1)
-        block = mcp_mod[path_pos: next_pos if next_pos != -1 else mcp_mod.find("else\n", path_pos)]
-        if f'request.HttpMethod == "{method}"' not in block:
+        if not route_serves_method(mcp_mod, block, method):
             fail(f"HTTP route table missing {method} handling for {path}")
 
     for required_fragment in [
@@ -327,7 +438,7 @@ def extract_action_switches(source: str, marker: str) -> set[str]:
     actions = {name for arm in arms for name in re.findall(r'"([a-z_]+)"', arm)}
     # Some actions are dispatched before the switch (they need the raw request, or a
     # handler shared with a route), so read the `action == "..."` guards too.
-    actions |= set(re.findall(r'action\s*==\s*"([a-z_]+)"', section))
+    actions |= extract_equality_values(section, "action")
     return actions
 
 
@@ -337,7 +448,7 @@ def audit_action_surface(repo: Path) -> None:
     # (set_time_scale, set_ascension, set_recording, menu_select), because they need the
     # raw request or share a handler with a route.
     transport = (repo / "McpMod.cs").read_text(encoding="utf-8")
-    sp_actions |= set(re.findall(r'action\s*==\s*"([a-z_]+)"', transport))
+    sp_actions |= extract_equality_values(transport, "action")
     mp_actions = extract_action_switches((repo / "McpMod.MultiplayerActions.cs").read_text(encoding="utf-8"), "ExecuteMultiplayerAction")
     server = (repo / "mcp" / "server.py").read_text(encoding="utf-8")
     docs = "\n".join(
@@ -530,32 +641,38 @@ def audit_static_error_shapes(repo: Path) -> None:
         "SaveManager.Instance",
         "Save manager is not available",
         "Settings data is not available",
-        "status",
-        "kind",
-        "fullscreen",
-        "resolution",
-        "fps_limit",
-        "vsync",
-        "msaa",
-        "aspect_ratio",
-        "target_display",
-        "limit_fps_background",
-        "master",
-        "bgm",
-        "sfx",
-        "ambience",
-        "fast_mode",
-        "screen_shake",
-        "show_run_timer",
-        "show_card_indices",
-        "text_effects",
-        "long_press",
-        "enabled",
-        "language",
-        "skip_intro",
+        "save_manager_unavailable",
+        "settings_data_unavailable",
+        "new SettingsResponse",
+        "new ErrorResponse",
     ]:
         if required_fragment not in settings_body:
             fail(f"settings endpoint missing startup-safe structured field: {required_fragment}")
+
+    # The body is a typed Core contract now, so field existence is the compiler's
+    # job. What is still worth checking: every contract property is documented,
+    # and the snake_case policy produces the documented wire name.
+    settings_contracts = "\n".join(
+        path.read_text(encoding="utf-8")
+        for path in sorted((repo / "Core" / "Contracts").glob("Settings*.cs"))
+    )
+    if not settings_contracts:
+        fail("could not locate the settings contract under Core/Contracts")
+    raw_full = (repo / "docs" / "raw-full.md").read_text(encoding="utf-8")
+    settings_docs_match = re.search(r"### `GET /api/v1/settings`(.*?)(?=\n### )", raw_full, re.S)
+    if not settings_docs_match:
+        fail("docs/raw-full.md missing the GET /api/v1/settings section")
+    settings_docs = settings_docs_match.group(1)
+    contract_fields = re.findall(
+        r"public (?:required )?[A-Za-z0-9_?.<>]+ ([A-Z][A-Za-z0-9_]*) \{",
+        settings_contracts,
+    )
+    if not contract_fields:
+        fail("could not read contract fields from the settings contract")
+    for field in contract_fields:
+        wire_name = re.sub(r"(?<!^)(?=[A-Z])", "_", field).lower()
+        if f"`{wire_name}`" not in settings_docs:
+            fail(f"settings contract field {field} ({wire_name}) is not documented")
     mcp_mod = (repo / "McpMod.cs").read_text(encoding="utf-8")
     for required_fragment in ["TryValidateStateFormat", "invalid_format", 'format is "json" or "markdown"']:
         if required_fragment not in mcp_mod:
@@ -570,16 +687,15 @@ def audit_static_error_shapes(repo: Path) -> None:
     if "SendError(" not in mcp_mod:
         fail("route errors must be emitted through SendError")
     for path in ["/api/v1/singleplayer", "/api/v1/multiplayer"]:
-        route_match = re.search(
-            rf'else if \(path == "{re.escape(path)}"\)\s*\{{(?P<body>.*?)\n\s*\}}\n\s*else if',
-            mcp_mod,
-            re.S,
-        )
-        if not route_match:
+        route_body = extract_route_block(mcp_mod, path)
+        if route_body is None:
             fail(f"could not locate route block for {path}")
-        route_body = route_match.group("body")
-        method_guard_index = route_body.find('request.HttpMethod != "GET" && request.HttpMethod != "POST"')
-        mode_guard_index = route_body.find("IsMultiplayerRun()")
+        handler = _HANDLER_CALL.search(route_body)
+        guard_body = extract_member_body(mcp_mod, handler.group(1)) if handler else route_body
+        if guard_body is None:
+            fail(f"could not locate the handler for {path}")
+        method_guard_index = find_method_guard(guard_body)
+        mode_guard_index = guard_body.find("IsMultiplayerRun()")
         if method_guard_index < 0 or mode_guard_index < 0 or method_guard_index > mode_guard_index:
             fail(f"{path} must reject unsupported HTTP methods before run-mode guards")
     read_failure_codes = [
@@ -676,6 +792,7 @@ def audit_static_error_shapes(repo: Path) -> None:
 
 def audit_static_glossary_scope(repo: Path) -> None:
     fork_endpoints = (repo / "McpMod.ForkEndpoints.cs").read_text(encoding="utf-8")
+    helpers = (repo / "McpMod.Helpers.cs").read_text(encoding="utf-8")
     docs = "\n".join(
         [
             (repo / "docs" / "raw-simplified.md").read_text(encoding="utf-8"),
@@ -772,9 +889,21 @@ def audit_static_glossary_scope(repo: Path) -> None:
     if not keyword_tip_match:
         fail("could not locate AddKeywordTips for glossary keyword stability audit")
     keyword_tip_body = keyword_tip_match.group(0)
-    for required_fragment in ["IEnumerable<IHoverTip>?", "tips == null", "IHoverTip.RemoveDupes", "TryAdd", "catch"]:
+    for required_fragment in ["IEnumerable<IHoverTip>?", "tips == null", "IHoverTip.RemoveDupes", "TryAdd"]:
         if required_fragment not in keyword_tip_body:
             fail(f"glossary keyword collection must be null/transition safe: {required_fragment}")
+    # A hover-tip getter that throws mid-transition may be caught here (`catch`) or,
+    # after the warning refactor, inside SafeGetText - which must still swallow it.
+    if "catch" not in keyword_tip_body:
+        safe_get_match = re.search(
+            r"internal static string\? SafeGetText\(.*?\n    \}",
+            helpers,
+            re.S,
+        )
+        if "SafeGetText(" not in keyword_tip_body or not safe_get_match:
+            fail("glossary keyword collection must be null/transition safe: catch")
+        if "catch (Exception" not in safe_get_match.group(0):
+            fail("SafeGetText must catch the game's transition exceptions for glossary keywords")
 
     print("glossary: active-run shared/scoped pools and profile context enforced")
 
@@ -789,16 +918,31 @@ def audit_static_bestiary_determinism(repo: Path) -> None:
     if not bestiary_match:
         fail("could not locate BuildBestiary for bestiary determinism audit")
     bestiary_body = bestiary_match.group(0)
-    for required_fragment in [
-        "orderedMonsters",
-        "orderedEncounters",
-        "entry[\"moves\"] = moves",
-        "Distinct(StringComparer.Ordinal)",
-        "OrderBy(move => move, StringComparer.Ordinal)",
-        "entry[\"likely_monsters\"] = matchingMonsters",
-        "OrderBy(monster => monster, StringComparer.Ordinal)",
-    ]:
+    for required_fragment in ["orderedMonsters", "orderedEncounters"]:
         if required_fragment not in bestiary_body:
+            fail(f"bestiary endpoint missing deterministic ordering: {required_fragment}")
+
+    # The nested name lists (`moves`, `likely_monsters`) are sorted and de-duplicated
+    # by one shared helper; both call sites and the helper itself are audited.
+    add_list_match = re.search(
+        r"private static void AddBestiaryList\(.*?\n    \}",
+        fork_endpoints,
+        re.S,
+    )
+    if not add_list_match:
+        fail("could not locate AddBestiaryList for bestiary determinism audit")
+    add_list_body = add_list_match.group(0)
+    for required_fragment in [
+        "Distinct(StringComparer.Ordinal)",
+        "OrderBy(name => name, StringComparer.Ordinal)",
+    ]:
+        if required_fragment not in add_list_body:
+            fail(f"bestiary endpoint missing deterministic nested ordering: {required_fragment}")
+    for required_fragment in [
+        'AddBestiaryList(entry, "moves", moves)',
+        'AddBestiaryList(entry, "likely_monsters", matchingMonsters)',
+    ]:
+        if required_fragment not in fork_endpoints:
             fail(f"bestiary endpoint missing deterministic nested ordering: {required_fragment}")
     print("bestiary: deterministic nested metadata ordering enforced")
 
@@ -947,16 +1091,39 @@ def audit_static_save_roots(repo: Path) -> None:
         fail("save-root fallback must enumerate Steam account directories")
 
     compendium_response_match = re.search(
-        r"private static object BuildCompendiumResponse\(.*?\n    private sealed class CompendiumSnapshot",
+        r"private static [^\n]+ BuildCompendiumResponse\(.*?\n    private sealed class CompendiumSnapshot",
         compendium,
         re.S,
     )
     if not compendium_response_match:
         fail("could not locate BuildCompendiumResponse for profile context audit")
     compendium_response = compendium_response_match.group(0)
-    for required_fragment in ["status", "kind", "profile_id", "progress_path", "resolved_progress_path", "profile_root", "save_scope", "current_run", "run_history"]:
+    for required_fragment in ["status", "kind", "profile_id", "progress_path", "resolved_progress_path", "profile_root", "save_scope", "current_run"]:
         if required_fragment not in compendium_response:
             fail(f"compendium endpoint missing profile/save context: {required_fragment}")
+
+    # The UI sections (including run_history) are built by a separate member; the
+    # response has to route through it or the sections silently disappear.
+    sections_match = re.search(
+        r"private static [^\n]+ BuildCompendiumSections\(.*?\n    private static int CountMapPoints",
+        compendium,
+        re.S,
+    )
+    if not sections_match:
+        fail("could not locate BuildCompendiumSections for compendium audit")
+    if "BuildCompendiumSections(" not in compendium_response:
+        fail("compendium endpoint missing profile/save context: sections")
+    sections_body = sections_match.group(0)
+    for required_fragment in [
+        "card_library",
+        "relic_collection",
+        "potion_lab",
+        "bestiary",
+        "character_stats",
+        "run_history",
+    ]:
+        if required_fragment not in sections_body:
+            fail(f"compendium sections missing field: {required_fragment}")
     run_history_match = re.search(
         r"private static Dictionary<string, object\?> BuildRunHistorySection\(.*?\n    private static Dictionary<string, object\?> BuildRunHistoryEntry",
         compendium,
@@ -1072,9 +1239,8 @@ def audit_state_surface(repo: Path) -> None:
     if missing_docs:
         fail(f"state types missing docs: {missing_docs}")
 
-    formatter_refs = set()
-    for match in re.findall(r'TryGetValue\("([a-z_]+)"|stateType\s*==\s*"([a-z_]+)"', formatting):
-        formatter_refs.update(value for value in match if value)
+    formatter_refs = {match for match in re.findall(r'TryGetValue\("([a-z_]+)"', formatting)}
+    formatter_refs |= extract_equality_values(formatting, "stateType")
     covered_by_battle = {"monster", "elite", "boss"}
     intentionally_unformatted = {"unknown"}
     missing_formatters = sorted(state_types - formatter_refs - covered_by_battle - intentionally_unformatted)
