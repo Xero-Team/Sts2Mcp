@@ -11,7 +11,7 @@ using MegaCrit.Sts2.Core.Runs;
 using MegaCrit.Sts2.Core.Saves;
 using MegaCrit.Sts2.Core.Settings;
 
-namespace STS2_MCP;
+namespace Sts2Mcp;
 
 public static partial class McpMod
 {
@@ -19,7 +19,7 @@ public static partial class McpMod
     private static NFastModeTickbox? s_originalFastModeTickbox;
 
     /// <summary>
-    /// The player's Instant Mode preference. Persisted in STS2_MCP.conf rather than in the
+    /// The player's Instant Mode preference. Persisted in Sts2Mcp.conf rather than in the
     /// game's own prefs save, because the game deliberately downgrades a stored
     /// <see cref="FastModeType.Instant" /> back to <see cref="FastModeType.Fast" /> on every
     /// startup (NGame's init block, non-editor builds) — so the game save cannot hold it.
@@ -44,7 +44,7 @@ public static partial class McpMod
     private static void SetInstantModeEnabled(bool enabled)
     {
         s_instantModeEnabled = enabled;
-        // Persists instant_mode in STS2_MCP.conf through the shared config layer, so the
+        // Persists instant_mode in Sts2Mcp.conf through the shared config layer, so the
         // in-game tickbox, a hand-edited conf and a restart all agree.
         SetInstantModeConfig(enabled);
         ReconcileInstantMode();
@@ -82,9 +82,9 @@ public static partial class McpMod
         if (!s_instantModeEnabled && !s_instantModeApplied) return;
         if (!PrefsAreLoaded()) return;
 
-        var failure = TryAction("settings.instant_mode.reconcile", () =>
+        string? failure = TryAction("settings.instant_mode.reconcile", () =>
         {
-            var prefs = SaveManager.Instance.PrefsSave;
+            PrefsSave prefs = SaveManager.Instance.PrefsSave;
             if (prefs == null) return;
 
             if (s_instantModeEnabled && !IsMultiplayerRun())
@@ -121,7 +121,7 @@ public static partial class McpMod
 
     private static bool IsInInstantModeLine(Node node)
     {
-        var current = node;
+        Node current = node;
         while (current != null)
         {
             if (current.Name == "InstantMode") return true;
@@ -132,12 +132,12 @@ public static partial class McpMod
 
     private static T? FindChildOfType<T>(Node parent) where T : class
     {
-        foreach (var child in parent.GetChildren())
+        foreach (Node? child in parent.GetChildren())
         {
             if (child is T typed) return typed;
             if (child is Node childNode)
             {
-                var found = FindChildOfType<T>(childNode);
+                T? found = FindChildOfType<T>(childNode);
                 if (found != null) return found;
             }
         }
@@ -149,8 +149,8 @@ public static partial class McpMod
         s_instantModeTickbox = null;
         s_originalFastModeTickbox = null;
 
-        var content = settingsScreen.GetNode<NSettingsPanel>("%GeneralSettings").Content;
-        var fastModeLine = content.GetNodeOrNull("FastMode");
+        VBoxContainer content = settingsScreen.GetNode<NSettingsPanel>("%GeneralSettings").Content;
+        Node fastModeLine = content.GetNodeOrNull("FastMode");
         if (fastModeLine == null)
         {
             GD.PrintErr("[STS2 MCP] Could not find FastMode settings line");
@@ -160,7 +160,7 @@ public static partial class McpMod
         s_originalFastModeTickbox = FindChildOfType<NFastModeTickbox>(fastModeLine);
 
         // Duplicate the entire FastMode line and rename
-        var instantLine = fastModeLine.Duplicate();
+        Node instantLine = fastModeLine.Duplicate();
         instantLine.Name = "InstantMode";
 
         // Insert right after FastMode in the VBoxContainer
@@ -169,7 +169,7 @@ public static partial class McpMod
         content.MoveChild(instantLine, idx + 1);
 
         // Update label text
-        var label = instantLine.GetNodeOrNull<MegaRichTextLabel>("Label");
+        MegaRichTextLabel label = instantLine.GetNodeOrNull<MegaRichTextLabel>("Label");
         if (label != null) label.Text = "Instant Mode";
 
         // Store reference and correct initial tick state
@@ -281,13 +281,13 @@ public static partial class McpMod
             // Build a HoverTip with custom strings via reflection
             // (HoverTip is a record struct; Title/Description have private setters)
             object boxed = (object)default(HoverTip);
-            var ht = typeof(HoverTip);
+            Type ht = typeof(HoverTip);
             ht.GetProperty("Id")!.SetValue(boxed, "sts2mcp_instant_mode");
             ht.GetProperty("Title")!.GetSetMethod(true)!
                 .Invoke(boxed, ["Instant Mode"]);
             ht.GetProperty("Description")!.GetSetMethod(true)!
                 .Invoke(boxed, [
-                    "This option is added by the STS2MCP mod.\n" +
+                    "This option is added by the Sts2Mcp mod.\n" +
                     "When enabled, most in-game animations will become instant.\n" +
                     "Can reduce token usage as get-state calls will no longer receive an intermediate state.\n" +
                     "Applies to singleplayer only \u2014 it is suspended during multiplayer runs.\n" +

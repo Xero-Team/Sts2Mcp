@@ -43,7 +43,7 @@ what you could not, and the exact blocker.
 
 - Agents **may** edit, build, run gates, commit, and — when the user names the
   remote and branch — push a feature branch. Agents may open development Issues
-  and Pull Requests on `Gennadiyev/STS2MCP` when the user asks for them. Confirm
+  and Pull Requests on `Gennadiyev/Sts2Mcp` when the user asks for them. Confirm
   the created URL before reporting it.
 - Agents **must not** push `main`, force-push any branch, merge a PR, tag,
   publish a release, change branch protection or secrets, or file a public

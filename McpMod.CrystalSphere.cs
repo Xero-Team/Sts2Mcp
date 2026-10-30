@@ -8,7 +8,7 @@ using Godot;
 using HarmonyLib;
 using MegaCrit.Sts2.Core.Nodes.Events.Custom.CrystalSphere;
 
-namespace STS2_MCP;
+namespace Sts2Mcp;
 
 public static partial class McpMod
 {
@@ -38,8 +38,8 @@ public static partial class McpMod
         // rather than throwing out of PatchAll and taking every other patch with it.
         private static IEnumerable<MethodBase> TargetMethods()
         {
-            var type = AccessTools.TypeByName(CrystalSphereMinigameType);
-            var constructor = type == null ? null : AccessTools.GetDeclaredConstructors(type).Find(c => c.GetParameters().Length == 3);
+            Type type = AccessTools.TypeByName(CrystalSphereMinigameType);
+            ConstructorInfo? constructor = type == null ? null : AccessTools.GetDeclaredConstructors(type).Find(c => c.GetParameters().Length == 3);
             if (constructor == null)
             {
                 GD.Print("[STS2 MCP] CrystalSphereMinigame constructor not found - minigame trace inactive");
@@ -53,7 +53,7 @@ public static partial class McpMod
         {
             TryDo(() =>
             {
-                var trace = s_crystalSphereTraces.GetOrCreateValue(__instance);
+                CrystalSphereTrace trace = s_crystalSphereTraces.GetOrCreateValue(__instance);
                 trace.RngAtStart = RngCoords(rng);
             });
             // Diagnostics must never be able to break the event.
@@ -76,8 +76,8 @@ public static partial class McpMod
     {
         private static IEnumerable<MethodBase> TargetMethods()
         {
-            var type = AccessTools.TypeByName(CrystalSphereMinigameType);
-            var method = type == null ? null : AccessTools.DeclaredMethod(type, "CellClicked");
+            Type type = AccessTools.TypeByName(CrystalSphereMinigameType);
+            MethodInfo? method = type == null ? null : AccessTools.DeclaredMethod(type, "CellClicked");
             if (method == null)
             {
                 GD.Print("[STS2 MCP] CrystalSphereMinigame.CellClicked not found - minigame trace inactive");
@@ -93,9 +93,9 @@ public static partial class McpMod
             // no state, which is the same as an untraced click.
             __state = TryReadQuiet<CrystalSphereTrace?>(() =>
             {
-                if (!s_crystalSphereTraces.TryGetValue(__instance, out var trace))
+                if (!s_crystalSphereTraces.TryGetValue(__instance, out CrystalSphereTrace? trace))
                     return null;
-                var tool = GetInstanceMemberValue(__instance, "CrystalSphereTool")?.ToString();
+                string? tool = GetInstanceMemberValue(__instance, "CrystalSphereTool")?.ToString();
                 trace.Clicks.Add(new Dictionary<string, object?>(StringComparer.Ordinal)
                 {
                     ["tool"] = string.Equals(tool, "Big", StringComparison.Ordinal) ? "big" : "small",
@@ -146,13 +146,13 @@ public static partial class McpMod
     {
         s_crystalSphereEntityField ??= typeof(NCrystalSphereScreen)
             .GetField("_entity", BindingFlags.NonPublic | BindingFlags.Instance);
-        var minigame = s_crystalSphereEntityField?.GetValue(screen);
+        object? minigame = s_crystalSphereEntityField?.GetValue(screen);
         if (minigame == null)
             return null;
-        var divinations = GetInstanceMemberValue(minigame, "DivinationCount");
+        object? divinations = GetInstanceMemberValue(minigame, "DivinationCount");
         if (divinations == null)
             return null;
-        var traced = s_crystalSphereTraces.TryGetValue(minigame, out var trace) && trace.RngAtStart != null;
+        bool traced = s_crystalSphereTraces.TryGetValue(minigame, out CrystalSphereTrace? trace) && trace.RngAtStart != null;
         return new Dictionary<string, object?>(StringComparer.Ordinal)
         {
             ["rng_at_start"] = traced ? trace!.RngAtStart : null,

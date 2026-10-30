@@ -5,7 +5,7 @@ using MegaCrit.Sts2.Core.Entities.Cards;
 using MegaCrit.Sts2.Core.Localization.DynamicVars;
 using MegaCrit.Sts2.Core.Models;
 
-namespace STS2_MCP;
+namespace Sts2Mcp;
 
 public static partial class McpMod
 {
@@ -14,12 +14,12 @@ public static partial class McpMod
     private static T WithCardValues<T>(bool unpowered, Func<T> build)
     {
         bool previous = s_unpoweredValues;
-        var previousFailure = s_unpoweredCardFailure;
+        Exception? previousFailure = s_unpoweredCardFailure;
         s_unpoweredValues = unpowered;
         s_unpoweredCardFailure = null;
         try
         {
-            var state = build();
+            T? state = build();
             if (s_unpoweredCardFailure != null)
                 throw s_unpoweredCardFailure;
             return state;
@@ -106,7 +106,7 @@ public static partial class McpMod
             try
             {
                 Unpower(card, card.DynamicVars, saved);
-                var enchantment = card.Enchantment;
+                EnchantmentModel? enchantment = card.Enchantment;
                 if (enchantment != null)
                     Unpower(card, enchantment.DynamicVars, saved);
             }
@@ -123,17 +123,17 @@ public static partial class McpMod
             DynamicVarSet set,
             List<(DynamicVar, decimal, decimal)> saved)
         {
-            foreach (var dynamicVar in set.Values)
+            foreach (DynamicVar dynamicVar in set.Values)
                 saved.Add((dynamicVar, dynamicVar.EnchantedValue, dynamicVar.PreviewValue));
             set.ClearPreview();
-            foreach (var dynamicVar in set.Values.ToList())
+            foreach (DynamicVar? dynamicVar in set.Values.ToList())
                 dynamicVar.UpdateCardPreview(card, CardPreviewMode.None, null, runGlobalHooks: false);
         }
 
         private static void Restore(List<(DynamicVar Var, decimal Enchanted, decimal Preview)>? saved)
         {
             if (saved == null) return;
-            foreach (var (dynamicVar, enchanted, preview) in saved)
+            foreach ((DynamicVar? dynamicVar, decimal enchanted, decimal preview) in saved)
             {
                 // DynamicVar setters only clamp and assign decimal fields.
                 dynamicVar.EnchantedValue = enchanted;

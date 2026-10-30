@@ -16,10 +16,10 @@ change, not a side effect of a feature PR.
 
 | Layer | Namespace (now: folder) | Owns | Must not |
 | --- | --- | --- | --- |
-| Contract + Core | `STS2_MCP.Core` (`Core/`) | Request/response DTOs, action-name enums, value rules the mod itself owns, the JSON shape mirrored by `docs/raw-*.md` | Reference `Godot`, `MegaCrit`, `System.Net`, or write responses |
-| Use cases | `STS2_MCP.UseCases` (`UseCases/`) | One handler per action or query; orchestration; command validation; decisions ("is this legal state?") | Set HTTP status codes, open sockets, serialize responses, format markdown |
-| Infrastructure | `STS2_MCP.Infrastructure` (`Infrastructure/`) | Game access ports implemented over `MegaCrit`/`Godot` types, node drivers, reflection helpers, save/history scanning, Harmony patches | Decide the contract shape or the business rule |
-| Transport | `STS2_MCP.Transport` (`Transport/`; today the `McpMod` partial) | `HttpListener`, routing, status mapping, main-thread dispatch, JSON serialization | Contain game rules |
+| Contract + Core | `Sts2Mcp.Core` (`Core/`) | Request/response DTOs, action-name enums, value rules the mod itself owns, the JSON shape mirrored by `docs/raw-*.md` | Reference `Godot`, `MegaCrit`, `System.Net`, or write responses |
+| Use cases | `Sts2Mcp.UseCases` (`UseCases/`) | One handler per action or query; orchestration; command validation; decisions ("is this legal state?") | Set HTTP status codes, open sockets, serialize responses, format markdown |
+| Infrastructure | `Sts2Mcp.Infrastructure` (`Infrastructure/`) | Game access ports implemented over `MegaCrit`/`Godot` types, node drivers, reflection helpers, save/history scanning, Harmony patches | Decide the contract shape or the business rule |
+| Transport | `Sts2Mcp.Transport` (`Transport/`; today the `McpMod` partial) | `HttpListener`, routing, status mapping, main-thread dispatch, JSON serialization | Contain game rules |
 | Bridge | `mcp/server.py` | Thin pass-through to the HTTP API | Any game logic (repository rule) |
 
 Dependencies point inward only:
@@ -37,7 +37,7 @@ is outside the assembly and talks HTTP only.
 
 Splitting the projects changes more than folders:
 
-- The mod ships as one `STS2_MCP.dll` copied into `mods/`. Layer DLLs would have
+- The mod ships as one `Sts2Mcp.dll` copied into `mods/`. Layer DLLs would have
   to ship alongside it (or be ILRepack-merged), which changes the install
   instructions and the README for every user.
 - The repository has one project, no CI, and no automated tests; a four-project

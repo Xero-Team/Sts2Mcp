@@ -2,12 +2,13 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Globalization;
+using System.Reflection;
 using System.Text;
 using Godot;
 using HarmonyLib;
 using MegaCrit.Sts2.Core.Multiplayer.Game;
 
-namespace STS2_MCP;
+namespace Sts2Mcp;
 
 /// <summary>
 /// Diagnostics for the <c>NetService.IsGameLoading</c> flag. Observes only — no
@@ -65,12 +66,12 @@ public static partial class McpMod
         int shown = 0;
         for (int i = 0; i < trace.FrameCount && shown < 6; i++)
         {
-            var method = trace.GetFrame(i)?.GetMethod();
-            var declaring = method?.DeclaringType;
+            MethodBase? method = trace.GetFrame(i)?.GetMethod();
+            Type? declaring = method?.DeclaringType;
             if (declaring == null) continue;
 
             string name = $"{declaring.FullName}.{method!.Name}";
-            if (name.Contains("HarmonyLib") || name.Contains("STS2_MCP")) continue;
+            if (name.Contains("HarmonyLib") || name.Contains("Sts2Mcp")) continue;
 
             if (shown > 0) sb.Append(" <- ");
             sb.Append(name);
@@ -100,7 +101,7 @@ public static partial class McpMod
 
     private static void NoteLoadingHandleClosed(NetLoadingHandle handle)
     {
-        if (!s_openLoadingHandles.TryGetValue(handle, out var info)) return;
+        if (!s_openLoadingHandles.TryGetValue(handle, out LoadingHandleInfo? info)) return;
         s_openLoadingHandles.Remove(handle);
 
         ulong held = Time.GetTicksMsec() - info.OpenedMs;
@@ -129,7 +130,7 @@ public static partial class McpMod
         sb.Append(CultureInfo.InvariantCulture, $"[STS2 MCP] IsGameLoading has been held for {(now - s_loadingHeldSinceMs) / 1000.0:F1}s by ");
         sb.Append(CultureInfo.InvariantCulture, $"{s_openLoadingHandles.Count} open NetLoadingHandle(s). Every event choice is refused while it is ");
         sb.Append("set, and the refcount can no longer reach zero, so this is the leak:");
-        foreach (var info in s_openLoadingHandles.Values)
+        foreach (LoadingHandleInfo info in s_openLoadingHandles.Values)
             sb.Append(CultureInfo.InvariantCulture, $"\n  #{info.Id} opened {(now - info.OpenedMs) / 1000.0:F1}s ago at {info.Origin}");
         GD.PrintErr(sb.ToString());
     }

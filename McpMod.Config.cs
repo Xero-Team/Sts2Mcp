@@ -6,19 +6,19 @@ using System.Text.Json;
 using Godot;
 using MegaCrit.Sts2.Core.Saves;
 using MegaCrit.Sts2.Core.Settings;
-using STS2_MCP.Core.Contracts;
+using Sts2Mcp.Core.Contracts;
 
-namespace STS2_MCP;
+namespace Sts2Mcp;
 
 public static partial class McpMod
 {
     public const int DefaultPort = 15526;
-    private const string ConfigFileName = "STS2_MCP.conf";
+    private const string ConfigFileName = "Sts2Mcp.conf";
     private const string DotEnvFileName = ".env";
     private const string PortEnvVar = "STS2_PORT";
 
     /// <summary>
-    /// Values read from STS2_MCP.conf. Every field has a safe default so a
+    /// Values read from Sts2Mcp.conf. Every field has a safe default so a
     /// missing/partial/corrupt file never prevents the mod from starting.
     /// </summary>
     internal sealed class ModConfig
@@ -37,7 +37,7 @@ public static partial class McpMod
     private static ModConfig s_config = new();
 
     /// <summary>
-    /// Loads STS2_MCP.conf from the mod directory, creating it with defaults if
+    /// Loads Sts2Mcp.conf from the mod directory, creating it with defaults if
     /// absent. Unknown keys are ignored; missing or invalid keys fall back to
     /// their defaults. Loading never throws.
     /// </summary>
@@ -45,7 +45,7 @@ public static partial class McpMod
     {
         // A config the mod cannot read (bad JSON, unreadable file) falls back to defaults;
         // the read helper records what failed.
-        var loaded = TryRead<ModConfig?>("config.load", LoadConfigCore);
+        ModConfig? loaded = TryRead<ModConfig?>("config.load", LoadConfigCore);
         if (loaded != null)
             return loaded;
 
@@ -69,14 +69,14 @@ public static partial class McpMod
 
         string content = File.ReadAllText(configPath);
         using var doc = JsonDocument.Parse(content);
-        var root = doc.RootElement;
+        JsonElement root = doc.RootElement;
 
         // The combat recorder reads its keys ("record", "record_dir") from the same
         // file; keep feeding it the whole document so its options stay where the
         // user wrote them.
         Recorder.CombatRecorder.Configure(root);
 
-        if (root.TryGetProperty("port", out var portElem)
+        if (root.TryGetProperty("port", out JsonElement portElem)
             && portElem.TryGetInt32(out int port)
             && port is > 0 and <= 65535)
         {
@@ -87,7 +87,7 @@ public static partial class McpMod
             GD.PrintErr($"[STS2 MCP] Invalid or missing 'port' in {configPath}, using default {DefaultPort}");
         }
 
-        if (root.TryGetProperty("instant_mode", out var instantElem)
+        if (root.TryGetProperty("instant_mode", out JsonElement instantElem)
             && instantElem.ValueKind is JsonValueKind.True or JsonValueKind.False)
         {
             config.InstantMode = instantElem.GetBoolean();
@@ -103,8 +103,8 @@ public static partial class McpMod
     ///
     ///   1. the <c>--sts2-mcp-port=&lt;port&gt;</c> launch argument (McpPortResolver)
     ///   2. dotenv: <c>STS2_PORT</c> in the process environment, then <c>.env</c> next to
-    ///      STS2_MCP.dll, then <c>.env</c> in the game's current directory
-    ///   3. the <c>port</c> key of STS2_MCP.conf
+    ///      Sts2Mcp.dll, then <c>.env</c> in the game's current directory
+    ///   3. the <c>port</c> key of Sts2Mcp.conf
     ///   4. <see cref="DefaultPort"/> (15526)
     ///
     /// A malformed value at any level is logged and skipped so the next source wins.
@@ -132,7 +132,7 @@ public static partial class McpMod
 
     private static bool TryLoadPortFromEnvironment(out int port)
     {
-        var configured = System.Environment.GetEnvironmentVariable(PortEnvVar);
+        string? configured = System.Environment.GetEnvironmentVariable(PortEnvVar);
         if (string.IsNullOrWhiteSpace(configured))
         {
             port = 0;
@@ -144,30 +144,30 @@ public static partial class McpMod
 
     private static bool TryLoadPortFromDotEnv(string? modDir, out int port)
     {
-        foreach (var envPath in GetDotEnvPaths(modDir))
+        foreach (string envPath in GetDotEnvPaths(modDir))
         {
             try
             {
                 if (!File.Exists(envPath))
                     continue;
 
-                foreach (var line in File.ReadLines(envPath))
+                foreach (string line in File.ReadLines(envPath))
                 {
-                    var stripped = line.Trim();
+                    string stripped = line.Trim();
                     if (stripped.Length == 0
                         || stripped.StartsWith('#')
                         || !stripped.Contains('='))
                         continue;
 
-                    var separator = stripped.IndexOf('=');
-                    var key = stripped[..separator].Trim();
+                    int separator = stripped.IndexOf('=');
+                    string key = stripped[..separator].Trim();
                     if (key.StartsWith("export ", StringComparison.Ordinal))
                         key = key["export ".Length..].Trim();
 
                     if (!string.Equals(key, PortEnvVar, StringComparison.Ordinal))
                         continue;
 
-                    var value = ParseDotEnvValue(stripped[(separator + 1)..]);
+                    string value = ParseDotEnvValue(stripped[(separator + 1)..]);
                     return TryParseConfiguredPort(value, $"{envPath}:{PortEnvVar}", out port);
                 }
             }
@@ -187,12 +187,12 @@ public static partial class McpMod
 
         if (!string.IsNullOrWhiteSpace(modDir))
         {
-            var modEnvPath = Path.Combine(modDir, DotEnvFileName);
+            string modEnvPath = Path.Combine(modDir, DotEnvFileName);
             if (seen.Add(modEnvPath))
                 yield return modEnvPath;
         }
 
-        var cwdEnvPath = Path.Combine(System.Environment.CurrentDirectory, DotEnvFileName);
+        string cwdEnvPath = Path.Combine(System.Environment.CurrentDirectory, DotEnvFileName);
         if (seen.Add(cwdEnvPath))
             yield return cwdEnvPath;
     }
@@ -203,16 +203,16 @@ public static partial class McpMod
     /// </summary>
     private static string ParseDotEnvValue(string rawValue)
     {
-        var value = rawValue.Trim();
+        string value = rawValue.Trim();
         if (value.Length >= 2 && (value[0] == '\'' || value[0] == '"'))
         {
-            var quote = value[0];
-            var closingQuoteIndex = value.IndexOf(quote, 1);
+            char quote = value[0];
+            int closingQuoteIndex = value.IndexOf(quote, 1);
             if (closingQuoteIndex != -1)
                 return value[1..closingQuoteIndex];
         }
 
-        var commentIndex = value.IndexOf('#');
+        int commentIndex = value.IndexOf('#');
         if (commentIndex >= 0)
             value = value[..commentIndex].TrimEnd();
 
@@ -262,12 +262,12 @@ public static partial class McpMod
     }
 
     /// <summary>
-    /// Writes the current in-memory config back to STS2_MCP.conf, preserving all
+    /// Writes the current in-memory config back to Sts2Mcp.conf, preserving all
     /// known keys. Best-effort and never fatal.
     /// </summary>
     private static void SaveConfig()
     {
-        var failure = TryAction("config.save", () =>
+        string? failure = TryAction("config.save", () =>
         {
             string? modDir = Path.GetDirectoryName(
                 System.Reflection.Assembly.GetExecutingAssembly().Location);
@@ -289,7 +289,7 @@ public static partial class McpMod
                 if (existing.RootElement.ValueKind != JsonValueKind.Object)
                     return;
 
-                foreach (var prop in existing.RootElement.EnumerateObject())
+                foreach (JsonProperty prop in existing.RootElement.EnumerateObject())
                 {
                     if (prop.Name is "port" or "instant_mode")
                         continue;

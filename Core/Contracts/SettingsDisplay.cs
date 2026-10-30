@@ -1,4 +1,4 @@
-namespace STS2_MCP.Core.Contracts;
+namespace Sts2Mcp.Core.Contracts;
 
 /// <summary>Display preferences of <see cref="SettingsResponse"/>: window, frame rate, monitor.</summary>
 internal sealed record SettingsDisplay

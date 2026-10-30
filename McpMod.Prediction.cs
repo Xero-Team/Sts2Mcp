@@ -5,9 +5,11 @@ using System.Globalization;
 using System.Linq;
 using System.Reflection;
 using MegaCrit.Sts2.Core.Entities.Creatures;
+using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.MonsterMoves.MonsterMoveStateMachine;
+using MegaCrit.Sts2.Core.Random;
 
-namespace STS2_MCP;
+namespace Sts2Mcp;
 
 public static partial class McpMod
 {
@@ -42,8 +44,8 @@ public static partial class McpMod
 
     private static Dictionary<string, object?>? BuildIntentMachineCore(Creature creature)
     {
-        var monster = creature.Monster;
-        var machine = monster?.MoveStateMachine;
+        MonsterModel? monster = creature.Monster;
+        MonsterMoveStateMachine? machine = monster?.MoveStateMachine;
         var current = s_msmCurrentStateField?.GetValue(machine) as MonsterState;
         var initial = s_msmInitialStateField?.GetValue(machine) as MonsterState;
         if (monster == null || machine == null || current == null || initial == null)
@@ -51,16 +53,16 @@ public static partial class McpMod
         if (s_msmPerformedFirstMoveField?.GetValue(machine) is not bool performedFirstMove)
             return null;
 
-        var states = BuildMachineStates(monster, creature, machine, initial, current);
+        MachineStates states = BuildMachineStates(monster, creature, machine, initial, current);
         if (states.States.Count == 0)
             return null;
 
-        var rng = monster.RunRng.MonsterAi;
-        var rngCoords = RngCoords(rng);
+        Rng rng = monster.RunRng.MonsterAi;
+        Dictionary<string, object?>? rngCoords = RngCoords(rng);
         if (rngCoords == null)
             return null;
         var stateLog = new List<string>(machine.StateLog.Count);
-        foreach (var logged in machine.StateLog)
+        foreach (MonsterState logged in machine.StateLog)
             stateLog.Add(logged.Id);
 
         var result = new Dictionary<string, object?>(StringComparer.Ordinal)
@@ -113,7 +115,7 @@ public static partial class McpMod
         // handed, which costs it the ENTIRE machine and drops that enemy to
         // the intent-DB fallback. Both nodes are perfectly serializable, so
         // they are appended rather than left dangling.
-        foreach (var state in machine.States.Values.Concat(new[] { initial, current }).Distinct())
+        foreach (MonsterState? state in machine.States.Values.Concat(new[] { initial, current }).Distinct())
         {
             Dictionary<string, object?>? serialized = state switch
             {
@@ -153,9 +155,9 @@ public static partial class McpMod
         }
         if (monster is MegaCrit.Sts2.Core.Models.Monsters.BowlbugRock bowlbug)
             result["bowlbug_off_balance"] = bowlbug.IsOffBalance;
-        if (rngCoords.TryGetValue("seed", out var seed))
+        if (rngCoords.TryGetValue("seed", out object? seed))
             result["rng_seed"] = seed;
-        if (rngCoords.TryGetValue("state", out var rngState))
+        if (rngCoords.TryGetValue("state", out object? rngState))
             result["rng_state"] = rngState;
     }
 
@@ -172,7 +174,7 @@ public static partial class McpMod
             ["must_perform_once_before_transitioning"] = move.MustPerformOnceBeforeTransitioning,
             ["intents"] = BuildIntentList(move.Intents, creature),
         };
-        var effects = GetMoveEffects(monster, move);
+        Dictionary<string, object?>? effects = GetMoveEffects(monster, move);
         if (effects != null)
             state["effects"] = effects;
         return state;
@@ -181,11 +183,11 @@ public static partial class McpMod
     private static Dictionary<string, object?> BuildRandomMachineState(RandomBranchState random, ref bool hasSnapshots)
     {
         var branches = new List<Dictionary<string, object?>>(random.States.Count);
-        foreach (var branch in random.States)
+        foreach (RandomBranchState.StateWeight branch in random.States)
         {
             // A weight that cannot be evaluated is exported as zero, which reads as
             // "unknown" alongside the snapshot flag below.
-            var weight = TryReadQuiet<float?>(() => branch.GetWeight()) ?? 0f;
+            float weight = TryReadQuiet<float?>(() => branch.GetWeight()) ?? 0f;
             string? dynamicRule = DynamicWeightRule(branch.weightLambda);
             // A supported live rule is re-evaluated by the consumer. Any other
             // dynamic lambda remains an explicit snapshot.
@@ -219,20 +221,20 @@ public static partial class McpMod
         var branches = new List<Dictionary<string, object?>>();
         if (s_conditionalStatesProperty?.GetValue(conditional) is IEnumerable values)
         {
-            foreach (var value in values)
+            foreach (object? value in values)
             {
-                var valueType = value.GetType();
-                var id = valueType.GetField("id", BindingFlags.Public | BindingFlags.Instance)?.GetValue(value) as string;
-                var evaluate = valueType.GetMethod("Evaluate", BindingFlags.Public | BindingFlags.Instance);
+                Type valueType = value.GetType();
+                string? id = valueType.GetField("id", BindingFlags.Public | BindingFlags.Instance)?.GetValue(value) as string;
+                MethodInfo? evaluate = valueType.GetMethod("Evaluate", BindingFlags.Public | BindingFlags.Instance);
                 if (id == null || evaluate == null)
                     continue;
                 // A condition that cannot be evaluated is reported as disabled, not guessed.
-                var enabled = TryReadQuiet<bool?>(() =>
+                bool enabled = TryReadQuiet<bool?>(() =>
                     Convert.ToSingle(evaluate.Invoke(value, null), CultureInfo.InvariantCulture) > 0f) ?? false;
                 var lambda = valueType
                     .GetField("_conditionalLambda", BindingFlags.NonPublic | BindingFlags.Instance)?
                     .GetValue(value) as Delegate;
-                var condition = BuildCondition(lambda, branches.Count, enabled, out bool isSnapshot);
+                Dictionary<string, object?> condition = BuildCondition(lambda, branches.Count, enabled, out bool isSnapshot);
                 hasSnapshots |= isSnapshot;
                 branches.Add(new Dictionary<string, object?>(StringComparer.Ordinal)
                 {

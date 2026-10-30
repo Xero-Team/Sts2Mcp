@@ -4,12 +4,13 @@ using System.Linq;
 using System.Net;
 using MegaCrit.Sts2.Core.Context;
 using MegaCrit.Sts2.Core.Entities.Cards;
+using MegaCrit.Sts2.Core.Entities.Players;
 using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Runs;
 using MegaCrit.Sts2.Core.Saves;
 using MegaCrit.Sts2.Core.Unlocks;
 
-namespace STS2_MCP;
+namespace Sts2Mcp;
 
 // The card pools the game rolls against are STATIC for the duration of a run:
 // CardPoolModel.GetUnlockedCards is a pure function of the unlock state and the
@@ -42,7 +43,7 @@ public static partial class McpMod
 
     private static Dictionary<string, object?> BuildCardPools()
     {
-        var unlockState = ResolveCardPoolUnlockState(out var constraint, out var source);
+        UnlockState? unlockState = ResolveCardPoolUnlockState(out CardMultiplayerConstraint constraint, out string? source);
         if (unlockState == null)
             return new Dictionary<string, object?>(StringComparer.Ordinal) { ["error"] = "No profile or run data available." };
 
@@ -58,8 +59,8 @@ public static partial class McpMod
             }
         }
 
-        var pools = BuildPoolsCatalogue(unlockState, constraint);
-        var characters = BuildCharacterCatalogue(out var characterPoolOrder);
+        Dictionary<string, object?> pools = BuildPoolsCatalogue(unlockState, constraint);
+        Dictionary<string, object?> characters = BuildCharacterCatalogue(out List<string>? characterPoolOrder);
 
         // `UnlockState.CharacterCardPools`: the character pools this profile has
         // unlocked, in `ModelDb.AllCharacters` order. Prismatic Gem widens every
@@ -67,7 +68,7 @@ public static partial class McpMod
         // character in the game whether unlocked or not.
         // Absent rather than guessed: a client then refuses Prismatic Gem's
         // widened reward instead of naming cards from the wrong pools.
-        var unlockedCharacterPoolOrder = TryRead(() => unlockState.CharacterCardPools
+        List<string>? unlockedCharacterPoolOrder = TryRead(() => unlockState.CharacterCardPools
             .Select(pool => pool?.Title)
             .Where(title => !string.IsNullOrWhiteSpace(title))
             .Select(title => title!)
@@ -96,15 +97,15 @@ public static partial class McpMod
     private static Dictionary<string, object?> BuildPoolsCatalogue(UnlockState unlockState, CardMultiplayerConstraint constraint)
     {
         var pools = new Dictionary<string, object?>(StringComparer.Ordinal);
-        foreach (var pool in ModelDb.AllCardPools)
+        foreach (CardPoolModel pool in ModelDb.AllCardPools)
         {
-            var title = pool.Title;
+            string title = pool.Title;
             if (string.IsNullOrWhiteSpace(title) || pools.ContainsKey(title))
                 continue;
 
             // A modded or malformed pool must not take down the response;
             // its cards simply have no derivable domain client-side.
-            var cards = TryRead(() => pool.GetUnlockedCards(unlockState, constraint).ToList());
+            List<CardModel>? cards = TryRead(() => pool.GetUnlockedCards(unlockState, constraint).ToList());
             if (cards == null)
                 continue;
 
@@ -121,10 +122,10 @@ public static partial class McpMod
     {
         var characters = new Dictionary<string, object?>(StringComparer.Ordinal);
         characterPoolOrder = new List<string>();
-        foreach (var character in ModelDb.AllCharacters)
+        foreach (CharacterModel character in ModelDb.AllCharacters)
         {
-            var name = SafeGetText(() => character.Title);
-            var poolTitle = character.CardPool?.Title;
+            string? name = SafeGetText(() => character.Title);
+            string? poolTitle = character.CardPool?.Title;
             if (!string.IsNullOrWhiteSpace(name))
                 characters[name] = poolTitle;
             if (!string.IsNullOrWhiteSpace(poolTitle) && !characterPoolOrder.Contains(poolTitle))
@@ -190,8 +191,8 @@ public static partial class McpMod
     {
         if (RunManager.Instance?.IsInProgress == true)
         {
-            var runState = RunManager.Instance.DebugOnlyGetState();
-            var player = runState != null ? LocalContext.GetMe(runState) : null;
+            RunState? runState = RunManager.Instance.DebugOnlyGetState();
+            Player? player = runState != null ? LocalContext.GetMe(runState) : null;
             if (runState != null && player != null)
             {
                 // Read through Player.RunState (typed IRunState): the
@@ -203,7 +204,7 @@ public static partial class McpMod
             }
         }
 
-        var progress = SaveManager.Instance?.Progress;
+        ProgressState? progress = SaveManager.Instance?.Progress;
         if (progress == null)
         {
             constraint = CardMultiplayerConstraint.SingleplayerOnly;

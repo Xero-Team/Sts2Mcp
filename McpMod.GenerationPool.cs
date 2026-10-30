@@ -7,15 +7,16 @@ using MegaCrit.Sts2.Core.Entities.Cards;
 using MegaCrit.Sts2.Core.Entities.Players;
 using MegaCrit.Sts2.Core.Factories;
 using MegaCrit.Sts2.Core.Models;
+using MegaCrit.Sts2.Core.Runs;
 
-namespace STS2_MCP;
+namespace Sts2Mcp;
 
 public static partial class McpMod
 {
     // 実際にロードした本体の版。固定の出典ラベルで別版を信頼させない。
     private static readonly Lazy<string> GenerationAssemblySha256 = new(() =>
     {
-        using var stream = File.OpenRead(typeof(CardModel).Assembly.Location);
+        using FileStream stream = File.OpenRead(typeof(CardModel).Assembly.Location);
         return Convert.ToHexString(SHA256.HashData(stream)).ToLowerInvariant();
     });
 
@@ -28,9 +29,9 @@ public static partial class McpMod
             ["filter_version"] = 1,
             ["filter_source"] = "CardPoolModel.GetUnlockedCards(Player.UnlockState,IRunState.CardMultiplayerConstraint);CardFactory.FilterForPlayerCount;CardFactory.FilterForCombat;OrobicAcid.OnUse:Attack,Skill,Power"
         };
-        var failure = TryAction("player.generation_pool", () =>
+        string? failure = TryAction("player.generation_pool", () =>
         {
-            var run = player.RunState;
+            IRunState run = player.RunState;
             result["character_id"] = player.Character.Id.Entry;
             result["player_id"] = player.NetId.ToString();
             result["players"] = run.Players.Count;
@@ -39,9 +40,9 @@ public static partial class McpMod
             if (run.Players.Count < 1 || !run.Players.Contains(player))
                 throw new InvalidOperationException("\u5BFE\u8C61player\u304Crun.Players\u306B\u5B58\u5728\u3057\u306A\u3044");
 
-            var unlocked = player.Character.CardPool.GetUnlockedCards(player.UnlockState, run.CardMultiplayerConstraint);
+            IEnumerable<CardModel> unlocked = player.Character.CardPool.GetUnlockedCards(player.UnlockState, run.CardMultiplayerConstraint);
             // privateなFilterForPlayerCountと同じ条件（sts2-9cb4f1ad）。
-            var excluded = run.Players.Count > 1
+            CardMultiplayerConstraint excluded = run.Players.Count > 1
                 ? CardMultiplayerConstraint.SingleplayerOnly : CardMultiplayerConstraint.MultiplayerOnly;
             var cards = CardFactory.FilterForCombat(unlocked.Where(c => c.MultiplayerConstraint != excluded))
                 .Where(c => c.Type is CardType.Attack or CardType.Skill or CardType.Power)

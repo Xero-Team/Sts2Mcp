@@ -1,7 +1,7 @@
 using System.Text;
 using System.Text.Json;
-using STS2_MCP;
-using STS2_MCP.Rewards;
+using Sts2Mcp;
+using Sts2Mcp.Rewards;
 
 int checks = 0;
 void Check(bool condition, string name)
@@ -126,7 +126,7 @@ object? ConvertJson(JsonElement element) => element.ValueKind switch
 };
 Console.WriteLine($"PASS: {checks} reward contract checks (no game dependencies)");
 
-namespace STS2_MCP
+namespace Sts2Mcp
 {
     public static partial class McpMod
     {

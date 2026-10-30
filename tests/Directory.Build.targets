@@ -10,7 +10,7 @@
     stubs to look like production code.
 
     So tests/ imports the repository settings but turns the gate off: warnings are
-    reported, never fatal. The gate itself still runs on STS2_MCP.csproj, which is the
+    reported, never fatal. The gate itself still runs on Sts2Mcp.csproj, which is the
     project that ships. This file is what makes `dotnet build tests/<name>` a quick,
     game-free check instead of a strict-build exercise.
   -->

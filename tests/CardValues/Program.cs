@@ -4,7 +4,7 @@ using System.Linq;
 using MegaCrit.Sts2.Core.Entities.Cards;
 using MegaCrit.Sts2.Core.Localization.DynamicVars;
 using MegaCrit.Sts2.Core.Models;
-using STS2_MCP;
+using Sts2Mcp;
 
 internal static class Program
 {
@@ -173,7 +173,7 @@ namespace MegaCrit.Sts2.Core.Models
     }
 }
 
-namespace STS2_MCP
+namespace Sts2Mcp
 {
     public static partial class McpMod
     {

@@ -16,7 +16,7 @@
     <TargetFramework>net9.0</TargetFramework>
     <Nullable>enable</Nullable>
     <AssemblyName>PredicateScanTests</AssemblyName>
-    <RootNamespace>STS2_MCP.Tests</RootNamespace>
+    <RootNamespace>Sts2Mcp.Tests</RootNamespace>
     <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
   </PropertyGroup>
 

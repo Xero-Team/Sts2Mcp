@@ -1,13 +1,13 @@
 # STS2 game artifacts and this repository
 
 Reference for the `sts2-engineering` skill. It answers one question: given a task
-in STS2_MCP, which shipped artifact do I inspect, with which REA call, and what
+in Sts2Mcp, which shipped artifact do I inspect, with which REA call, and what
 do I do with the answer?
 
 ## What the build contains
 
 The mod compiles against the game's own assemblies, referenced from
-`$(STS2GameDataDir)` in `STS2_MCP.csproj`:
+`$(STS2GameDataDir)` in `Sts2Mcp.csproj`:
 
 | File | Role | REA route |
 | --- | --- | --- |

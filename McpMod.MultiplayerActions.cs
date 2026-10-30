@@ -11,7 +11,7 @@ using MegaCrit.Sts2.Core.Nodes.Combat;
 using MegaCrit.Sts2.Core.Nodes.Rooms;
 using MegaCrit.Sts2.Core.Runs;
 
-namespace STS2_MCP;
+namespace Sts2Mcp;
 
 public static partial class McpMod
 {
@@ -23,8 +23,8 @@ public static partial class McpMod
         if (!RunManager.Instance.NetService.Type.IsMultiplayer())
             return Error("Not in a multiplayer run. Use /api/v1/singleplayer instead.", "not_multiplayer_run");
 
-        var runState = RunManager.Instance.DebugOnlyGetState()!;
-        var player = LocalContext.GetMe(runState);
+        RunState runState = RunManager.Instance.DebugOnlyGetState()!;
+        Player? player = LocalContext.GetMe(runState);
         if (player == null)
             return Error("Could not find local player", "local_player_unavailable");
 
@@ -32,7 +32,7 @@ public static partial class McpMod
         if (tree?.Root != null && IsAnyFtueVisible(tree.Root))
             return Error("Blocking popup active. Use menu_select with one of the advertised popup options before gameplay actions.", "blocking_popup_active");
 
-        var covered = RunSubmenuBlockingError(tree, action);
+        Dictionary<string, object?>? covered = RunSubmenuBlockingError(tree, action);
         if (covered != null)
             return covered;
 
@@ -92,11 +92,11 @@ public static partial class McpMod
             return Error("Already submitted end turn - use 'undo_end_turn' to retract");
 
         // Match the game's own CanTurnBeEnded guard (NEndTurnButton.cs:114-123)
-        var hand = NCombatRoom.Instance?.Ui?.Hand;
+        NPlayerHand? hand = NCombatRoom.Instance?.Ui?.Hand;
         if (hand != null && (hand.InCardPlay || hand.CurrentMode != NPlayerHand.Mode.Play))
             return Error("Cannot end turn while a card is being played or hand is in selection mode");
 
-        var combatState = player.Creature.CombatState;
+        ICombatState? combatState = player.Creature.CombatState;
         if (combatState == null)
             return Error("No combat state");
 
@@ -124,7 +124,7 @@ public static partial class McpMod
         if (!CombatManager.Instance.IsPlayerReadyToEndTurn(player))
             return Error("Not ready to end turn - nothing to undo");
 
-        var combatState = player.Creature.CombatState;
+        ICombatState? combatState = player.Creature.CombatState;
         if (combatState == null)
             return Error("No combat state");
 

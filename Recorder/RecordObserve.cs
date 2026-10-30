@@ -9,12 +9,14 @@ using MegaCrit.Sts2.Core.Context;
 using MegaCrit.Sts2.Core.Entities.Creatures;
 using MegaCrit.Sts2.Core.Entities.Multiplayer;
 using MegaCrit.Sts2.Core.Entities.Players;
+using MegaCrit.Sts2.Core.Entities.Rngs;
 using MegaCrit.Sts2.Core.GameActions;
 using MegaCrit.Sts2.Core.GameActions.Multiplayer;
 using MegaCrit.Sts2.Core.Models;
+using MegaCrit.Sts2.Core.Random;
 using MegaCrit.Sts2.Core.Runs;
 
-namespace STS2_MCP.Recorder;
+namespace Sts2Mcp.Recorder;
 
 /// <summary>
 /// Read-only views of the game for the record. Nothing here calls into game logic: only
@@ -34,10 +36,10 @@ internal static class RecordObserve
     /// <summary>round / turn / side / phase at this moment, or null outside combat.</summary>
     internal static JsonObject? At()
     {
-        var combat = CombatManager.Instance.DebugOnlyGetState();
+        CombatState? combat = CombatManager.Instance.DebugOnlyGetState();
         if (combat == null)
             return null;
-        var pcs = LocalPlayer()?.PlayerCombatState;
+        PlayerCombatState? pcs = LocalPlayer()?.PlayerCombatState;
         return new JsonObject
         {
             ["round"] = combat.RoundNumber,
@@ -50,7 +52,7 @@ internal static class RecordObserve
 
     internal static Player? LocalPlayer()
     {
-        var run = RunManager.Instance.DebugOnlyGetState();
+        RunState? run = RunManager.Instance.DebugOnlyGetState();
         return run == null ? null : LocalContext.GetMe(run);
     }
 
@@ -60,12 +62,12 @@ internal static class RecordObserve
     /// </summary>
     internal static (JsonObject pub, JsonObject hidden)? Observe(Func<ulong?, int?> slotOf)
     {
-        var player = LocalPlayer();
-        var run = RunManager.Instance.DebugOnlyGetState();
+        Player? player = LocalPlayer();
+        RunState? run = RunManager.Instance.DebugOnlyGetState();
         if (player == null || run == null)
             return null;
-        var state = CombatManager.Instance.DebugOnlyGetState();
-        var pcs = player.PlayerCombatState;
+        CombatState? state = CombatManager.Instance.DebugOnlyGetState();
+        PlayerCombatState? pcs = player.PlayerCombatState;
         var pub = new JsonObject
         {
             ["in_combat"] = CombatManager.Instance.IsInProgress,
@@ -121,16 +123,16 @@ internal static class RecordObserve
         var runRng = new JsonObject { ["seed"] = run.Rng.Seed.ToString() };
         if (s_rngCounter != null)
         {
-            foreach (var type in Enum.GetValues<MegaCrit.Sts2.Core.Entities.Rngs.RunRngType>())
+            foreach (RunRngType type in Enum.GetValues<MegaCrit.Sts2.Core.Entities.Rngs.RunRngType>())
                 runRng[type.ToString()] = (int)s_rngCounter.GetValue(run.Rng.GetRng(type))!;
         }
         var players = new JsonArray();
-        foreach (var playerRng in run.Players.Select(p => p.PlayerRng))
+        foreach (PlayerRngSet? playerRng in run.Players.Select(p => p.PlayerRng))
         {
             var pr = new JsonObject { ["seed"] = playerRng.Seed.ToString() };
             if (s_rngCounter != null)
             {
-                foreach (var type in Enum.GetValues<MegaCrit.Sts2.Core.Entities.Rngs.PlayerRngType>())
+                foreach (PlayerRngType type in Enum.GetValues<MegaCrit.Sts2.Core.Entities.Rngs.PlayerRngType>())
                     pr[type.ToString()] = (int)s_rngCounter.GetValue(playerRng.GetRng(type))!;
             }
             players.Add(pr);
@@ -143,7 +145,7 @@ internal static class RecordObserve
         {
             ["card"] = c.Id.Entry,
             ["upgrade"] = c.CurrentUpgradeLevel,
-            ["combat_card_id"] = NetCombatCardDb.Instance.TryGetCardId(c, out var id) ? id : null,
+            ["combat_card_id"] = NetCombatCardDb.Instance.TryGetCardId(c, out uint id) ? id : null,
         }).ToArray());
 
     private static JsonArray Powers(Creature creature) =>
@@ -184,7 +186,7 @@ internal static class RecordObserve
                 return new JsonObject { ["type"] = "end_turn", ["turn"] = end.turnNumber };
             default:
                 var obj = new JsonObject { ["type"] = net.GetType().Name };
-                foreach (var (name, value) in PublicMembers(net, slotOf))
+                foreach ((string? name, JsonNode? value) in PublicMembers(net, slotOf))
                     obj[name] = value;
                 return obj;
         }
@@ -195,7 +197,7 @@ internal static class RecordObserve
         if (result is not { } r)
             return new JsonObject { ["type"] = null };
         var obj = new JsonObject { ["type"] = r.type.ToString() };
-        foreach (var (name, value) in PublicMembers(r, slotOf))
+        foreach ((string? name, JsonNode? value) in PublicMembers(r, slotOf))
         {
             if (!string.Equals(name, "type", StringComparison.Ordinal) && value != null)
                 obj[name] = value;
@@ -205,10 +207,10 @@ internal static class RecordObserve
 
     private static IEnumerable<(string, JsonNode?)> PublicMembers(object o, Func<ulong?, int?> slotOf)
     {
-        var type = o.GetType();
-        foreach (var f in type.GetFields(BindingFlags.Instance | BindingFlags.Public))
+        Type type = o.GetType();
+        foreach (FieldInfo f in type.GetFields(BindingFlags.Instance | BindingFlags.Public))
             yield return (JsonName(f.Name), ToJson(f.Name, f.GetValue(o), 0, slotOf));
-        foreach (var p in type.GetProperties(BindingFlags.Instance | BindingFlags.Public))
+        foreach (PropertyInfo p in type.GetProperties(BindingFlags.Instance | BindingFlags.Public))
         {
             if (p.GetIndexParameters().Length != 0 || p.GetMethod == null)
                 continue;
@@ -255,17 +257,17 @@ internal static class RecordObserve
             case NetCombatCard c: return JsonValue.Create(c.CombatCardIndex);
             case IEnumerable seq:
                 var arr = new JsonArray();
-                foreach (var item in seq)
+                foreach (object? item in seq)
                     arr.Add(ToJson(name, item, depth + 1, slotOf));
                 return arr;
         }
-        var t = value.GetType();
+        Type t = value.GetType();
         if (t.IsValueType && !t.IsPrimitive)
         {
             var obj = new JsonObject();
-            foreach (var f in t.GetFields(BindingFlags.Instance | BindingFlags.Public))
+            foreach (FieldInfo f in t.GetFields(BindingFlags.Instance | BindingFlags.Public))
                 obj[JsonName(f.Name)] = ToJson(f.Name, f.GetValue(value), depth + 1, slotOf);
-            foreach (var p in t.GetProperties(BindingFlags.Instance | BindingFlags.Public))
+            foreach (PropertyInfo p in t.GetProperties(BindingFlags.Instance | BindingFlags.Public))
             {
                 if (p.GetIndexParameters().Length == 0 && p.GetMethod != null)
                     obj[JsonName(p.Name)] = ToJson(p.Name, p.GetValue(value), depth + 1, slotOf);

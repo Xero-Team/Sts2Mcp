@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Audit the STS2_MCP HTTP endpoint surface.
+"""Audit the Sts2Mcp HTTP endpoint surface.
 
 This script intentionally uses only the Python standard library so it can run
 from a checkout without installing the MCP package.
@@ -2461,7 +2461,7 @@ def audit_live(base_url: str) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--base-url", default="http://localhost:15526", help="STS2_MCP HTTP base URL")
+    parser.add_argument("--base-url", default="http://localhost:15526", help="Sts2Mcp HTTP base URL")
     parser.add_argument("--skip-live", action="store_true", help="Only check checked-in docs")
     args = parser.parse_args()
 

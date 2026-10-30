@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Reflection;
 using System.Threading.Tasks;
 using Godot;
 using HarmonyLib;
@@ -13,9 +14,9 @@ using MegaCrit.Sts2.Core.Nodes.Screens.Map;
 using MegaCrit.Sts2.Core.Nodes.Screens.Overlays;
 using MegaCrit.Sts2.Core.Rewards;
 using MegaCrit.Sts2.Core.Runs;
-using STS2_MCP.Rewards;
+using Sts2Mcp.Rewards;
 
-namespace STS2_MCP;
+namespace Sts2Mcp;
 
 public static partial class McpMod
 {
@@ -30,7 +31,7 @@ public static partial class McpMod
             .Where(pair => !s_rewardSession.Contains(pair.Value))
             .Select(pair => pair.Key)
             .ToList();
-        foreach (var screen in staleParents)
+        foreach (NCardRewardSelectionScreen? screen in staleParents)
             s_cardRewardParents.Remove(screen);
     }
 
@@ -40,7 +41,7 @@ public static partial class McpMod
         RefreshRewardRun();
         s_rewardSession.Open(screen, RunManager.Instance.DebugOnlyGetState());
         var buttons = FindAll<NRewardButton>(screen).Where(b => b.Reward != null).ToList();
-        foreach (var button in buttons) s_rewardSession.Register(button.Reward!, fresh && s_rewardTrackingAvailable);
+        foreach (NRewardButton? button in buttons) s_rewardSession.Register(button.Reward!, fresh && s_rewardTrackingAvailable);
         var enabled = buttons.Where(b => b.IsEnabled).ToList();
         s_rewardSession.Sync(enabled.Select(b => (object)b.Reward!));
         return enabled.Where(b => !string.Equals(s_rewardSession.Find(b.Reward!)?.SelectionState, "claimed", StringComparison.Ordinal)).ToList();
@@ -49,7 +50,7 @@ public static partial class McpMod
     private static RewardSession.Entry? GetCardRewardParent(NCardRewardSelectionScreen screen)
     {
         RefreshRewardRun();
-        if (s_cardRewardParents.TryGetValue(screen, out var entry) && s_rewardSession.Contains(entry)) return entry;
+        if (s_cardRewardParents.TryGetValue(screen, out RewardSession.Entry? entry) && s_rewardSession.Contains(entry)) return entry;
         // CardReward.OnSelect assigns this UI screen before awaiting OptionSelected. Only correlate
         // the already displayed screen; never inspect Cards, generation options, or future rewards.
         entry = s_rewardSession.Entries.FirstOrDefault(e => e.Key is CardReward reward
@@ -68,11 +69,11 @@ public static partial class McpMod
     private static void ObserveRewardResult(NRewardsScreen screen, Control button, bool consumed)
     {
         if (!s_rewardSession.IsScreen(screen) || button is not NRewardButton { Reward: { } reward }) return;
-        var entry = s_rewardSession.Find(reward);
+        RewardSession.Entry? entry = s_rewardSession.Find(reward);
         if (entry != null)
         {
             s_rewardSession.Complete(entry, consumed);
-            foreach (var pair in s_cardRewardParents.Where(p => ReferenceEquals(p.Value, entry)).ToArray())
+            foreach (KeyValuePair<NCardRewardSelectionScreen, RewardSession.Entry> pair in s_cardRewardParents.Where(p => ReferenceEquals(p.Value, entry)).ToArray())
                 s_cardRewardParents.Remove(pair.Key);
         }
     }
@@ -81,7 +82,7 @@ public static partial class McpMod
     {
         // An observer must never change what the game does; the failure is reported here
         // and recorded (with its type) by the read helpers.
-        var failure = TryAction("reward.observation", observe);
+        string? failure = TryAction("reward.observation", observe);
         if (failure != null)
             GD.PrintErr($"[STS2 MCP] Reward observation failed: {failure}");
     }
@@ -89,11 +90,11 @@ public static partial class McpMod
     private static void InstallRewardTracking()
     {
         var harmony = new Harmony("com.sts2mcp.rewards");
-        var failure = TryAction("rewards.tracking.install", () =>
+        string? failure = TryAction("rewards.tracking.install", () =>
         {
             void Patch(Type type, string name, string? prefix = null, string? postfix = null)
             {
-                var method = AccessTools.DeclaredMethod(type, name) ?? throw new MissingMethodException(type.FullName, name);
+                MethodInfo method = AccessTools.DeclaredMethod(type, name) ?? throw new MissingMethodException(type.FullName, name);
                 harmony.Patch(method,
                     prefix: prefix == null ? null : new HarmonyMethod(typeof(McpMod), prefix),
                     postfix: postfix == null ? null : new HarmonyMethod(typeof(McpMod), postfix));
@@ -134,13 +135,13 @@ public static partial class McpMod
         // displayed parent session from its UI ancestry, with unknown prior history.
         for (Node? node = __instance.GetParent(); node != null; node = node.GetParent())
             if (node is NRewardsScreen screen) { GetRewardButtons(screen); break; }
-        var entry = s_rewardSession.Find(__instance.Reward);
+        RewardSession.Entry? entry = s_rewardSession.Find(__instance.Reward);
         if (entry != null) s_rewardSession.Begin(entry);
     });
 
     private static void RewardExecutionTask(NRewardButton __instance, ref Task __result)
     {
-        var entry = __instance.Reward == null ? null : s_rewardSession.Find(__instance.Reward);
+        RewardSession.Entry? entry = __instance.Reward == null ? null : s_rewardSession.Find(__instance.Reward);
         if (entry != null) __result = ObserveRewardExecutionAsync(__result, entry);
     }
 
@@ -166,10 +167,10 @@ public static partial class McpMod
     // unknown, including a session that ended before we could verify its completion.
     private static void AppendRewardActionOutcome(Dictionary<string, object?> result)
     {
-        var id = (result.GetValueOrDefault("parent_reward_id") ?? result.GetValueOrDefault("reward_id")) as string;
+        string? id = (result.GetValueOrDefault("parent_reward_id") ?? result.GetValueOrDefault("reward_id")) as string;
         if (id == null) return;
         RefreshRewardRun();
-        var entry = s_rewardSession.Entries.FirstOrDefault(e => string.Equals(e.Id, id, StringComparison.Ordinal));
+        RewardSession.Entry? entry = s_rewardSession.Entries.FirstOrDefault(e => string.Equals(e.Id, id, StringComparison.Ordinal));
         bool observed = entry != null && !entry.Resolving && entry.SelectionState is "claimed" or "skipped";
         result["outcome_observed"] = observed;
         result["selection_state"] = entry?.SelectionState ?? "unknown";
@@ -187,17 +188,17 @@ public static partial class McpMod
     {
         // Wrap the UI's existing task so observation happens BEFORE CardReward.OnSelect resumes.
         // No choice, task result, exception or game reward is changed by this observer.
-        var entry = TryRead<RewardSession.Entry?>("reward.choice.observation",
+        RewardSession.Entry? entry = TryRead<RewardSession.Entry?>("reward.choice.observation",
             () => GetCardRewardParent(__instance));
         if (entry == null)
             return;
 
         // The current task is copied out first: a ref parameter cannot be used in a lambda,
         // and the observer only ever derives a new task from it.
-        var current = __result;
-        var optionCount = TryRead<int?>("reward.choice.observation",
+        Task<int?> current = __result;
+        int? optionCount = TryRead<int?>("reward.choice.observation",
             () => (GetInstanceFieldValue(__instance, "_options") as System.Collections.ICollection)?.Count);
-        var alternatives = TryRead<CardRewardAlternative[]?>("reward.choice.observation",
+        CardRewardAlternative[]? alternatives = TryRead<CardRewardAlternative[]?>("reward.choice.observation",
             () => (GetInstanceFieldValue(__instance, "_extraOptions") as IEnumerable<CardRewardAlternative>)?.ToArray());
         s_rewardSession.AwaitChoice(entry);
         __result = ObserveRewardChoiceAsync(current, entry, optionCount, alternatives);
@@ -228,7 +229,7 @@ public static partial class McpMod
                 s_rewardSession.Choice(entry, "card");
             else if (cardCount.HasValue && alternatives != null && choice - cardCount >= 0 && choice - cardCount < alternatives.Length)
             {
-                var alternative = alternatives[(choice - cardCount).Value];
+                CardRewardAlternative alternative = alternatives[(choice - cardCount).Value];
                 bool skip = alternative.OptionId.Equals("Skip", StringComparison.OrdinalIgnoreCase)
                     && alternative.AfterSelected == PostAlternateCardRewardAction.EndSelectionAndDoNotCompleteReward;
                 s_rewardSession.Choice(entry, skip ? "skip" : "alternative", alternative.OptionId);

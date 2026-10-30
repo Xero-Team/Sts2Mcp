@@ -1,4 +1,4 @@
-namespace STS2_MCP.Core.Contracts;
+namespace Sts2Mcp.Core.Contracts;
 
 /// <summary>Gameplay preferences of <see cref="SettingsResponse"/>: speed, shake, and HUD toggles.</summary>
 internal sealed record SettingsGameplay

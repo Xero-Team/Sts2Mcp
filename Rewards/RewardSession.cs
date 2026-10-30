@@ -2,7 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 
-namespace STS2_MCP.Rewards;
+namespace Sts2Mcp.Rewards;
 
 // UI-independent registry. Keys are object identities, never serialized or hashed into IDs.
 internal sealed class RewardSession
@@ -46,7 +46,7 @@ internal sealed class RewardSession
     internal IReadOnlyList<Entry> Claimable => _claimable;
     internal string Revision => $"{_epoch}:{_revision}";
     internal bool IsScreen(object screen) => ReferenceEquals(_screen, screen);
-    internal bool Contains(Entry entry) => _entries.TryGetValue(entry.Key, out var current) && ReferenceEquals(current, entry);
+    internal bool Contains(Entry entry) => _entries.TryGetValue(entry.Key, out Entry? current) && ReferenceEquals(current, entry);
 
     internal void CheckRun(object? run)
     {
@@ -73,7 +73,7 @@ internal sealed class RewardSession
 
     internal Entry Register(object key, bool fresh = false)
     {
-        if (_entries.TryGetValue(key, out var entry)) return entry;
+        if (_entries.TryGetValue(key, out Entry? entry)) return entry;
         entry = new Entry(key, $"reward:{_epoch}:{++_serial}", fresh);
         _entries.Add(key, entry);
         _revision++;
@@ -104,7 +104,7 @@ internal sealed class RewardSession
         {
             if (index < 0 || index >= _claimable.Count)
                 return $"Reward index {index} out of range (screen has {_claimable.Count} claimable rewards)";
-            var indexed = _claimable[index.Value];
+            Entry indexed = _claimable[index.Value];
             if (entry != null && !ReferenceEquals(entry, indexed))
                 return "reward_id and index refer to different rewards; re-read rewards state";
             entry = indexed;

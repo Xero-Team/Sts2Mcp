@@ -1,6 +1,6 @@
 """MCP server bridge for Slay the Spire 2.
 
-Connects to the STS2_MCP mod's HTTP server and exposes game actions
+Connects to the Sts2Mcp mod's HTTP server and exposes game actions
 as MCP tools for Claude Desktop / Claude Code.
 """
 
@@ -222,7 +222,7 @@ async def _wait_for_profile(profile_id: int, fallback: str) -> str:
 
 def _handle_error(e: Exception) -> str:
     if isinstance(e, httpx.ConnectError):
-        return "Error: Cannot connect to STS2_MCP mod. Is the game running with the mod enabled?"
+        return "Error: Cannot connect to Sts2Mcp mod. Is the game running with the mod enabled?"
     if isinstance(e, httpx.HTTPStatusError):
         structured = _format_structured_http_error(e.response)
         if structured is not None:
@@ -272,7 +272,7 @@ async def _menu_select_post(body: dict) -> str:
 
 @mcp.tool()
 async def get_api_index() -> str:
-    """Get the STS2_MCP HTTP server status and endpoint index.
+    """Get the Sts2Mcp HTTP server status and endpoint index.
 
     Returns status/kind, version, the mod version greeting, bound listener
     prefixes, endpoint_count, and the current list of HTTP API routes exposed by
@@ -525,7 +525,7 @@ async def get_settings() -> str:
 
     Returns status/kind plus the saved display, audio, gameplay, and mod-loading
     preferences, the selected language, and whether the intro is skipped, as
-    exposed by the STS2_MCP HTTP settings endpoint.
+    exposed by the Sts2Mcp HTTP settings endpoint.
     """
     try:
         return await _settings_get()

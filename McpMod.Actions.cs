@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
+using System.Reflection;
 using System.Text.Json;
 using Godot;
 using MegaCrit.Sts2.Core.CardSelection;
@@ -14,6 +15,7 @@ using MegaCrit.Sts2.Core.Entities.Merchant;
 using MegaCrit.Sts2.Core.Entities.Players;
 using MegaCrit.Sts2.Core.Entities.Potions;
 using MegaCrit.Sts2.Core.Entities.RestSite;
+using MegaCrit.Sts2.Core.Events;
 using MegaCrit.Sts2.Core.GameActions;
 using MegaCrit.Sts2.Core.Map;
 using MegaCrit.Sts2.Core.Models;
@@ -26,6 +28,7 @@ using MegaCrit.Sts2.Core.Nodes.CommonUi;
 using MegaCrit.Sts2.Core.Nodes.Events;
 using MegaCrit.Sts2.Core.Nodes.Events.Custom;
 using MegaCrit.Sts2.Core.Nodes.Events.Custom.CrystalSphere;
+using MegaCrit.Sts2.Core.Nodes.Ftue;
 using MegaCrit.Sts2.Core.Nodes.GodotExtensions;
 using MegaCrit.Sts2.Core.Nodes.Relics;
 using MegaCrit.Sts2.Core.Nodes.RestSite;
@@ -50,14 +53,16 @@ using MegaCrit.Sts2.Core.Nodes.TopBar;
 using MegaCrit.Sts2.Core.Rewards;
 using MegaCrit.Sts2.Core.Rooms;
 using MegaCrit.Sts2.Core.Runs;
+using MegaCrit.Sts2.Core.Saves;
+using Sts2Mcp.Rewards;
 
-namespace STS2_MCP;
+namespace Sts2Mcp;
 
 public static partial class McpMod
 {
     private static Dictionary<string, object?> ExecuteAction(string action, Dictionary<string, JsonElement> data)
     {
-        var guard = TryBeginRunAction(action, out var runState, out var player);
+        Dictionary<string, object?>? guard = TryBeginRunAction(action, out RunState? runState, out Player? player);
         if (guard != null)
             return guard;
 
@@ -129,7 +134,7 @@ public static partial class McpMod
             return Error("No run in progress", "run_not_in_progress");
 
         runState = RunManager.Instance.DebugOnlyGetState()!;
-        var found = LocalContext.GetMe(runState);
+        Player? found = LocalContext.GetMe(runState);
         if (found == null)
             return Error("Could not find local player", "local_player_unavailable");
         player = found;
@@ -148,7 +153,7 @@ public static partial class McpMod
     private static Dictionary<string, object?> ExecuteResumeFromPauseMenu()
     {
         var tree = (Godot.Engine.GetMainLoop()) as SceneTree;
-        var pauseMenu = tree?.Root != null ? FindFirst<NPauseMenu>(tree.Root) : null;
+        NPauseMenu? pauseMenu = tree?.Root != null ? FindFirst<NPauseMenu>(tree.Root) : null;
         if (pauseMenu == null || !IsNodeVisible(pauseMenu))
             return Error("Pause menu is not open. Use open_pause_menu first.");
 
@@ -158,7 +163,7 @@ public static partial class McpMod
     private static Dictionary<string, object?> ExecuteGiveUp()
     {
         var tree = (Godot.Engine.GetMainLoop()) as SceneTree;
-        var pauseMenu = tree?.Root != null ? FindFirst<NPauseMenu>(tree.Root) : null;
+        NPauseMenu? pauseMenu = tree?.Root != null ? FindFirst<NPauseMenu>(tree.Root) : null;
         if (pauseMenu == null || !IsNodeVisible(pauseMenu))
             return Error("Pause menu is not open. Use open_pause_menu first.");
 
@@ -177,9 +182,9 @@ public static partial class McpMod
         out int value,
         params string[] names)
     {
-        foreach (var name in names)
+        foreach (string name in names)
         {
-            if (!data.TryGetValue(name, out var elem))
+            if (!data.TryGetValue(name, out JsonElement elem))
                 continue;
             if (elem.ValueKind == JsonValueKind.Number && elem.TryGetInt32(out value))
                 return true;
@@ -197,13 +202,13 @@ public static partial class McpMod
     /// <summary>Reads a string parameter under any of the given names.</summary>
     private static string? TryReadStringParam(Dictionary<string, JsonElement> data, params string[] names)
     {
-        foreach (var name in names)
+        foreach (string name in names)
         {
-            if (!data.TryGetValue(name, out var elem))
+            if (!data.TryGetValue(name, out JsonElement elem))
                 continue;
             if (elem.ValueKind != JsonValueKind.String)
                 continue;
-            var value = elem.GetString();
+            string? value = elem.GetString();
             if (!string.IsNullOrWhiteSpace(value))
                 return value.Trim();
         }
@@ -218,7 +223,7 @@ public static partial class McpMod
     /// </summary>
     private static string? TryReadTargetId(Dictionary<string, JsonElement> data)
     {
-        if (!data.TryGetValue("target", out var elem))
+        if (!data.TryGetValue("target", out JsonElement elem))
             return null;
 
         string? raw = elem.ValueKind switch
@@ -242,22 +247,22 @@ public static partial class McpMod
         if (!player.Creature.IsAlive)
             return Error("Player creature is dead - cannot play cards");
 
-        var combatState = player.Creature.CombatState;
+        ICombatState? combatState = player.Creature.CombatState;
         if (combatState == null)
             return Error("No combat state");
 
         // Get card by index in hand
-        var hand = player.PlayerCombatState?.Hand;
+        CardPile? hand = player.PlayerCombatState?.Hand;
         if (hand == null)
             return Error("No hand available");
 
-        if (!TryResolveHandCard(data, hand, combatState, out var card, out var cardError))
+        if (!TryResolveHandCard(data, hand, combatState, out CardModel? card, out Dictionary<string, object?>? cardError))
             return cardError!;
 
-        if (!card.CanPlay(out var reason, out _))
+        if (!card.CanPlay(out UnplayableReason reason, out _))
             return Error($"Card '{card.Title}' cannot be played: {reason}");
 
-        var target = ResolvePlayCardTarget(player, combatState, card, data);
+        PlayTargetResolution target = ResolvePlayCardTarget(player, combatState, card, data);
         if (target.Failure != null)
             return target.Failure;
 
@@ -348,7 +353,7 @@ public static partial class McpMod
             return new PlayTargetResolution(alive[0], null);
         }
 
-        var target = ResolveTarget(combatState, targetId);
+        Creature? target = ResolveTarget(combatState, targetId);
         return target == null
             ? new PlayTargetResolution(null, Error($"Target '{targetId}' not found among alive enemies"))
             : new PlayTargetResolution(target, null);
@@ -367,7 +372,7 @@ public static partial class McpMod
         // "player_1", or a numeric combat_id); default = lowest-HP living
         // teammate. All current AnyAlly cards are multiplayer-only.
         Creature? target = null;
-        if (data.TryGetValue("target", out var allyElem))
+        if (data.TryGetValue("target", out JsonElement allyElem))
         {
             target = ResolvePlayerTarget(player, combatState, allyElem.GetString() ?? "");
             if (target == player.Creature)
@@ -399,7 +404,7 @@ public static partial class McpMod
             return Error("Player actions are currently disabled (turn may already be ending)");
 
         // Match the game's own CanTurnBeEnded guard (NEndTurnButton.cs:114-123)
-        var hand = NCombatRoom.Instance?.Ui?.Hand;
+        NPlayerHand? hand = NCombatRoom.Instance?.Ui?.Hand;
         if (hand != null && (hand.InCardPlay || hand.CurrentMode != NPlayerHand.Mode.Play))
             return Error("Cannot end turn while a card is being played or hand is in selection mode");
 
@@ -430,7 +435,7 @@ public static partial class McpMod
         var occupied = new List<string>();
         for (int i = 0; i < player.PotionSlots.Count; i++)
         {
-            var p = player.GetPotionAtSlotIndex(i);
+            PotionModel? p = player.GetPotionAtSlotIndex(i);
             if (p != null)
                 occupied.Add($"{i}={SafeGetText(() => p.Title) ?? "?"}");
         }
@@ -448,18 +453,18 @@ public static partial class McpMod
         if (slot < 0 || slot >= player.PotionSlots.Count)
             return Error($"Potion slot {slot} out of range (player has {player.PotionSlots.Count} slots)");
 
-        var potion = player.GetPotionAtSlotIndex(slot);
+        PotionModel? potion = player.GetPotionAtSlotIndex(slot);
         if (potion == null)
             return Error(DescribeEmptyPotionSlot(player, slot));
 
-        var unusable = ValidatePotionUsable(player, potion);
+        Dictionary<string, object?>? unusable = ValidatePotionUsable(player, potion);
         if (unusable != null)
             return unusable;
 
-        var targetResolution = ResolvePotionTarget(player, player.Creature.CombatState, potion, data);
+        PlayTargetResolution targetResolution = ResolvePotionTarget(player, player.Creature.CombatState, potion, data);
         if (targetResolution.Failure != null)
             return targetResolution.Failure;
-        var target = targetResolution.Target;
+        Creature? target = targetResolution.Target;
 
         if (target != null && !potion.IsValidTarget(target))
             return Error($"Potion '{SafeGetText(() => potion.Title)}' cannot target {SafeGetText(() => target.Monster?.Title) ?? "that creature"}");
@@ -559,7 +564,7 @@ public static partial class McpMod
             return new PlayTargetResolution(alive[0], null);
         }
 
-        var target = ResolveTarget(combatState, targetId);
+        Creature? target = ResolveTarget(combatState, targetId);
         return target == null
             ? new PlayTargetResolution(null, Error($"Target '{targetId}' not found among alive enemies"))
             : new PlayTargetResolution(target, null);
@@ -572,11 +577,11 @@ public static partial class McpMod
         // Optional 'target' throws the potion to a teammate
         // (players[].entity_id, e.g. "player_1", or a numeric
         // combat_id); default = self, the pre-existing behavior.
-        if (!data.TryGetValue("target", out var playerElem))
+        if (!data.TryGetValue("target", out JsonElement playerElem))
             return new PlayTargetResolution(player.Creature, null);
 
         string playerId = playerElem.GetString() ?? "";
-        var target = ResolvePlayerTarget(player, combatState, playerId);
+        Creature? target = ResolvePlayerTarget(player, combatState, playerId);
         return target is not { IsAlive: true }
             ? new PlayTargetResolution(null, Error($"Target '{playerId}' not found among living players"))
             : new PlayTargetResolution(target, null);
@@ -588,9 +593,9 @@ public static partial class McpMod
         // Another living player, never self (PotionModel.IsValidTarget
         // rejects self and the use would be silently cancelled). No
         // such potion exists today; handled for completeness.
-        if (!data.TryGetValue("target", out var allyElem))
+        if (!data.TryGetValue("target", out JsonElement allyElem))
         {
-            var teammate = player.RunState.Players
+            Creature? teammate = player.RunState.Players
                 .Where(p => p != player && p.Creature.IsAlive)
                 .OrderBy(p => p.Creature.CurrentHp)
                 .FirstOrDefault()?.Creature;
@@ -600,7 +605,7 @@ public static partial class McpMod
         }
 
         string allyId = allyElem.GetString() ?? "";
-        var target = ResolvePlayerTarget(player, combatState, allyId);
+        Creature? target = ResolvePlayerTarget(player, combatState, allyId);
         if (target == player.Creature)
         {
             return new PlayTargetResolution(null, Error(
@@ -628,7 +633,7 @@ public static partial class McpMod
         if (slot < 0 || slot >= player.PotionSlots.Count)
             return Error($"Potion slot {slot} out of range (player has {player.PotionSlots.Count} slots)");
 
-        var potion = player.GetPotionAtSlotIndex(slot);
+        PotionModel? potion = player.GetPotionAtSlotIndex(slot);
         if (potion == null)
             return Error(DescribeEmptyPotionSlot(player, slot));
 
@@ -680,17 +685,17 @@ public static partial class McpMod
     {
         return TryRead<bool?>(() =>
         {
-            var method = potion.GetType().GetMethods(
+            MethodInfo? method = potion.GetType().GetMethods(
                     System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static)
                 .FirstOrDefault(m => m.Name.Contains("MerchantTarget", StringComparison.Ordinal));
             if (method == null)
                 return false;
 
-            var result = method.Invoke(null, new object?[] { player.RunState.CurrentRoom });
+            object? result = method.Invoke(null, new object?[] { player.RunState.CurrentRoom });
             if (result == null)
                 return false;
 
-            var item1 = result.GetType().GetField("Item1")?.GetValue(result);
+            object? item1 = result.GetType().GetField("Item1")?.GetValue(result);
             return item1 != null;
         }) ?? false;
     }
@@ -705,7 +710,7 @@ public static partial class McpMod
             {
                 if (merchRoom.Inventory?.IsOpen == true)
                 {
-                    var backBtn = FindFirst<NBackButton>(merchRoom);
+                    NBackButton? backBtn = FindFirst<NBackButton>(merchRoom);
                     if (backBtn is { IsEnabled: true })
                         backBtn.ForceClick();
                 }
@@ -714,13 +719,13 @@ public static partial class McpMod
 
             if (NEventRoom.Instance is { } evtRoom)
             {
-                var fmNode = FindFirst<NFakeMerchant>(evtRoom);
+                NFakeMerchant? fmNode = FindFirst<NFakeMerchant>(evtRoom);
                 if (fmNode != null)
                 {
-                    var fmInventory = FindFirst<NMerchantInventory>(fmNode);
+                    NMerchantInventory? fmInventory = FindFirst<NMerchantInventory>(fmNode);
                     if (fmInventory is { IsOpen: true })
                     {
-                        var backBtn = FindFirst<NBackButton>(fmNode);
+                        NBackButton? backBtn = FindFirst<NBackButton>(fmNode);
                         if (backBtn is { IsEnabled: true })
                             backBtn.ForceClick();
                     }
@@ -739,7 +744,7 @@ public static partial class McpMod
         if (slot < 0 || slot >= player.PotionSlots.Count)
             return Error($"Potion slot {slot} out of range (player has {player.PotionSlots.Count} slots)");
 
-        var potion = player.GetPotionAtSlotIndex(slot);
+        PotionModel? potion = player.GetPotionAtSlotIndex(slot);
         if (potion == null)
             return Error(DescribeEmptyPotionSlot(player, slot));
         if (potion.IsQueued)
@@ -761,7 +766,7 @@ public static partial class McpMod
 
     private static Dictionary<string, object?> ExecuteChooseEventOption(Dictionary<string, JsonElement> data)
     {
-        var uiRoom = NEventRoom.Instance;
+        NEventRoom? uiRoom = NEventRoom.Instance;
         if (uiRoom == null)
             return Error("Event room is not open");
 
@@ -777,8 +782,8 @@ public static partial class McpMod
         if (index < 0 || index >= buttons.Count)
             return Error($"Event option index {index} out of range ({buttons.Count} options)");
 
-        var button = buttons[index];
-        var option = button.Option;
+        NEventOptionButton button = buttons[index];
+        EventOption option = button.Option;
         if (option.IsLocked)
             return Error($"Event option {index} is locked");
 
@@ -812,15 +817,15 @@ public static partial class McpMod
 
     private static Dictionary<string, object?> ExecuteAdvanceDialogue()
     {
-        var uiRoom = NEventRoom.Instance;
+        NEventRoom? uiRoom = NEventRoom.Instance;
         if (uiRoom == null)
             return Error("Event room is not open");
 
-        var ancientLayout = FindFirst<NAncientEventLayout>(uiRoom);
+        NAncientEventLayout? ancientLayout = FindFirst<NAncientEventLayout>(uiRoom);
         if (ancientLayout == null)
             return Error("No ancient dialogue active");
 
-        var hitbox = ancientLayout.GetNodeOrNull<NClickableControl>("%DialogueHitbox");
+        NClickableControl hitbox = ancientLayout.GetNodeOrNull<NClickableControl>("%DialogueHitbox");
         if (hitbox == null || !hitbox.Visible || !hitbox.IsEnabled)
             return Error("Dialogue hitbox not available - dialogue may have ended");
 
@@ -838,7 +843,7 @@ public static partial class McpMod
         if (player.RunState.CurrentRoom is not RestSiteRoom restSiteRoom)
             return Error("Not at a rest site");
 
-        var uiRoom = NRestSiteRoom.Instance;
+        NRestSiteRoom? uiRoom = NRestSiteRoom.Instance;
         if (uiRoom == null)
             return Error("Rest site room is not open");
 
@@ -847,15 +852,15 @@ public static partial class McpMod
         if (options.Count == 0)
             return Error("No rest site options available");
 
-        var selectorError = ResolveRestOptionIndex(data, options, uiRoom, out int index);
+        Dictionary<string, object?>? selectorError = ResolveRestOptionIndex(data, options, uiRoom, out int index);
         if (selectorError != null)
             return selectorError;
 
-        var option = options[index];
+        RestSiteOption option = options[index];
         if (!option.IsEnabled)
             return Error($"Rest option [{index}] {option.OptionId} is disabled. Available: {DescribeRestOptions(options, uiRoom)}");
 
-        var button = FindRestSiteButton(uiRoom, option);
+        NRestSiteButton? button = FindRestSiteButton(uiRoom, option);
         if (button == null)
             return Error(
                 $"Rest option [{index}] {option.OptionId} has no button on screen right now; re-read state. "
@@ -937,7 +942,7 @@ public static partial class McpMod
     {
         // The game-side lookup is best effort; a button mid-teardown can also throw on
         // .Option, so both halves fall through silently to the other one.
-        var button = TryReadQuiet(() => uiRoom.GetButtonForOption(option));
+        NRestSiteButton? button = TryReadQuiet(() => uiRoom.GetButtonForOption(option));
         if (button != null)
             return button;
 
@@ -950,7 +955,7 @@ public static partial class McpMod
     {
         if (player.RunState.CurrentRoom is MerchantRoom)
         {
-            var merchantRoom = NMerchantRoom.Instance;
+            NMerchantRoom? merchantRoom = NMerchantRoom.Instance;
             if (merchantRoom?.Inventory == null)
                 return Error("Shop inventory UI is not ready yet; wait a moment and retry");
             if (merchantRoom.Inventory.IsOpen)
@@ -975,9 +980,9 @@ public static partial class McpMod
             if (fakeMerchant.StartedFight)
                 return Error("The fake merchant is no longer available");
 
-            var eventUi = NEventRoom.Instance;
-            var fakeMerchantNode = eventUi == null ? null : FindFirst<NFakeMerchant>(eventUi);
-            var inventoryUi = fakeMerchantNode == null ? null : FindFirst<NMerchantInventory>(fakeMerchantNode);
+            NEventRoom? eventUi = NEventRoom.Instance;
+            NFakeMerchant? fakeMerchantNode = eventUi == null ? null : FindFirst<NFakeMerchant>(eventUi);
+            NMerchantInventory? inventoryUi = fakeMerchantNode == null ? null : FindFirst<NMerchantInventory>(fakeMerchantNode);
             if (fakeMerchantNode == null || inventoryUi == null)
                 return Error("Fake merchant inventory UI is not ready yet; wait a moment and retry");
             if (inventoryUi.IsOpen)
@@ -987,7 +992,7 @@ public static partial class McpMod
                     ["message"] = "Fake merchant inventory is already open"
                 };
 
-            var button = fakeMerchantNode.MerchantButton;
+            NMerchantButton button = fakeMerchantNode.MerchantButton;
             if (button == null || !button.Visible || !button.IsEnabled)
                 return Error("Fake merchant inventory cannot be opened right now");
 
@@ -1008,7 +1013,7 @@ public static partial class McpMod
 
         if (player.RunState.CurrentRoom is MerchantRoom merchantRoom)
         {
-            var merchUI = NMerchantRoom.Instance;
+            NMerchantRoom? merchUI = NMerchantRoom.Instance;
             if (merchUI?.Inventory != null && !merchUI.Inventory.IsOpen)
                 merchUI.OpenInventory();
             // v0.107 split the merchant into per-player inventories; take the local one.
@@ -1018,9 +1023,9 @@ public static partial class McpMod
                  && eventRoom.CanonicalEvent is FakeMerchant
                  && (eventRoom.LocalMutableEvent ?? eventRoom.CanonicalEvent) is FakeMerchant fakeMerchant)
         {
-            var uiRoom = NEventRoom.Instance;
-            var fmNode = uiRoom == null ? null : FindFirst<NFakeMerchant>(uiRoom);
-            var inventoryUI = fmNode == null ? null : FindFirst<NMerchantInventory>(fmNode);
+            NEventRoom? uiRoom = NEventRoom.Instance;
+            NFakeMerchant? fmNode = uiRoom == null ? null : FindFirst<NFakeMerchant>(uiRoom);
+            NMerchantInventory? inventoryUI = fmNode == null ? null : FindFirst<NMerchantInventory>(fmNode);
             if (inventoryUI?.IsOpen != true)
                 return Error("Fake merchant inventory is closed. Use shop_open before purchasing.");
             inventory = fakeMerchant.Inventory;
@@ -1040,7 +1045,7 @@ public static partial class McpMod
         if (index < 0 || index >= allEntries.Count)
             return Error($"Shop item index {index} out of range ({allEntries.Count} items)");
 
-        var entry = allEntries[index];
+        MerchantEntry entry = allEntries[index];
         if (!entry.IsStocked)
             return Error("Item is sold out");
         if (!entry.EnoughGold)
@@ -1058,15 +1063,15 @@ public static partial class McpMod
 
     private static Dictionary<string, object?> ExecuteChooseMapNode(Dictionary<string, JsonElement> data)
     {
-        var guard = TryGetTravelableMap(out var mapScreen, out var travelable);
+        Dictionary<string, object?>? guard = TryGetTravelableMap(out NMapScreen? mapScreen, out List<NMapPoint>? travelable);
         if (guard != null)
             return guard;
 
-        var targetError = ResolveMapNodeTarget(data, travelable, out var target);
+        Dictionary<string, object?>? targetError = ResolveMapNodeTarget(data, travelable, out NMapPoint? target);
         if (targetError != null)
             return targetError;
 
-        var pt = target.Point;
+        MapPoint pt = target.Point;
         mapScreen!.OnMapPointSelectedLocally(target);
 
         return new Dictionary<string, object?>(StringComparer.Ordinal)
@@ -1146,11 +1151,11 @@ public static partial class McpMod
 
     private static Dictionary<string, object?> ExecuteClaimReward(Dictionary<string, JsonElement> data)
     {
-        var overlay = NOverlayStack.Instance?.Peek();
+        IOverlayScreen? overlay = NOverlayStack.Instance?.Peek();
         if (IsMapScreenOpenOrVisible() || overlay is not NRewardsScreen rewardsScreen)
             return Error("Rewards screen is not open");
 
-        var enabledButtons = GetRewardButtons(rewardsScreen);
+        List<NRewardButton> enabledButtons = GetRewardButtons(rewardsScreen);
         string? rewardId = TryReadStringParam(data, "reward_id");
         string? revision = TryReadStringParam(data, "screen_revision");
         if (data.ContainsKey("reward_id") && string.IsNullOrWhiteSpace(rewardId))
@@ -1165,11 +1170,11 @@ public static partial class McpMod
                 return MissingIntParam("current reward index", "index", "reward_index");
             index = parsedIndex;
         }
-        var error = s_rewardSession.Resolve(rewardId, index, revision, out var entry);
+        string? error = s_rewardSession.Resolve(rewardId, index, revision, out RewardSession.Entry? entry);
         if (error != null) return Error(error);
-        var button = enabledButtons.First(b => ReferenceEquals(b.Reward, entry!.Key));
+        NRewardButton button = enabledButtons.First(b => ReferenceEquals(b.Reward, entry!.Key));
 
-        var reward = button.Reward!;
+        Reward reward = button.Reward!;
         string rewardDesc = GetRewardTypeName(reward);
         if (reward is GoldReward g)
             rewardDesc = $"gold ({g.Amount})";
@@ -1180,7 +1185,7 @@ public static partial class McpMod
             // The game silently refuses a potion reward when the belt is full: the
             // button stays enabled, the reward stays in the list, and nothing happens.
             // Reporting that as "ok" turned a full belt into an infinite claim loop.
-            var localPlayer = LocalContext.GetMe(RunManager.Instance.DebugOnlyGetState()!);
+            Player? localPlayer = LocalContext.GetMe(RunManager.Instance.DebugOnlyGetState()!);
             if (localPlayer != null && !localPlayer.HasOpenPotionSlots)
                 return Error(
                     $"Potion slots full ({localPlayer.PotionSlots.Count(slot => slot != null)}/{localPlayer.MaxPotionCount}); "
@@ -1203,7 +1208,7 @@ public static partial class McpMod
 
     private static Dictionary<string, object?> ExecuteSelectCardReward(Dictionary<string, JsonElement> data)
     {
-        var overlay = NOverlayStack.Instance?.Peek();
+        IOverlayScreen? overlay = NOverlayStack.Instance?.Peek();
         if (overlay is not NCardRewardSelectionScreen cardScreen)
             return Error("Card reward selection screen is not open");
 
@@ -1216,9 +1221,9 @@ public static partial class McpMod
         if (cardIndex < 0 || cardIndex >= cardHolders.Count)
             return Error($"Card index {cardIndex} out of range (screen has {cardHolders.Count} cards)");
 
-        var holder = cardHolders[cardIndex];
+        NCardHolder holder = cardHolders[cardIndex];
         string cardName = SafeGetText(() => holder.CardModel?.Title) ?? "unknown";
-        var parent = GetCardRewardParent(cardScreen);
+        RewardSession.Entry? parent = GetCardRewardParent(cardScreen);
         holder.EmitSignal(NCardHolder.SignalName.Pressed, holder);
 
         return new Dictionary<string, object?>(StringComparer.Ordinal)
@@ -1232,11 +1237,11 @@ public static partial class McpMod
 
     private static Dictionary<string, object?> ExecuteSkipCardReward()
     {
-        var overlay = NOverlayStack.Instance?.Peek();
+        IOverlayScreen? overlay = NOverlayStack.Instance?.Peek();
         if (overlay is not NCardRewardSelectionScreen cardScreen)
             return Error("Card reward selection screen is not open");
 
-        var alternatives = BuildCardRewardAlternatives(cardScreen);
+        List<Dictionary<string, object?>> alternatives = BuildCardRewardAlternatives(cardScreen);
         if (alternatives.Count == 0)
             return Error("No skip option available on this card reward");
 
@@ -1264,11 +1269,11 @@ public static partial class McpMod
     /// </summary>
     private static Dictionary<string, object?> ExecuteSelectCardRewardAlternative(Dictionary<string, JsonElement> data)
     {
-        var overlay = NOverlayStack.Instance?.Peek();
+        IOverlayScreen? overlay = NOverlayStack.Instance?.Peek();
         if (overlay is not NCardRewardSelectionScreen cardScreen)
             return Error("Card reward selection screen is not open");
 
-        var alternatives = BuildCardRewardAlternatives(cardScreen);
+        List<Dictionary<string, object?>> alternatives = BuildCardRewardAlternatives(cardScreen);
         if (alternatives.Count == 0)
             return Error("This card reward has no alternative options");
 
@@ -1299,15 +1304,15 @@ public static partial class McpMod
         List<Dictionary<string, object?>> alternatives,
         int index)
     {
-        var buttons = FindAll<NCardRewardAlternativeButton>(cardScreen);
+        List<NCardRewardAlternativeButton> buttons = FindAll<NCardRewardAlternativeButton>(cardScreen);
         if (index < 0 || index >= buttons.Count)
             return Error($"Alternative index {index} is no longer on screen; re-read state");
 
-        var button = buttons[index];
+        NCardRewardAlternativeButton button = buttons[index];
         if (!button.IsEnabled)
             return Error($"Alternative '{alternatives[index].GetValueOrDefault("option_id")}' is disabled");
 
-        var parent = GetCardRewardParent(cardScreen);
+        RewardSession.Entry? parent = GetCardRewardParent(cardScreen);
         var uiOptions = GetInstanceFieldValue(cardScreen, "_extraOptions")
             as System.Collections.Generic.IReadOnlyList<MegaCrit.Sts2.Core.Entities.CardRewardAlternatives.CardRewardAlternative>;
         bool? closesWithoutConsuming = uiOptions != null && index < uiOptions.Count
@@ -1341,7 +1346,7 @@ public static partial class McpMod
     {
         if (NOverlayStack.Instance?.Peek() is not NRewardsScreen rewardsScreen)
             return null;
-        var btn = FindFirst<NProceedButton>(rewardsScreen);
+        NProceedButton? btn = FindFirst<NProceedButton>(rewardsScreen);
         if (btn == null || !IsControlVisibleOrActionable(btn))
             return null;
         btn.ForceClick();
@@ -1376,11 +1381,11 @@ public static partial class McpMod
     {
         if (NEventRoom.Instance is not { } evtRoom)
             return null;
-        var fmNode = FindFirst<NFakeMerchant>(evtRoom);
+        NFakeMerchant? fmNode = FindFirst<NFakeMerchant>(evtRoom);
         if (fmNode == null)
             return null;
 
-        var fmInventory = FindFirst<NMerchantInventory>(fmNode);
+        NMerchantInventory? fmInventory = FindFirst<NMerchantInventory>(fmNode);
         if (fmInventory is { IsOpen: true })
         {
             if (!TryCloseMerchantInventoryPanel(fmInventory))
@@ -1388,7 +1393,7 @@ public static partial class McpMod
             return Ok("Closing fake merchant inventory; call proceed again to leave the event");
         }
 
-        var proceedBtn = FindFirst<NProceedButton>(fmNode);
+        NProceedButton? proceedBtn = FindFirst<NProceedButton>(fmNode);
         if (proceedBtn == null || !IsControlVisibleOrActionable(proceedBtn))
             return null;
         proceedBtn.ForceClick();
@@ -1397,7 +1402,7 @@ public static partial class McpMod
 
     private static Dictionary<string, object?>? ProceedFromTreasure()
     {
-        var treasureUI = FindFirst<NTreasureRoom>(
+        NTreasureRoom? treasureUI = FindFirst<NTreasureRoom>(
             ((Godot.SceneTree)Godot.Engine.GetMainLoop()).Root);
         if (treasureUI == null || !IsControlVisibleOrActionable(treasureUI.ProceedButton))
             return null;
@@ -1412,7 +1417,7 @@ public static partial class McpMod
     {
         return TryRead<bool?>(() =>
         {
-            var closeMethod = inventory.GetType().GetMethod(
+            MethodInfo? closeMethod = inventory.GetType().GetMethod(
                 "Close",
                 System.Reflection.BindingFlags.Instance |
                 System.Reflection.BindingFlags.Public |
@@ -1427,14 +1432,14 @@ public static partial class McpMod
 
     private static Dictionary<string, object?> ExecuteSelectCard(Dictionary<string, JsonElement> data)
     {
-        var overlay = NOverlayStack.Instance?.Peek();
+        IOverlayScreen? overlay = NOverlayStack.Instance?.Peek();
 
         if (!TryGetIntParam(data, out int index, "index", "card_index"))
             return MissingIntParam("card index in the grid", "index", "card_index");
 
         // Optional override so a caller can force an interaction path without
         // waiting on a mod rebuild: "grid", "holder", or "auto" (default).
-        string method = data.TryGetValue("method", out var methodElem)
+        string method = data.TryGetValue("method", out JsonElement methodElem)
             ? (methodElem.GetString() ?? "auto").ToLowerInvariant()
             : "auto";
 
@@ -1453,18 +1458,18 @@ public static partial class McpMod
         // interaction surface. Some clients repeat select_card(index) because
         // older state responses only exposed card indices. Treat that repeated
         // selection as confirmation instead of emitting a no-op grid signal.
-        var previewResult = ConfirmOpenGridPreview(gridScreen);
+        Dictionary<string, object?>? previewResult = ConfirmOpenGridPreview(gridScreen);
         if (previewResult != null)
             return previewResult;
 
-        if (!TryResolveGridPress(gridScreen, method, out var grid, out var holders, out var failure))
+        if (!TryResolveGridPress(gridScreen, method, out NCardGrid? grid, out List<NGridCardHolder>? holders, out Dictionary<string, object?>? failure))
             return failure!;
 
         if (index < 0 || index >= holders.Count)
             return Error($"Card index {index} out of range ({holders.Count} cards available)");
 
-        var holder = holders[index];
-        var cardModel = holder.CardModel;
+        NGridCardHolder holder = holders[index];
+        CardModel? cardModel = holder.CardModel;
         string cardName = SafeGetText(() => cardModel?.Title) ?? "unknown";
 
         // Pressing the holder drives the real signal chain, which is what the
@@ -1474,7 +1479,7 @@ public static partial class McpMod
 
         // The screen's own selection set, so the outcome is read back from the game
         // instead of assumed.
-        var selection = GetCardSelectSelection(gridScreen);
+        HashSet<CardModel>? selection = GetCardSelectSelection(gridScreen);
         bool? wasSelected = (selection != null && cardModel != null) ? selection.Contains(cardModel) : null;
 
         if (useHolder)
@@ -1491,13 +1496,13 @@ public static partial class McpMod
     /// </summary>
     private static Dictionary<string, object?>? ConfirmOpenGridPreview(NCardGridSelectionScreen gridScreen)
     {
-        foreach (var containerName in new[] { "%UpgradeSinglePreviewContainer", "%UpgradeMultiPreviewContainer", "%PreviewContainer" })
+        foreach (string? containerName in new[] { "%UpgradeSinglePreviewContainer", "%UpgradeMultiPreviewContainer", "%PreviewContainer" })
         {
             if (gridScreen.GetNodeOrNull<Godot.Control>(containerName)?.Visible != true)
                 continue;
 
-            var confirmResult = ExecuteConfirmSelection();
-            if (confirmResult.TryGetValue("status", out var status) && string.Equals(status?.ToString(), "ok", StringComparison.Ordinal))
+            Dictionary<string, object?> confirmResult = ExecuteConfirmSelection();
+            if (confirmResult.TryGetValue("status", out object? status) && string.Equals(status?.ToString(), "ok", StringComparison.Ordinal))
             {
                 confirmResult["message"] =
                     "Card selection preview was already open; confirming the selected card instead of selecting it again";
@@ -1584,7 +1589,7 @@ public static partial class McpMod
             ["screen"] = gridScreen.GetType().Name
         };
 
-        var prefs = GetCardSelectPrefs(gridScreen);
+        CardSelectorPrefs? prefs = GetCardSelectPrefs(gridScreen);
         if (prefs.HasValue)
         {
             toggled["min_select"] = prefs.Value.MinSelect;
@@ -1607,7 +1612,7 @@ public static partial class McpMod
     private static Dictionary<string, object?> DescribeUnchangedCardPress(
         NCardGridSelectionScreen gridScreen, string cardName, bool isSelected)
     {
-        var limit = GetCardSelectPrefs(gridScreen);
+        CardSelectorPrefs? limit = GetCardSelectPrefs(gridScreen);
         if (isSelected)
             return Error($"{cardName} is still selected - the screen did not accept the press");
         return limit.HasValue
@@ -1632,7 +1637,7 @@ public static partial class McpMod
         if (!ChooseCardScreenAcceptsInput(chooseScreen))
             return Error("Choose-a-card screen is still inside its 350ms opening deadzone - retry once card_select.can_select is true");
 
-        var holder = holders[index];
+        NGridCardHolder holder = holders[index];
         if (holder.CardModel == null)
             return Error($"Card index {index} does not contain a card");
         if (!IsCardHolderSelectable(holder))
@@ -1654,7 +1659,7 @@ public static partial class McpMod
 
     private static Dictionary<string, object?> ExecuteConfirmSelection()
     {
-        var overlay = NOverlayStack.Instance?.Peek();
+        IOverlayScreen? overlay = NOverlayStack.Instance?.Peek();
         if (overlay is NChooseACardSelectionScreen)
             return Error("Choose-a-card screen requires no confirmation - use select_card(index) to pick directly");
         if (overlay is not NCardGridSelectionScreen screen)
@@ -1664,24 +1669,24 @@ public static partial class McpMod
         // completion check is `count >= MinSelect && count <= MaxSelect`; when it fails the
         // click is simply swallowed, which is how confirm_selection used to return ok and
         // do nothing (A-7).
-        var selection = GetCardSelectSelection(screen);
-        var prefs = GetCardSelectPrefs(screen);
+        HashSet<CardModel>? selection = GetCardSelectSelection(screen);
+        CardSelectorPrefs? prefs = GetCardSelectPrefs(screen);
         int? selectedCount = selection?.Count;
 
         // Step two of the screen: a preview panel is up, and its own Confirm is the button
         // that actually applies the selection. This has to be checked first - the screen's
         // main Confirm is still enabled underneath, and on these screens pressing it means
         // "open the preview", which appends a second copy of every selected card (A-7).
-        var preview = FindVisibleCardSelectPreview(screen);
+        Control? preview = FindVisibleCardSelectPreview(screen);
         if (preview != null)
             return ConfirmSelectionPreview(screen, preview, selectedCount);
 
         // Step one: check the count before pressing anything.
-        var countFailure = ValidateSelectedCount(selectedCount, prefs);
+        Dictionary<string, object?>? countFailure = ValidateSelectedCount(selectedCount, prefs);
         if (countFailure != null)
             return countFailure;
 
-        var mainConfirm = ResolveMainConfirm(screen);
+        NConfirmButton? mainConfirm = ResolveMainConfirm(screen);
         if (mainConfirm is not { IsEnabled: true })
         {
             return Error(selectedCount.HasValue && prefs.HasValue
@@ -1696,7 +1701,7 @@ public static partial class McpMod
     private static Dictionary<string, object?> ConfirmSelectionPreview(
         NCardGridSelectionScreen screen, Control preview, int? selectedCount)
     {
-        var previewConfirm = GetCardSelectPreviewConfirm(preview);
+        NConfirmButton? previewConfirm = GetCardSelectPreviewConfirm(preview);
         if (previewConfirm is not { IsEnabled: true })
             return Error("The selection preview's confirm button is not enabled - use cancel_selection to go back to the grid");
 
@@ -1742,7 +1747,7 @@ public static partial class McpMod
     /// </summary>
     private static NConfirmButton? ResolveMainConfirm(NCardGridSelectionScreen screen)
     {
-        var mainConfirm = GetCardSelectMainConfirm(screen);
+        NConfirmButton? mainConfirm = GetCardSelectMainConfirm(screen);
         if (mainConfirm is { IsEnabled: true })
             return mainConfirm;
         return FindAll<NConfirmButton>(screen).FirstOrDefault(b => b.IsEnabled && b.IsVisibleInTree());
@@ -1790,12 +1795,12 @@ public static partial class McpMod
 
     private static Dictionary<string, object?> ExecuteCancelSelection()
     {
-        var overlay = NOverlayStack.Instance?.Peek();
+        IOverlayScreen? overlay = NOverlayStack.Instance?.Peek();
 
         // Handle choose-a-card screen (skip button)
         if (overlay is NChooseACardSelectionScreen chooseScreen)
         {
-            var skipButton = chooseScreen.GetNodeOrNull<NClickableControl>("SkipButton");
+            NClickableControl skipButton = chooseScreen.GetNodeOrNull<NClickableControl>("SkipButton");
             if (IsControlVisibleOrActionable(skipButton))
             {
                 skipButton.ForceClick();
@@ -1814,10 +1819,10 @@ public static partial class McpMod
         // If a preview is showing, cancel back to the grid. This also clears the screen's
         // selection and empties the preview row, which is the only way out of a preview
         // that was opened with the wrong cards.
-        var preview = FindVisibleCardSelectPreview(screen);
+        Control? preview = FindVisibleCardSelectPreview(screen);
         if (preview != null)
         {
-            var cancelBtn = GetCardSelectPreviewCancel(preview);
+            NBackButton? cancelBtn = GetCardSelectPreviewCancel(preview);
             if (cancelBtn is { IsEnabled: true })
             {
                 cancelBtn.ForceClick();
@@ -1830,7 +1835,7 @@ public static partial class McpMod
         }
 
         // Close the screen entirely
-        var closeButton = screen.GetNodeOrNull<NBackButton>("%Close");
+        NBackButton closeButton = screen.GetNodeOrNull<NBackButton>("%Close");
         if (IsControlVisibleOrActionable(closeButton))
         {
             closeButton.ForceClick();
@@ -1846,14 +1851,14 @@ public static partial class McpMod
 
     private static Dictionary<string, object?> ExecuteSelectBundle(Dictionary<string, JsonElement> data)
     {
-        var overlay = NOverlayStack.Instance?.Peek();
+        IOverlayScreen? overlay = NOverlayStack.Instance?.Peek();
         if (overlay is not NChooseABundleSelectionScreen screen)
             return Error("No bundle selection screen is open");
 
         if (!TryGetIntParam(data, out int index, "index", "bundle_index"))
             return MissingIntParam("bundle index", "index", "bundle_index");
 
-        var previewContainer = screen.GetNodeOrNull<Godot.Control>("%BundlePreviewContainer");
+        Control previewContainer = screen.GetNodeOrNull<Godot.Control>("%BundlePreviewContainer");
         if (previewContainer?.Visible == true)
             return Error("A bundle preview is already open - confirm or cancel it first");
 
@@ -1876,11 +1881,11 @@ public static partial class McpMod
 
     private static Dictionary<string, object?> ExecuteConfirmBundleSelection()
     {
-        var overlay = NOverlayStack.Instance?.Peek();
+        IOverlayScreen? overlay = NOverlayStack.Instance?.Peek();
         if (overlay is not NChooseABundleSelectionScreen screen)
             return Error("No bundle selection screen is open");
 
-        var confirmButton = screen.GetNodeOrNull<NConfirmButton>("%Confirm");
+        NConfirmButton confirmButton = screen.GetNodeOrNull<NConfirmButton>("%Confirm");
         if (!IsControlVisibleOrActionable(confirmButton))
             return Error("Bundle confirm button is not enabled");
 
@@ -1894,11 +1899,11 @@ public static partial class McpMod
 
     private static Dictionary<string, object?> ExecuteCancelBundleSelection()
     {
-        var overlay = NOverlayStack.Instance?.Peek();
+        IOverlayScreen? overlay = NOverlayStack.Instance?.Peek();
         if (overlay is not NChooseABundleSelectionScreen screen)
             return Error("No bundle selection screen is open");
 
-        var cancelButton = screen.GetNodeOrNull<NBackButton>("%Cancel");
+        NBackButton cancelButton = screen.GetNodeOrNull<NBackButton>("%Cancel");
         if (!IsControlVisibleOrActionable(cancelButton))
             return Error("Bundle cancel button is not enabled");
 
@@ -1912,18 +1917,18 @@ public static partial class McpMod
 
     private static Dictionary<string, object?> ExecuteCombatSelectCard(Dictionary<string, JsonElement> data)
     {
-        var hand = NPlayerHand.Instance;
+        NPlayerHand? hand = NPlayerHand.Instance;
         if (hand == null || !hand.IsInCardSelection)
             return Error("No in-combat card selection is active");
 
         if (!TryGetIntParam(data, out int index, "card_index", "index"))
             return MissingIntParam("index of the card in hand", "card_index", "index");
 
-        var holders = hand.ActiveHolders;
+        IReadOnlyList<NHandCardHolder> holders = hand.ActiveHolders;
         if (index < 0 || index >= holders.Count)
             return Error($"Card index {index} out of range ({holders.Count} selectable cards)");
 
-        var holder = holders[index];
+        NHandCardHolder holder = holders[index];
         if (holder.CardModel == null)
             return Error($"Card index {index} does not contain a card");
         if (!IsCardHolderSelectable(holder))
@@ -1943,11 +1948,11 @@ public static partial class McpMod
 
     private static Dictionary<string, object?> ExecuteCombatConfirmSelection()
     {
-        var hand = NPlayerHand.Instance;
+        NPlayerHand? hand = NPlayerHand.Instance;
         if (hand == null || !hand.IsInCardSelection)
             return Error("No in-combat card selection is active");
 
-        var confirmBtn = hand.GetNodeOrNull<NConfirmButton>("%SelectModeConfirmButton");
+        NConfirmButton confirmBtn = hand.GetNodeOrNull<NConfirmButton>("%SelectModeConfirmButton");
         if (!IsControlVisibleOrActionable(confirmBtn))
             return Error("Confirm button is not enabled - select more cards first");
 
@@ -1962,7 +1967,7 @@ public static partial class McpMod
 
     private static Dictionary<string, object?> ExecuteSelectRelic(Dictionary<string, JsonElement> data)
     {
-        var overlay = NOverlayStack.Instance?.Peek();
+        IOverlayScreen? overlay = NOverlayStack.Instance?.Peek();
         if (overlay is not NChooseARelicSelection screen)
             return Error("No relic selection screen is open");
 
@@ -1975,7 +1980,7 @@ public static partial class McpMod
         if (index < 0 || index >= holders.Count)
             return Error($"Relic index {index} out of range ({holders.Count} relics available)");
 
-        var holder = holders[index];
+        NRelicBasicHolder holder = holders[index];
         string relicName = SafeGetText(() => holder.Relic?.Model?.Title) ?? "unknown";
         holder.ForceClick();
 
@@ -1988,11 +1993,11 @@ public static partial class McpMod
 
     private static Dictionary<string, object?> ExecuteSkipRelicSelection()
     {
-        var overlay = NOverlayStack.Instance?.Peek();
+        IOverlayScreen? overlay = NOverlayStack.Instance?.Peek();
         if (overlay is not NChooseARelicSelection screen)
             return Error("No relic selection screen is open");
 
-        var skipButton = screen.GetNodeOrNull<NClickableControl>("SkipButton");
+        NClickableControl skipButton = screen.GetNodeOrNull<NClickableControl>("SkipButton");
         if (skipButton is not { IsEnabled: true, Visible: true } || !skipButton.IsVisibleInTree())
             return Error("No skip option available");
 
@@ -2007,12 +2012,12 @@ public static partial class McpMod
 
     private static Dictionary<string, object?> ExecuteClaimTreasureRelic(Dictionary<string, JsonElement> data)
     {
-        var treasureUI = FindFirst<NTreasureRoom>(
+        NTreasureRoom? treasureUI = FindFirst<NTreasureRoom>(
             ((Godot.SceneTree)Godot.Engine.GetMainLoop()).Root);
         if (treasureUI == null)
             return Error("Treasure room is not open");
 
-        var relicCollection = treasureUI.GetNodeOrNull<NTreasureRoomRelicCollection>("%RelicCollection");
+        NTreasureRoomRelicCollection relicCollection = treasureUI.GetNodeOrNull<NTreasureRoomRelicCollection>("%RelicCollection");
         if (relicCollection?.Visible != true)
             return Error("Relic collection is not visible - chest may not be opened yet");
 
@@ -2026,7 +2031,7 @@ public static partial class McpMod
         if (index < 0 || index >= holders.Count)
             return Error($"Relic index {index} out of range ({holders.Count} relics available)");
 
-        var holder = holders[index];
+        NTreasureRoomRelicHolder holder = holders[index];
         string relicName = SafeGetText(() => holder.Relic?.Model?.Title) ?? "unknown";
         holder.ForceClick();
 
@@ -2039,15 +2044,15 @@ public static partial class McpMod
 
     private static Dictionary<string, object?> ExecuteCrystalSphereSetTool(Dictionary<string, JsonElement> data)
     {
-        var overlay = NOverlayStack.Instance?.Peek();
+        IOverlayScreen? overlay = NOverlayStack.Instance?.Peek();
         if (overlay is not NCrystalSphereScreen screen)
             return Error("Crystal Sphere screen is not open");
 
-        if (!data.TryGetValue("tool", out var toolElem))
+        if (!data.TryGetValue("tool", out JsonElement toolElem))
             return Error("Missing 'tool' (expected 'big' or 'small')");
 
         string tool = toolElem.GetString() ?? "";
-        var button = tool switch
+        NClickableControl? button = tool switch
         {
             "big" => screen.GetNodeOrNull<NClickableControl>("%BigDivinationButton"),
             "small" => screen.GetNodeOrNull<NClickableControl>("%SmallDivinationButton"),
@@ -2069,19 +2074,19 @@ public static partial class McpMod
 
     private static Dictionary<string, object?> ExecuteCrystalSphereClickCell(Dictionary<string, JsonElement> data)
     {
-        var overlay = NOverlayStack.Instance?.Peek();
+        IOverlayScreen? overlay = NOverlayStack.Instance?.Peek();
         if (overlay is not NCrystalSphereScreen screen)
             return Error("Crystal Sphere screen is not open");
 
-        if (!data.TryGetValue("x", out var xElem))
+        if (!data.TryGetValue("x", out JsonElement xElem))
             return Error("Missing 'x' (cell x-coordinate)");
-        if (!data.TryGetValue("y", out var yElem))
+        if (!data.TryGetValue("y", out JsonElement yElem))
             return Error("Missing 'y' (cell y-coordinate)");
 
         int x = xElem.GetInt32();
         int y = yElem.GetInt32();
 
-        var cell = FindAll<NCrystalSphereCell>(screen)
+        NCrystalSphereCell? cell = FindAll<NCrystalSphereCell>(screen)
             .FirstOrDefault(c => c.Entity.X == x && c.Entity.Y == y);
         if (cell == null)
             return Error($"Crystal Sphere cell ({x}, {y}) was not found");
@@ -2098,11 +2103,11 @@ public static partial class McpMod
 
     private static Dictionary<string, object?> ExecuteCrystalSphereProceed()
     {
-        var overlay = NOverlayStack.Instance?.Peek();
+        IOverlayScreen? overlay = NOverlayStack.Instance?.Peek();
         if (overlay is not NCrystalSphereScreen screen)
             return Error("Crystal Sphere screen is not open");
 
-        var proceedButton = FindCrystalSphereProceedButton(screen);
+        NProceedButton? proceedButton = FindCrystalSphereProceedButton(screen);
         if (proceedButton == null)
             return Error("Crystal Sphere proceed button is not enabled");
 
@@ -2116,7 +2121,7 @@ public static partial class McpMod
 
     private static NProceedButton? FindCrystalSphereProceedButton(NCrystalSphereScreen screen)
     {
-        var namedButton = screen.GetNodeOrNull<NProceedButton>("%ProceedButton");
+        NProceedButton namedButton = screen.GetNodeOrNull<NProceedButton>("%ProceedButton");
         if (IsControlVisibleOrActionable(namedButton))
             return namedButton;
 
@@ -2133,7 +2138,7 @@ public static partial class McpMod
     {
         if (uint.TryParse(entityId, out uint combatId))
         {
-            var byId = combatState?.GetCreature(combatId);
+            Creature? byId = combatState?.GetCreature(combatId);
             return byId is { IsPlayer: true } ? byId : null;
         }
 
@@ -2178,7 +2183,7 @@ public static partial class McpMod
         // state builder uses, so they keep pointing at the creature they were read for
         // even if another enemy died in between.
         RefreshEntityIdRegistry(combatState);
-        foreach (var creature in combatState.Enemies)
+        foreach (Creature creature in combatState.Enemies)
         {
             if (!creature.IsAlive) continue;
             if (string.Equals(GetStableEntityId(creature), entityId, StringComparison.Ordinal))
@@ -2207,9 +2212,9 @@ public static partial class McpMod
         if (tree?.Root == null)
             return Error("Cannot access scene tree");
 
-        var pending = GetProgressEpochIdsByState("Obtained", "ObtainedNoSlot");
+        List<string> pending = GetProgressEpochIdsByState("Obtained", "ObtainedNoSlot");
 
-        var timelineScreen = FindFirst<NTimelineScreen>(tree.Root);
+        NTimelineScreen? timelineScreen = FindFirst<NTimelineScreen>(tree.Root);
         bool timelineVisible = timelineScreen != null && IsNodeVisible(timelineScreen);
 
         if (!timelineVisible)
@@ -2223,11 +2228,11 @@ public static partial class McpMod
                     ["done"] = true
                 };
 
-            var mainMenu = FindFirst<NMainMenu>(tree.Root);
+            NMainMenu? mainMenu = FindFirst<NMainMenu>(tree.Root);
             if (mainMenu == null)
                 return Error("Not on the main menu; open the main menu before revealing epochs");
 
-            var opened = ClickMenuButtonField(mainMenu, "_timelineButton", "Opening timeline to reveal epochs");
+            Dictionary<string, object?> opened = ClickMenuButtonField(mainMenu, "_timelineButton", "Opening timeline to reveal epochs");
             if (string.Equals((string?)opened["status"], "error", StringComparison.Ordinal))
                 return opened;
 
@@ -2240,8 +2245,8 @@ public static partial class McpMod
         // Dismiss the tutorial, any open unlock/inspect screen, and drain the queue
         // before looking for the next slot. ExecuteMenuSelect("advance") already
         // encodes that order, and finishes by revealing one slot.
-        var step = ExecuteMenuSelect("advance");
-        bool done = step.TryGetValue("done", out var d) && d is true;
+        Dictionary<string, object?> step = ExecuteMenuSelect("advance");
+        bool done = step.TryGetValue("done", out object? d) && d is true;
 
         pending = GetProgressEpochIdsByState("Obtained", "ObtainedNoSlot");
         step["pending_epoch_ids"] = pending;
@@ -2250,7 +2255,7 @@ public static partial class McpMod
         {
             // Leave the timeline so the caller lands back on a main menu that has
             // `singleplayer` again.
-            var back = ExecuteMenuSelect("back");
+            Dictionary<string, object?> back = ExecuteMenuSelect("back");
             step["message"] = "All epochs revealed; returned to the main menu";
             step["left_timeline"] = string.Equals((string?)back["status"], "ok", StringComparison.Ordinal);
             step["done"] = true;
@@ -2268,7 +2273,7 @@ public static partial class McpMod
     /// </summary>
     private static Dictionary<string, object?>? TryRevealOneEpochSlot(NTimelineScreen timelineScreen)
     {
-        var pending = GetProgressEpochIdsByState("Obtained", "ObtainedNoSlot");
+        List<string> pending = GetProgressEpochIdsByState("Obtained", "ObtainedNoSlot");
         if (pending.Count == 0)
             return null;
 
@@ -2276,7 +2281,7 @@ public static partial class McpMod
         // _isUiVisible and the input blocker) and reports "busy" on a timeline that is
         // sitting still and perfectly interactive, so it must not gate the reveal —
         // only explain why no slot is available yet.
-        var slot = FindAll<NEpochSlot>(timelineScreen)
+        NEpochSlot? slot = FindAll<NEpochSlot>(timelineScreen)
             .FirstOrDefault(s => s.State == EpochSlotState.Obtained);
 
         if (slot == null)
@@ -2296,14 +2301,14 @@ public static partial class McpMod
         // then reveal. RevealEpoch writes the progress state, opens the inspect screen
         // and runs the unlock animation, which is what actually grants the epoch's cards
         // and relics. It is private only because nothing but the click handler calls it.
-        var reveal = TryRead<System.Reflection.MethodInfo?>("timeline.reveal_epoch.method",
+        MethodInfo? reveal = TryRead<System.Reflection.MethodInfo?>("timeline.reveal_epoch.method",
             () => typeof(NEpochSlot).GetMethod(
                 "RevealEpoch",
                 System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance));
         if (reveal == null)
             return Error("NEpochSlot.RevealEpoch is missing - the game's timeline API changed");
 
-        var failure = TryAction("timeline.reveal_epoch", () =>
+        string? failure = TryAction("timeline.reveal_epoch", () =>
         {
             timelineScreen.DisableInput();
             slot.GetViewport()?.GuiReleaseFocus();
@@ -2338,33 +2343,33 @@ public static partial class McpMod
         if (tree?.Root == null)
             return Error("Cannot access scene tree");
 
-        var gameOverResult = TryExecuteGameOverMenuOption(tree.Root, option);
+        Dictionary<string, object?>? gameOverResult = TryExecuteGameOverMenuOption(tree.Root, option);
         if (gameOverResult != null)
             return gameOverResult;
 
-        var ftueResult = TryExecuteFtueMenuOption(tree.Root, option);
+        Dictionary<string, object?>? ftueResult = TryExecuteFtueMenuOption(tree.Root, option);
         if (ftueResult != null)
             return ftueResult;
 
-        var popupResult = TryExecutePopupMenuOption(tree.Root, option);
+        Dictionary<string, object?>? popupResult = TryExecutePopupMenuOption(tree.Root, option);
         if (popupResult != null)
             return popupResult;
 
-        var runMenuResult = TryExecuteRunMenuOption(tree.Root, option);
+        Dictionary<string, object?>? runMenuResult = TryExecuteRunMenuOption(tree.Root, option);
         if (runMenuResult != null)
             return runMenuResult;
 
         // Timeline screen - advance through epoch reveals.
-        var timelineScreen = FindFirst<NTimelineScreen>(tree.Root);
+        NTimelineScreen? timelineScreen = FindFirst<NTimelineScreen>(tree.Root);
         if (timelineScreen != null && IsNodeVisible(timelineScreen))
             return ExecuteTimelineMenuOption(timelineScreen, tree.Root, option);
 
-        var lobbyResult = TryExecuteLobbyScreenOption(tree.Root, option, seed, ascension);
+        Dictionary<string, object?>? lobbyResult = TryExecuteLobbyScreenOption(tree.Root, option, seed, ascension);
         if (lobbyResult != null)
             return lobbyResult;
 
         // Main menu — click a menu button
-        var mainMenu = FindFirst<NMainMenu>(tree.Root);
+        NMainMenu? mainMenu = FindFirst<NMainMenu>(tree.Root);
         if (mainMenu != null)
             return ExecuteMainMenuOption(tree.Root, mainMenu, option);
 
@@ -2388,11 +2393,11 @@ public static partial class McpMod
         if (!string.Equals(option, "main_menu", StringComparison.OrdinalIgnoreCase))
             return Error($"Unknown game over option: {option}. Use: main_menu");
 
-        var result = ClickMenuButtonField(gameOver, "_mainMenuButton", "Returning to main menu");
+        Dictionary<string, object?> result = ClickMenuButtonField(gameOver, "_mainMenuButton", "Returning to main menu");
         if (string.Equals((string?)result["status"], "ok", StringComparison.Ordinal))
             return result;
 
-        var returnMethod = gameOver.GetType().GetMethod(
+        MethodInfo? returnMethod = gameOver.GetType().GetMethod(
             "ReturnToMainMenu",
             System.Reflection.BindingFlags.Public |
             System.Reflection.BindingFlags.NonPublic |
@@ -2412,7 +2417,7 @@ public static partial class McpMod
     /// </summary>
     private static Dictionary<string, object?>? TryExecuteFtueMenuOption(Node root, string option)
     {
-        var tutorialFtue = FindVisibleAcceptTutorialsFtue(root);
+        NAcceptTutorialsFtue? tutorialFtue = FindVisibleAcceptTutorialsFtue(root);
         if (tutorialFtue != null && IsFtueNodeActive(tutorialFtue))
         {
             if (!string.Equals(option, "yes", StringComparison.OrdinalIgnoreCase) &&
@@ -2421,12 +2426,12 @@ public static partial class McpMod
                 return Error($"Unknown tutorial prompt option: {option}. Use: yes, no");
             }
 
-            var popup = tutorialFtue.GetType().GetField("_verticalPopup", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)?.GetValue(tutorialFtue);
+            object? popup = tutorialFtue.GetType().GetField("_verticalPopup", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)?.GetValue(tutorialFtue);
             if (popup != null)
             {
-                var isYes = string.Equals(option, "yes", StringComparison.OrdinalIgnoreCase);
-                var btnField = isYes ? "<YesButton>k__BackingField" : "<NoButton>k__BackingField";
-                var btn = popup.GetType().GetField(btnField, System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)?.GetValue(popup);
+                bool isYes = string.Equals(option, "yes", StringComparison.OrdinalIgnoreCase);
+                string btnField = isYes ? "<YesButton>k__BackingField" : "<NoButton>k__BackingField";
+                object? btn = popup.GetType().GetField(btnField, System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)?.GetValue(popup);
                 if (btn is NClickableControl clickable &&
                     IsPopupButtonActionable(clickable))
                 {
@@ -2438,7 +2443,7 @@ public static partial class McpMod
         }
 
         // Any other FTUE/tutorial popup with a confirm button.
-        var ftue = FindVisibleGenericFtue(root);
+        Node? ftue = FindVisibleGenericFtue(root);
         if (ftue == null)
             return null;
 
@@ -2448,7 +2453,7 @@ public static partial class McpMod
             return Error($"Unknown tutorial option: {option}. Use: advance, proceed");
         }
 
-        var ftueClickable = FindFtueAdvanceButton(ftue);
+        NClickableControl? ftueClickable = FindFtueAdvanceButton(ftue);
         if (ftueClickable != null)
         {
             ftueClickable.ForceClick();
@@ -2464,11 +2469,11 @@ public static partial class McpMod
     /// </summary>
     private static Dictionary<string, object?>? TryExecutePopupMenuOption(Node root, string option)
     {
-        var verticalPopup = FindVisibleVerticalPopup(root);
+        NVerticalPopup? verticalPopup = FindVisibleVerticalPopup(root);
         if (verticalPopup != null)
             return ExecutePopupOption(GetPopupOptions(verticalPopup), option);
 
-        var popupButtonOptions = GetVisiblePopupButtonOptions(root);
+        List<(string Name, NClickableControl Button)> popupButtonOptions = GetVisiblePopupButtonOptions(root);
         return popupButtonOptions.Count > 0
             ? ExecutePopupOption(popupButtonOptions, option)
             : null;
@@ -2485,11 +2490,11 @@ public static partial class McpMod
         // the main-menu branch, which is gated on NMainMenu and so never runs during a
         // run. Without this the API could open settings ('settings' on the main menu, or
         // the pause menu in a run) and had no way back out.
-        var settingsScreen = FindFirst<NSettingsScreen>(root);
+        NSettingsScreen? settingsScreen = FindFirst<NSettingsScreen>(root);
         if (settingsScreen != null && IsNodeVisible(settingsScreen))
             return ExecuteSubmenuBackOption(settingsScreen, option);
 
-        var runSubmenu = GetOpenRunSubmenu(root);
+        NSubmenu? runSubmenu = GetOpenRunSubmenu(root);
         if (runSubmenu is NPauseMenu pauseMenu)
             return ExecutePauseMenuOption(pauseMenu, option);
         return runSubmenu != null ? ExecuteSubmenuBackOption(runSubmenu, option) : null;
@@ -2513,30 +2518,30 @@ public static partial class McpMod
     /// <summary>One "advance" step: open panels first, then the queued unlocks, then a reveal.</summary>
     private static Dictionary<string, object?> AdvanceTimeline(NTimelineScreen timelineScreen, Node root)
     {
-        var tutorialResult = TryClickTimelineTutorial(root);
+        Dictionary<string, object?>? tutorialResult = TryClickTimelineTutorial(root);
         if (tutorialResult != null)
             return tutorialResult;
 
-        var buttonResult = TryClickTimelineAdvanceButton(root);
+        Dictionary<string, object?>? buttonResult = TryClickTimelineAdvanceButton(root);
         if (buttonResult != null)
             return buttonResult;
 
-        var inspectResult = TryCloseEpochInspectScreen(root);
+        Dictionary<string, object?>? inspectResult = TryCloseEpochInspectScreen(root);
         if (inspectResult != null)
             return inspectResult;
 
         // An unlock screen that is already open ("<character> is now playable",
         // "you unlocked these cards") blocks everything behind it until its
         // confirm button is pressed.
-        var openUnlockResult = TryConfirmOpenUnlockScreen(timelineScreen);
+        Dictionary<string, object?>? openUnlockResult = TryConfirmOpenUnlockScreen(timelineScreen);
         if (openUnlockResult != null)
             return openUnlockResult;
 
-        var queuedUnlockResult = TryHandleQueuedTimelineUnlock(timelineScreen);
+        Dictionary<string, object?>? queuedUnlockResult = TryHandleQueuedTimelineUnlock(timelineScreen);
         if (queuedUnlockResult != null)
             return queuedUnlockResult;
 
-        var revealResult = TryRevealOneEpochSlot(timelineScreen);
+        Dictionary<string, object?>? revealResult = TryRevealOneEpochSlot(timelineScreen);
         if (revealResult != null)
             return revealResult;
 
@@ -2546,11 +2551,11 @@ public static partial class McpMod
     /// <summary>Timeline tutorial screen (first-time "Proceed" button), when it is up.</summary>
     private static Dictionary<string, object?>? TryClickTimelineTutorial(Node root)
     {
-        var tutorial = FindFirst<NTimelineTutorial>(root);
+        NTimelineTutorial? tutorial = FindFirst<NTimelineTutorial>(root);
         if (tutorial == null || !IsNodeVisible(tutorial))
             return null;
 
-        var ackBtn = tutorial.GetType().GetField("_acknowledgeButton", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)?.GetValue(tutorial);
+        object? ackBtn = tutorial.GetType().GetField("_acknowledgeButton", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)?.GetValue(tutorial);
         if (ackBtn is NClickableControl ackClickable &&
             ackClickable.IsEnabled &&
             IsNodeVisible(ackClickable))
@@ -2564,14 +2569,14 @@ public static partial class McpMod
     /// <summary>The first enabled, visible confirm or proceed button in the tree.</summary>
     private static Dictionary<string, object?>? TryClickTimelineAdvanceButton(Node root)
     {
-        var confirmBtn = FindFirst<NConfirmButton>(root);
+        NConfirmButton? confirmBtn = FindFirst<NConfirmButton>(root);
         if (confirmBtn != null && IsNodeVisible(confirmBtn) && confirmBtn.IsEnabled)
         {
             confirmBtn.ForceClick();
             return Ok("Clicked confirm button");
         }
 
-        var proceedBtn = FindFirst<NProceedButton>(root);
+        NProceedButton? proceedBtn = FindFirst<NProceedButton>(root);
         if (proceedBtn != null && IsNodeVisible(proceedBtn) && proceedBtn.IsEnabled)
         {
             proceedBtn.ForceClick();
@@ -2583,11 +2588,11 @@ public static partial class McpMod
     /// <summary>The epoch detail view, closed through its button when that is available.</summary>
     private static Dictionary<string, object?>? TryCloseEpochInspectScreen(Node root)
     {
-        var inspectScreen = FindFirst<NEpochInspectScreen>(root);
+        NEpochInspectScreen? inspectScreen = FindFirst<NEpochInspectScreen>(root);
         if (inspectScreen == null || !IsNodeVisible(inspectScreen))
             return null;
 
-        var closeBtn = inspectScreen.GetType().GetField("_closeButton", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)?.GetValue(inspectScreen);
+        object? closeBtn = inspectScreen.GetType().GetField("_closeButton", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)?.GetValue(inspectScreen);
         if (closeBtn is NClickableControl closeClickable &&
             closeClickable.IsEnabled &&
             IsNodeVisible(closeClickable))
@@ -2602,7 +2607,7 @@ public static partial class McpMod
     private static Dictionary<string, object?> GoBackFromTimeline(NTimelineScreen timelineScreen)
     {
         // Try NBackButton directly on NTimelineScreen
-        var backBtn = timelineScreen.GetType().GetField("_backButton", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)?.GetValue(timelineScreen);
+        object? backBtn = timelineScreen.GetType().GetField("_backButton", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)?.GetValue(timelineScreen);
         if (backBtn is NClickableControl { IsEnabled: true } backClickable)
         {
             backClickable.ForceClick();
@@ -2610,10 +2615,10 @@ public static partial class McpMod
         }
 
         // Try the submenu stack
-        var stack = timelineScreen.GetType().GetField("_stack", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)?.GetValue(timelineScreen);
+        object? stack = timelineScreen.GetType().GetField("_stack", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)?.GetValue(timelineScreen);
         if (stack != null)
         {
-            var popMethod = stack.GetType().GetMethod("Pop");
+            MethodInfo? popMethod = stack.GetType().GetMethod("Pop");
             popMethod?.Invoke(stack, null);
             return Ok("Popped timeline from stack");
         }
@@ -2629,26 +2634,26 @@ public static partial class McpMod
         Node root, string option, string? seed, int? ascension)
     {
         // Multiplayer Join Friend screen — friend list, refresh, back, or join_<index>/<player_id>.
-        var joinScreen = FindFirst<NJoinFriendScreen>(root);
+        NJoinFriendScreen? joinScreen = FindFirst<NJoinFriendScreen>(root);
         if (joinScreen != null && IsNodeVisible(joinScreen))
             return ExecuteJoinScreenMenuOption(joinScreen, option);
 
         // Multiplayer Load Game lobby — confirm/embark/unready/back to resume saved MP run.
-        var loadLobby = FindFirst<NMultiplayerLoadGameScreen>(root);
+        NMultiplayerLoadGameScreen? loadLobby = FindFirst<NMultiplayerLoadGameScreen>(root);
         if (loadLobby != null && IsNodeVisible(loadLobby))
             return ExecuteLoadLobbyMenuOption(loadLobby, option);
 
         // Custom mode setup screen (replaces char select for custom runs). Handle
         // it before the plain char select and before main-menu routing.
-        var customRun = FindFirst<NCustomRunScreen>(root);
+        NCustomRunScreen? customRun = FindFirst<NCustomRunScreen>(root);
         if (customRun != null && IsNodeVisible(customRun))
             return ExecuteCustomRunMenuOption(customRun, option, seed);
 
-        var charSelect = FindFirst<NCharacterSelectScreen>(root);
+        NCharacterSelectScreen? charSelect = FindFirst<NCharacterSelectScreen>(root);
         if (charSelect != null && IsNodeVisible(charSelect))
             return ExecuteCharacterSelectMenuOption(charSelect, option, seed, ascension);
 
-        var profileScreen = FindFirst<NProfileScreen>(root);
+        NProfileScreen? profileScreen = FindFirst<NProfileScreen>(root);
         return profileScreen != null && IsNodeVisible(profileScreen)
             ? ExecuteProfileSelectMenuOption(profileScreen, option)
             : null;
@@ -2658,22 +2663,22 @@ public static partial class McpMod
         Node root, NMainMenu mainMenu, string option)
     {
         // Check if we're on singleplayer submenu
-        var spSubmenu = FindFirst<NSingleplayerSubmenu>(root);
+        NSingleplayerSubmenu? spSubmenu = FindFirst<NSingleplayerSubmenu>(root);
         if (spSubmenu != null && IsNodeVisible(spSubmenu))
             return ExecuteGameModeSubmenuOption(spSubmenu, option, "singleplayer");
 
         // Check if we're on multiplayer host submenu
-        var mpHostSubmenu = FindFirst<NMultiplayerHostSubmenu>(root);
+        NMultiplayerHostSubmenu? mpHostSubmenu = FindFirst<NMultiplayerHostSubmenu>(root);
         if (mpHostSubmenu != null && IsNodeVisible(mpHostSubmenu))
             return ExecuteGameModeSubmenuOption(mpHostSubmenu, option, "multiplayer host");
 
         // Check if we're on multiplayer submenu
-        var mpSubmenu = FindFirst<NMultiplayerSubmenu>(root);
+        NMultiplayerSubmenu? mpSubmenu = FindFirst<NMultiplayerSubmenu>(root);
         if (mpSubmenu != null && IsNodeVisible(mpSubmenu))
             return ExecuteMultiplayerSubmenuOption(mpSubmenu, option);
 
         // Main menu buttons
-        var menuFieldName = option.ToLowerInvariant() switch
+        string? menuFieldName = option.ToLowerInvariant() switch
         {
             "singleplayer" => "_singleplayerButton",
             "multiplayer" => "_multiplayerButton",
@@ -2698,7 +2703,7 @@ public static partial class McpMod
         if (string.Equals(option, "back", StringComparison.OrdinalIgnoreCase))
             return ClickMenuButtonField(submenu, "_backButton", "Going back", "Back button is not available");
 
-        var fieldName = option.ToLowerInvariant() switch
+        string? fieldName = option.ToLowerInvariant() switch
         {
             "standard" => "_standardButton",
             "daily" => "_dailyButton",
@@ -2717,7 +2722,7 @@ public static partial class McpMod
         if (string.Equals(option, "back", StringComparison.OrdinalIgnoreCase))
             return ClickMenuButtonField(mpSubmenu, "_backButton", "Going back", "Back button is not available");
 
-        var fieldName = option.ToLowerInvariant() switch
+        string? fieldName = option.ToLowerInvariant() switch
         {
             "host" => "_hostButton",
             "join" => "_joinButton",
@@ -2735,7 +2740,7 @@ public static partial class McpMod
         List<(string Name, NClickableControl Button)> options,
         string option)
     {
-        foreach (var candidate in options)
+        foreach ((string Name, NClickableControl Button) candidate in options)
         {
             if (!string.Equals(candidate.Name, option, StringComparison.OrdinalIgnoreCase))
                 continue;
@@ -2760,7 +2765,7 @@ public static partial class McpMod
     {
         if (string.Equals(option, "back", StringComparison.OrdinalIgnoreCase))
         {
-            var backBtn = GetInstanceFieldValue(profileScreen, "_backButton")
+            object? backBtn = GetInstanceFieldValue(profileScreen, "_backButton")
                 ?? FindFirst<NBackButton>(profileScreen);
             if (backBtn is NClickableControl backClickable &&
                 backClickable.IsEnabled &&
@@ -2772,13 +2777,13 @@ public static partial class McpMod
             return Error("Back button not available on profile select");
         }
 
-        var normalized = option.ToLowerInvariant();
+        string normalized = option.ToLowerInvariant();
         if (normalized.StartsWith("profile_", StringComparison.Ordinal))
             normalized = normalized["profile_".Length..];
         else if (normalized.StartsWith("slot_", StringComparison.Ordinal))
             normalized = normalized["slot_".Length..];
 
-        if (int.TryParse(normalized, CultureInfo.InvariantCulture, out var profileId))
+        if (int.TryParse(normalized, CultureInfo.InvariantCulture, out int profileId))
             return ExecuteProfileAction("switch", profileId);
 
         return Error($"Unknown profile select option: {option}. Use: profile_1, profile_2, profile_3, back");
@@ -2794,12 +2799,12 @@ public static partial class McpMod
     /// </summary>
     private static Dictionary<string, object?> ExecuteSubmenuBackOption(NSubmenu submenu, string option)
     {
-        var screen = SubmenuScreenName(submenu);
-        var normalized = option.ToLowerInvariant();
+        string screen = SubmenuScreenName(submenu);
+        string normalized = option.ToLowerInvariant();
         if (!string.Equals(normalized, "back", StringComparison.Ordinal) && !string.Equals(normalized, "close", StringComparison.Ordinal) && !string.Equals(normalized, "resume", StringComparison.Ordinal))
             return Error($"Unknown {screen} option: {option}. Use: back");
 
-        var backButton = GetSubmenuBackButton(submenu);
+        NClickableControl? backButton = GetSubmenuBackButton(submenu);
         if (backButton != null && backButton.IsEnabled && IsNodeVisible(backButton))
         {
             backButton.ForceClick();
@@ -2809,10 +2814,10 @@ public static partial class McpMod
         // The back button is hidden or disabled while the submenu stack animates, which
         // would otherwise leave the caller stuck on a screen with no other exit. Popping
         // the stack is what the button itself does, so this lands in the same place.
-        var popped = TryRead<Dictionary<string, object?>?>("menu.submenu.pop", () =>
+        Dictionary<string, object?>? popped = TryRead<Dictionary<string, object?>?>("menu.submenu.pop", () =>
         {
-            var stack = GetInstanceFieldValue(submenu, "_stack");
-            var popMethod = stack?.GetType().GetMethod("Pop");
+            object? stack = GetInstanceFieldValue(submenu, "_stack");
+            MethodInfo? popMethod = stack?.GetType().GetMethod("Pop");
             if (stack == null || popMethod == null)
                 return null;
 
@@ -2839,7 +2844,7 @@ public static partial class McpMod
     /// </summary>
     private static Dictionary<string, object?> ExecutePauseMenuOption(NPauseMenu pauseMenu, string option)
     {
-        var normalized = option.ToLowerInvariant();
+        string normalized = option.ToLowerInvariant();
         string? field = normalized switch
         {
             "resume" or "back" or "close" or "continue" => "_resumeButton",
@@ -2853,13 +2858,13 @@ public static partial class McpMod
 
         if (field == null)
         {
-            var available = BuildPauseMenuOptions(pauseMenu)
+            IEnumerable<string?> available = BuildPauseMenuOptions(pauseMenu)
                 .Select(entry => entry.GetValueOrDefault("name")?.ToString())
                 .Where(name => !string.IsNullOrEmpty(name));
             return Error($"Unknown pause menu option: {option}. Use: {string.Join(", ", available)}");
         }
 
-        var message = field switch
+        string message = field switch
         {
             "_resumeButton" => "Resumed the run",
             "_settingsButton" => "Opened settings. Use menu_select option 'back' to return to the pause menu.",
@@ -2888,7 +2893,7 @@ public static partial class McpMod
     {
         var tree = Engine.GetMainLoop() as SceneTree;
 
-        var open = GetOpenRunSubmenu(tree?.Root);
+        NSubmenu? open = GetOpenRunSubmenu(tree?.Root);
         if (open is NPauseMenu)
         {
             return new Dictionary<string, object?>(StringComparer.Ordinal)
@@ -2913,7 +2918,7 @@ public static partial class McpMod
         if (TryReadQuiet<bool?>(() => NPlayerHand.Instance is { InCardPlay: true }) == true)
             return Error("A card is still being played. Wait for is_resolving to clear, then pause.");
 
-        var pauseButton = SafeGetTopBarPauseButton(tree?.Root);
+        NTopBarPauseButton? pauseButton = SafeGetTopBarPauseButton(tree?.Root);
         if (pauseButton != null)
         {
             TryDo("menu.pause.force_click", pauseButton.ForceClick);
@@ -2924,9 +2929,9 @@ public static partial class McpMod
         // Fallback for a top bar that is hidden or not yet initialized: the same two
         // calls NTopBarPauseButton.OnRelease makes.
         Dictionary<string, object?>? opened = null;
-        var openFailure = TryAction("menu.pause.open_direct", () =>
+        string? openFailure = TryAction("menu.pause.open_direct", () =>
         {
-            var stack = MegaCrit.Sts2.Core.Nodes.NRun.Instance?.GlobalUi?.SubmenuStack;
+            NCapstoneSubmenuStack? stack = MegaCrit.Sts2.Core.Nodes.NRun.Instance?.GlobalUi?.SubmenuStack;
             if (stack?.ShowScreen(CapstoneSubmenuType.PauseMenu) is NPauseMenu menu)
             {
                 menu.Initialize(runState);
@@ -2957,7 +2962,7 @@ public static partial class McpMod
     {
         // No top bar before the run scene is up, which is normal; only the tree search
         // can find the button then, so the read stays quiet.
-        var button = TryReadQuiet(() =>
+        NTopBarPauseButton? button = TryReadQuiet(() =>
             MegaCrit.Sts2.Core.Nodes.NRun.Instance?.GlobalUi?.TopBar?.Pause);
         if (button != null && IsLiveNode(button))
             return button;
@@ -2976,11 +2981,11 @@ public static partial class McpMod
         if (action is "open_pause_menu" or "pause")
             return null;
 
-        var submenu = GetOpenRunSubmenu(tree?.Root);
+        NSubmenu? submenu = GetOpenRunSubmenu(tree?.Root);
         if (submenu == null)
             return null;
 
-        var screen = submenu is NPauseMenu ? "pause menu" : $"{SubmenuScreenName(submenu)} screen";
+        string screen = submenu is NPauseMenu ? "pause menu" : $"{SubmenuScreenName(submenu)} screen";
         return Error(
             $"The {screen} is open over the run. Close it with menu_select "
             + "(option 'resume' on the pause menu, 'back' elsewhere) before sending gameplay actions.");
@@ -2990,7 +2995,7 @@ public static partial class McpMod
         NJoinFriendScreen joinScreen,
         string option)
     {
-        var normalized = option.ToLowerInvariant();
+        string normalized = option.ToLowerInvariant();
 
         if (string.Equals(normalized, "back", StringComparison.Ordinal))
             return ClickMenuButtonField(joinScreen, "_backButton", "Going back from join screen", "Back button is not available");
@@ -3022,7 +3027,7 @@ public static partial class McpMod
 
         // Build the in-order friend list once
         var friendButtons = new List<NJoinFriendButton>();
-        foreach (var child in buttonContainer.GetChildren())
+        foreach (Node? child in buttonContainer.GetChildren())
         {
             if (child is NJoinFriendButton fbtn)
                 friendButtons.Add(fbtn);
@@ -3045,7 +3050,7 @@ public static partial class McpMod
         // Otherwise treat as ulong player id
         if (ulong.TryParse(key, out ulong playerId))
         {
-            var match = friendButtons.FirstOrDefault(b => b.PlayerId == playerId);
+            NJoinFriendButton? match = friendButtons.FirstOrDefault(b => b.PlayerId == playerId);
             if (match == null)
                 return Error($"No friend with player_id {playerId} in current list. Available indices: 0..{friendButtons.Count - 1}");
             if (!match.IsEnabled)
@@ -3061,7 +3066,7 @@ public static partial class McpMod
         NMultiplayerLoadGameScreen loadLobby,
         string option)
     {
-        var normalized = option.ToLowerInvariant();
+        string normalized = option.ToLowerInvariant();
 
         if (string.Equals(normalized, "confirm", StringComparison.Ordinal) || string.Equals(normalized, "embark", StringComparison.Ordinal) || string.Equals(normalized, "ready", StringComparison.Ordinal))
         {
@@ -3181,7 +3186,7 @@ public static partial class McpMod
         // character-select screen has an ascension panel; the custom-run screen has none.
         if (ascension != null)
         {
-            var ascensionResult = ApplyAscensionOption(screen, option, ascension.Value);
+            Dictionary<string, object?>? ascensionResult = ApplyAscensionOption(screen, option, ascension.Value);
             if (ascensionResult != null)
                 return ascensionResult;
         }
@@ -3210,7 +3215,7 @@ public static partial class McpMod
 
         // Run-modifier toggle. Accepts both the advertised "modifier_<id>" option name and
         // the bare id the state reports under modifiers[].id.
-        var modifierResult = TryToggleRunModifier(screen, option);
+        Dictionary<string, object?>? modifierResult = TryToggleRunModifier(screen, option);
         if (modifierResult != null)
             return modifierResult;
 
@@ -3227,7 +3232,7 @@ public static partial class McpMod
         if (screen is not NCharacterSelectScreen ascensionScreen)
             return Error("Ascension can only be set on the character select screen");
 
-        var ascensionResult = ApplyAscension(ascensionScreen, ascension);
+        Dictionary<string, object?> ascensionResult = ApplyAscension(ascensionScreen, ascension);
         if (string.Equals((string?)ascensionResult["status"], "error", StringComparison.Ordinal))
             return ascensionResult;
         return string.IsNullOrEmpty(option) ? ascensionResult : null;
@@ -3279,15 +3284,15 @@ public static partial class McpMod
             if (lobby == null)
                 return Error(noLobbySeedError);
 
-            var seedFailure = TryAction("start_run.set_seed", () => lobby.SetSeed(seed));
+            string? seedFailure = TryAction("start_run.set_seed", () => lobby.SetSeed(seed));
             if (seedFailure != null)
                 return Error($"Seeded embark failed before starting the run: {seedFailure}");
         }
 
-        var confirmBtn = GetInstanceFieldValue(screen, confirmField);
+        object? confirmBtn = GetInstanceFieldValue(screen, confirmField);
         if (confirmBtn is NClickableControl confirmClickable && confirmClickable.IsEnabled)
         {
-            var msg = string.IsNullOrEmpty(seed)
+            string msg = string.IsNullOrEmpty(seed)
                 ? $"Embarking on {runNoun}"
                 : $"Embarking on {runNoun} (seed: {seed})";
 
@@ -3311,8 +3316,8 @@ public static partial class McpMod
 
     private static Dictionary<string, object?> SelectCharacterOption(Node screen, string option)
     {
-        var buttons = FindAll<NCharacterSelectButton>(screen);
-        foreach (var btn in buttons)
+        List<NCharacterSelectButton> buttons = FindAll<NCharacterSelectButton>(screen);
+        foreach (NCharacterSelectButton btn in buttons)
         {
             if (btn.Character != null && (
                 string.Equals(btn.Character.Id.Entry, option, StringComparison.OrdinalIgnoreCase) ||
@@ -3337,7 +3342,7 @@ public static partial class McpMod
     {
         return TryRead<bool?>(() =>
         {
-            var progress = MegaCrit.Sts2.Core.Saves.SaveManager.Instance?.Progress;
+            ProgressState? progress = MegaCrit.Sts2.Core.Saves.SaveManager.Instance?.Progress;
             return progress != null &&
                    progress.PendingCharacterUnlock != MegaCrit.Sts2.Core.Models.ModelId.none;
         }) ?? false;
@@ -3346,9 +3351,9 @@ public static partial class McpMod
     /// <summary>Set the Godot engine time scale (animation/game speed). Valid any time.</summary>
     internal static Dictionary<string, object?> ExecuteSetTimeScale(Dictionary<string, JsonElement> data)
     {
-        if (!data.TryGetValue("scale", out var scaleElem))
+        if (!data.TryGetValue("scale", out JsonElement scaleElem))
             return Error("Missing 'scale'");
-        var parsedScale = TryRead<double?>("time_scale.scale", () => scaleElem.GetDouble());
+        double? parsedScale = TryRead<double?>("time_scale.scale", () => scaleElem.GetDouble());
         if (parsedScale == null)
             return Error("'scale' must be a number");
         double scale = parsedScale.Value;
@@ -3368,9 +3373,9 @@ public static partial class McpMod
     /// which is what embark reads — same path as clicking the arrows.</summary>
     internal static Dictionary<string, object?> ExecuteSetAscension(Dictionary<string, JsonElement> data)
     {
-        if (!data.TryGetValue("level", out var levelElem))
+        if (!data.TryGetValue("level", out JsonElement levelElem))
             return Error("Missing 'level'");
-        var parsedLevel = TryRead<int?>("ascension.level", () => levelElem.GetInt32());
+        int? parsedLevel = TryRead<int?>("ascension.level", () => levelElem.GetInt32());
         if (parsedLevel == null)
             return Error("'level' must be an integer");
         int level = parsedLevel.Value;
@@ -3378,7 +3383,7 @@ public static partial class McpMod
             return Error("'level' must be >= 0");
 
         var tree = Godot.Engine.GetMainLoop() as SceneTree;
-        var charSelect = tree?.Root != null ? FindFirst<NCharacterSelectScreen>(tree.Root) : null;
+        NCharacterSelectScreen? charSelect = tree?.Root != null ? FindFirst<NCharacterSelectScreen>(tree.Root) : null;
         if (charSelect == null || !IsNodeVisible(charSelect))
             return Error("Character select screen is not open");
         if (IsCharacterSelectionBusy())
@@ -3445,12 +3450,12 @@ public static partial class McpMod
     // change.
     private static Dictionary<string, object?>? TryToggleRunModifier(Node screen, string option)
     {
-        var entries = GetRunModifierEntries(screen);
+        List<RunModifierEntry> entries = GetRunModifierEntries(screen);
         if (entries.Count == 0)
             return null;
 
         bool explicitlyAModifier = option.StartsWith(ModifierOptionPrefix, StringComparison.OrdinalIgnoreCase);
-        var token = explicitlyAModifier ? option.Substring(ModifierOptionPrefix.Length) : option;
+        string token = explicitlyAModifier ? option.Substring(ModifierOptionPrefix.Length) : option;
 
         var matches = entries.Where(e => string.Equals(e.Key, token, StringComparison.OrdinalIgnoreCase)).ToList();
         if (matches.Count == 0)
@@ -3471,17 +3476,17 @@ public static partial class McpMod
                          + $"Use one of: {string.Join(", ", matches.Select(m => m.Key))}");
         }
 
-        var target = matches[0];
+        RunModifierEntry target = matches[0];
         if (!target.Tickbox.IsEnabled)
             return Error($"Modifier '{target.Key}' cannot be toggled right now");
 
-        var title = SafeGetText(() => target.Modifier.Title);
-        var before = TickedModifierKeys(entries);
+        string? title = SafeGetText(() => target.Modifier.Title);
+        List<string> before = TickedModifierKeys(entries);
         bool wasTicked = target.Tickbox.IsTicked;
         target.Tickbox.ForceClick();
-        var after = TickedModifierKeys(entries);
+        List<string> after = TickedModifierKeys(entries);
 
-        var message = $"Modifier '{title ?? target.Key}' {(wasTicked ? "disabled" : "enabled")}";
+        string message = $"Modifier '{title ?? target.Key}' {(wasTicked ? "disabled" : "enabled")}";
         var alsoUnticked = before
             .Where(key => !after.Contains(key) && !string.Equals(key, target.Key, StringComparison.Ordinal))
             .ToList();
@@ -3504,12 +3509,12 @@ public static partial class McpMod
     private static Dictionary<string, object?>? TryConfirmOpenUnlockScreen(NTimelineScreen timelineScreen)
     {
         // No unlock screen queued is the normal case, so this read is quiet.
-        var screen = TryReadQuiet(() => timelineScreen.CurrentUnlockScreen);
+        NUnlockScreen? screen = TryReadQuiet(() => timelineScreen.CurrentUnlockScreen);
 
         if (screen == null || !IsNodeVisible(screen))
             return null;
 
-        var confirm = GetInstanceFieldValue(screen, "_unlockConfirmButton") as NClickableControl
+        NClickableControl? confirm = GetInstanceFieldValue(screen, "_unlockConfirmButton") as NClickableControl
             ?? FindFirst<NUnlockConfirmButton>(screen)
             ?? (NClickableControl?)FindFirst<NAcknowledgeButton>(screen);
 
@@ -3547,11 +3552,11 @@ public static partial class McpMod
         if (!isQueued)
             return null;
 
-        var queuedScreen = TryPeekQueuedTimelineScreen(timelineScreen);
-        var queuedType = queuedScreen?.GetType().Name ?? "unlock";
-        var queuedEpochIds = GetQueuedTimelineEpochIds(queuedScreen);
+        object? queuedScreen = TryPeekQueuedTimelineScreen(timelineScreen);
+        string queuedType = queuedScreen?.GetType().Name ?? "unlock";
+        List<string> queuedEpochIds = GetQueuedTimelineEpochIds(queuedScreen);
 
-        var alreadyRevealed = BuildAlreadyRevealedUnlockResult(queuedType, queuedEpochIds);
+        Dictionary<string, object?>? alreadyRevealed = BuildAlreadyRevealedUnlockResult(queuedType, queuedEpochIds);
         if (alreadyRevealed != null)
             return alreadyRevealed;
 
@@ -3641,11 +3646,11 @@ public static partial class McpMod
     {
         return TryRead(() =>
         {
-            var queue = GetInstanceFieldValue(timelineScreen, "_unlockScreens");
+            object? queue = GetInstanceFieldValue(timelineScreen, "_unlockScreens");
             if (queue == null)
                 return null;
 
-            var count = queue.GetType().GetProperty("Count")?.GetValue(queue) as int?;
+            int? count = queue.GetType().GetProperty("Count")?.GetValue(queue) as int?;
             if (count <= 0)
                 return null;
 
@@ -3657,7 +3662,7 @@ public static partial class McpMod
     {
         try
         {
-            var isUiVisible = GetInstanceFieldValue(timelineScreen, "_isUiVisible") as bool?;
+            bool? isUiVisible = GetInstanceFieldValue(timelineScreen, "_isUiVisible") as bool?;
             if (isUiVisible == false)
                 return true;
 
@@ -3699,13 +3704,13 @@ public static partial class McpMod
 
         if (value is System.Collections.IEnumerable enumerable && value is not string)
         {
-            foreach (var item in enumerable)
+            foreach (object? item in enumerable)
                 AddEpochIdsFromObject(item, ids);
             return;
         }
 
-        var model = value.GetType().GetProperty("Model")?.GetValue(value) ?? value;
-        var modelId = model.GetType().GetProperty("Id")?.GetValue(model)?.ToString();
+        object model = value.GetType().GetProperty("Model")?.GetValue(value) ?? value;
+        string? modelId = model.GetType().GetProperty("Id")?.GetValue(model)?.ToString();
         if (!string.IsNullOrEmpty(modelId))
             ids.Add(modelId);
     }
@@ -3714,7 +3719,7 @@ public static partial class McpMod
     {
         return TryRead(() =>
         {
-            var progress = MegaCrit.Sts2.Core.Saves.SaveManager.Instance?.Progress;
+            ProgressState? progress = MegaCrit.Sts2.Core.Saves.SaveManager.Instance?.Progress;
             return progress?.Epochs
                 .FirstOrDefault(epoch => string.Equals(epoch.Id, epochId, StringComparison.OrdinalIgnoreCase))
                 ?.State
@@ -3728,7 +3733,7 @@ public static partial class McpMod
         // No loaded save is the normal case outside the timeline, so this read is quiet.
         return TryReadQuiet(() =>
         {
-            var progress = MegaCrit.Sts2.Core.Saves.SaveManager.Instance?.Progress;
+            ProgressState? progress = MegaCrit.Sts2.Core.Saves.SaveManager.Instance?.Progress;
             if (progress == null)
                 return new List<string>();
 
@@ -3745,7 +3750,7 @@ public static partial class McpMod
         string successMessage,
         string? disabledMessage = null)
     {
-        var btn = GetInstanceFieldValue(owner, fieldName);
+        object? btn = GetInstanceFieldValue(owner, fieldName);
         if (btn is NClickableControl clickable)
         {
             if (!clickable.Visible || !clickable.IsVisibleInTree())

@@ -23,7 +23,7 @@ analysis settings live.
 `tests/Directory.Build.targets` imports those settings and then switches the gate off
 (`RunAnalyzersDuringBuild`, `EnforceCodeStyleInBuild` and both warnings-as-errors properties). The
 harnesses are console programs that compile production sources together with fake game types and
-fake Roslyn shapes; the analyzer would grade the stubs, not the code under test. `STS2_MCP.csproj`,
+fake Roslyn shapes; the analyzer would grade the stubs, not the code under test. `Sts2Mcp.csproj`,
 the project that ships, keeps the full gate.
 
 ## What is enabled
@@ -64,8 +64,6 @@ backlog item, not a wrong rule.
 
 - Globalization (`CA1304/1305/1307/1308/1310/1311/...`): the mod emits JSON for an MCP client and
   log lines. Nothing formats values for a locale, and `CultureInfo` overloads would be dead API.
-- `CA1707` ("underscores in identifiers"): the assembly and namespace name `STS2_MCP` is the mod's
-  shipped identity (`mod_manifest.json`, the game's mod folder, every documented path).
 - `S3011` ("reflection should not be used to increase accessibility"): reading private game
   members through reflection is the mod's mechanism (`McpMod.Il.cs`).
 - `S1144` on Harmony patch methods: Harmony reaches `TargetMethods`/`Prefix`/`Postfix` through the
@@ -83,8 +81,8 @@ export STS2_GAME_DIR="$HOME/.local/share/Steam/steamapps/common/Slay the Spire 2
 # or, durable: cp build.local.props.example build.local.props and edit STS2GameDir
 # or: make build / make verify (the Makefile forwards STS2_GAME_DIR)
 
-dotnet build STS2_MCP.csproj          # analyzer + compiler warnings are errors here
-dotnet format STS2_MCP.csproj --verify-no-changes   # formatting gate
+dotnet build Sts2Mcp.csproj          # analyzer + compiler warnings are errors here
+dotnet format Sts2Mcp.csproj --verify-no-changes   # formatting gate
 make verify                           # build + format-check + tests/, same gate
 ```
 

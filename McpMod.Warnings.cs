@@ -2,7 +2,7 @@ using System;
 using System.Collections.Generic;
 using Godot;
 
-namespace STS2_MCP;
+namespace Sts2Mcp;
 
 public static partial class McpMod
 {
@@ -64,7 +64,7 @@ public static partial class McpMod
 
     private static void Warn(string context, string message)
     {
-        var entry = $"{context}: {Flatten(message)}";
+        string entry = $"{context}: {Flatten(message)}";
         if (!s_stateWarningKeys.Add(entry))
             return;
 
@@ -85,7 +85,7 @@ public static partial class McpMod
 
     private static string Flatten(string message)
     {
-        var oneLine = message.Replace("\r\n", " ").Replace('\n', ' ').Replace('\r', ' ').Trim();
+        string oneLine = message.Replace("\r\n", " ").Replace('\n', ' ').Replace('\r', ' ').Trim();
         return oneLine.Length > MaxWarningMessageLength
             ? oneLine[..MaxWarningMessageLength] + "..."
             : oneLine;
@@ -124,7 +124,7 @@ public static partial class McpMod
     private static Dictionary<string, object?> BuildGameState()
     {
         BeginStateWarnings();
-        var result = BuildGameStateCore();
+        Dictionary<string, object?> result = BuildGameStateCore();
         EndStateWarnings(result);
         return result;
     }
@@ -132,7 +132,7 @@ public static partial class McpMod
     private static Dictionary<string, object?> BuildMultiplayerGameState(bool fullDetail)
     {
         BeginStateWarnings();
-        var result = BuildMultiplayerGameStateCore(fullDetail);
+        Dictionary<string, object?> result = BuildMultiplayerGameStateCore(fullDetail);
         EndStateWarnings(result);
         return result;
     }

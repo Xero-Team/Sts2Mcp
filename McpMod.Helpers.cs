@@ -1,7 +1,9 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Collections.Specialized;
 using System.Linq;
 using System.Net;
+using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json;
@@ -10,21 +12,23 @@ using MegaCrit.Sts2.Core.CardSelection;
 using MegaCrit.Sts2.Core.Combat;
 using MegaCrit.Sts2.Core.Entities.Cards;
 using MegaCrit.Sts2.Core.Entities.Merchant;
+using MegaCrit.Sts2.Core.Entities.Players;
 using MegaCrit.Sts2.Core.HoverTips;
 using MegaCrit.Sts2.Core.Localization.DynamicVars;
 using MegaCrit.Sts2.Core.Map;
 using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Models.Modifiers;
 using MegaCrit.Sts2.Core.Nodes.CommonUi;
+using MegaCrit.Sts2.Core.Nodes.Ftue;
 using MegaCrit.Sts2.Core.Nodes.GodotExtensions;
 using MegaCrit.Sts2.Core.Nodes.Rooms;
 using MegaCrit.Sts2.Core.Nodes.Screens.CardSelection;
 using MegaCrit.Sts2.Core.Nodes.Screens.CustomRun;
 using MegaCrit.Sts2.Core.Nodes.Screens.Map;
 using MegaCrit.Sts2.Core.Nodes.Screens.Shops;
-using STS2_MCP.Core.Contracts;
+using Sts2Mcp.Core.Contracts;
 
-namespace STS2_MCP;
+namespace Sts2Mcp;
 
 public static partial class McpMod
 {
@@ -42,7 +46,7 @@ public static partial class McpMod
     internal static bool IsPlayPhase(MegaCrit.Sts2.Core.Combat.ICombatState? combatState)
     {
         if (!IsPlayerSideTurn() || combatState == null) return false;
-        foreach (var player in combatState.Players)
+        foreach (Player player in combatState.Players)
         {
             if (player?.PlayerCombatState?.Phase == MegaCrit.Sts2.Core.Combat.PlayerTurnPhase.Play)
                 return true;
@@ -52,7 +56,7 @@ public static partial class McpMod
 
     private static bool IsPlayerSideTurn()
     {
-        var manager = MegaCrit.Sts2.Core.Combat.CombatManager.Instance;
+        CombatManager manager = MegaCrit.Sts2.Core.Combat.CombatManager.Instance;
         if (manager is not { IsInProgress: true }) return false;
         return manager.DebugOnlyGetState()?.CurrentSide == MegaCrit.Sts2.Core.Combat.CombatSide.Player;
     }
@@ -66,7 +70,7 @@ public static partial class McpMod
         // mutation), and the preview is a nicety: report it and let the caller omit it.
         return TryRead("card.upgrade_preview", () =>
         {
-            var preview = card.IsMutable
+            CardModel preview = card.IsMutable
                 ? (CardModel)card.MutableClone()
                 : card.ToMutable();
             preview.UpgradeInternal();
@@ -76,7 +80,7 @@ public static partial class McpMod
 
     private static string? SafeGetCardUpgradePreviewDescription(CardModel card, PileType pile = PileType.Hand)
     {
-        var preview = SafeBuildUpgradedCardPreview(card);
+        CardModel? preview = SafeBuildUpgradedCardPreview(card);
         if (preview != null)
             return SafeGetCardDescription(preview, pile);
 
@@ -95,7 +99,7 @@ public static partial class McpMod
     {
         try
         {
-            var result = getter();
+            object? result = getter();
             if (result == null) return null;
             // If it's a LocString, call GetFormattedText
             if (result is MegaCrit.Sts2.Core.Localization.LocString locString)
@@ -328,7 +332,7 @@ public static partial class McpMod
     // global flag: requests are served concurrently on ThreadPool threads.
     internal static bool WantsPretty(HttpListenerRequest request)
     {
-        var query = request.QueryString;
+        NameValueCollection query = request.QueryString;
         string? value = query["pretty"];
         if (value == null)
         {
@@ -472,11 +476,11 @@ public static partial class McpMod
             response.StatusCode = ReadErrorStatus(error.ErrorCode);
         }
         else if (result is Dictionary<string, object?> data
-            && data.TryGetValue("status", out var status)
+            && data.TryGetValue("status", out object? status)
             && string.Equals(status as string, "error", StringComparison.Ordinal))
         {
             response.StatusCode = ReadErrorStatus(
-                data.TryGetValue("error_code", out var errorCode) ? errorCode as string : null);
+                data.TryGetValue("error_code", out object? errorCode) ? errorCode as string : null);
         }
 
         SendJson(response, result, pretty);
@@ -491,13 +495,13 @@ public static partial class McpMod
 
     private static bool IsCombatPlayPhase()
     {
-        var manager = CombatManager.Instance;
+        CombatManager manager = CombatManager.Instance;
         if (manager == null || !manager.IsInProgress)
             return false;
 
         // STS2 0.107 removed the compiled IsPlayPhase accessor, so read it by name when it
         // is there, then fall back to the side the state reports, then to the action queue.
-        var property = TryRead(() => manager.GetType().GetProperty(
+        PropertyInfo? property = TryRead(() => manager.GetType().GetProperty(
             "IsPlayPhase",
             System.Reflection.BindingFlags.Instance |
             System.Reflection.BindingFlags.Public |
@@ -506,7 +510,7 @@ public static partial class McpMod
             && TryRead(() => property.GetValue(manager)) is bool isPlayPhase)
             return isPlayPhase;
 
-        var currentSide = TryRead(() => manager.DebugOnlyGetState()?.CurrentSide.ToString());
+        string? currentSide = TryRead(() => manager.DebugOnlyGetState()?.CurrentSide.ToString());
         if (!string.IsNullOrEmpty(currentSide))
             return currentSide.Contains("player", StringComparison.OrdinalIgnoreCase);
 
@@ -533,9 +537,9 @@ public static partial class McpMod
             System.Reflection.BindingFlags.NonPublic |
             System.Reflection.BindingFlags.DeclaredOnly;
 
-        for (var type = source.GetType(); type != null; type = type.BaseType)
+        for (Type? type = source.GetType(); type != null; type = type.BaseType)
         {
-            foreach (var property in type.GetProperties(Flags))
+            foreach (PropertyInfo property in type.GetProperties(Flags))
             {
                 if (property.GetIndexParameters().Length != 0 ||
                     !typeof(MerchantInventory).IsAssignableFrom(property.PropertyType))
@@ -545,7 +549,7 @@ public static partial class McpMod
                     return propertyInventory;
             }
 
-            foreach (var field in type.GetFields(Flags))
+            foreach (FieldInfo field in type.GetFields(Flags))
             {
                 if (!typeof(MerchantInventory).IsAssignableFrom(field.FieldType))
                     continue;
@@ -606,9 +610,9 @@ public static partial class McpMod
             System.Reflection.BindingFlags.NonPublic |
             System.Reflection.BindingFlags.DeclaredOnly;
 
-        for (var type = source.GetType(); type != null; type = type.BaseType)
+        for (Type? type = source.GetType(); type != null; type = type.BaseType)
         {
-            var field = type.GetField(fieldName, Flags);
+            FieldInfo? field = type.GetField(fieldName, Flags);
             if (field != null)
                 return field.GetValue(source);
         }
@@ -624,13 +628,13 @@ public static partial class McpMod
             System.Reflection.BindingFlags.NonPublic |
             System.Reflection.BindingFlags.DeclaredOnly;
 
-        for (var type = source.GetType(); type != null; type = type.BaseType)
+        for (Type? type = source.GetType(); type != null; type = type.BaseType)
         {
-            var property = type.GetProperty(memberName, Flags);
+            PropertyInfo? property = type.GetProperty(memberName, Flags);
             if (property is { CanRead: true } && property.GetIndexParameters().Length == 0)
                 return property.GetValue(source);
 
-            var field = type.GetField(memberName, Flags);
+            FieldInfo? field = type.GetField(memberName, Flags);
             if (field != null)
                 return field.GetValue(source);
         }
@@ -646,10 +650,10 @@ public static partial class McpMod
     {
         TryDo($"options.{label}", () =>
         {
-            var btn = GetInstanceFieldValue(owner, fieldName);
+            object? btn = GetInstanceFieldValue(owner, fieldName);
             if (btn is Control ctrl && IsNodeVisible(ctrl))
             {
-                var isEnabled = btn.GetType().GetProperty("IsEnabled")?.GetValue(btn) as bool?;
+                bool? isEnabled = btn.GetType().GetProperty("IsEnabled")?.GetValue(btn) as bool?;
                 options.Add(new Dictionary<string, object?>(StringComparer.Ordinal)
                 {
                     ["name"] = label,
@@ -699,9 +703,9 @@ public static partial class McpMod
     /// still in its card-picking step.</summary>
     internal static Control? FindVisibleCardSelectPreview(NCardGridSelectionScreen screen)
     {
-        foreach (var name in CardSelectPreviewContainerNames)
+        foreach (string name in CardSelectPreviewContainerNames)
         {
-            var container = TryReadQuiet(() => screen.GetNodeOrNull<Control>(name));
+            Control? container = TryReadQuiet(() => screen.GetNodeOrNull<Control>(name));
             if (container?.Visible == true)
                 return container;
         }
@@ -712,11 +716,11 @@ public static partial class McpMod
     internal static List<Control> FindCardSelectPreviewContainers(NCardGridSelectionScreen screen)
     {
         var found = new List<Control>();
-        foreach (var name in CardSelectPreviewContainerNames)
+        foreach (string name in CardSelectPreviewContainerNames)
         {
             TryDo(() =>
             {
-                var container = screen.GetNodeOrNull<Control>(name);
+                Control container = screen.GetNodeOrNull<Control>(name);
                 if (container?.Visible == true)
                     found.Add(container);
             });
@@ -777,7 +781,7 @@ public static partial class McpMod
     /// </summary>
     internal static List<T> FindAllSortedByPosition<T>(Node start) where T : Control
     {
-        var list = FindAll<T>(start);
+        List<T> list = FindAll<T>(start);
         list.Sort((a, b) =>
         {
             int cmp = a.GlobalPosition.Y.CompareTo(b.GlobalPosition.Y);
@@ -794,10 +798,10 @@ public static partial class McpMod
             found.Add(item);
         // Nodes are freed continuously while a scene transitions, so a walk that meets a
         // dead child stops there instead of reporting a field that is simply gone.
-        var children = TryReadQuiet(() => node.GetChildren().ToList());
+        List<Node>? children = TryReadQuiet(() => node.GetChildren().ToList());
         if (children == null)
             return;
-        foreach (var child in children)
+        foreach (Node? child in children)
             FindAllRecursive(child, found);
     }
 
@@ -808,15 +812,15 @@ public static partial class McpMod
     /// </summary>
     private static string? DescribeCanonicalModel(IHoverTip tip)
     {
-        var model = TryRead("keywords.canonical_model", () => (object?)tip.CanonicalModel);
+        object? model = TryRead("keywords.canonical_model", () => (object?)tip.CanonicalModel);
         if (model == null)
             return null;
 
-        foreach (var propertyName in new[] { "SmartDescription", "DynamicDescription", "Description" })
+        foreach (string? propertyName in new[] { "SmartDescription", "DynamicDescription", "Description" })
         {
             // This loop tries candidate property names until one works, so a throw on the
             // way is a step in the search, not a lost field.
-            var text = TryReadQuiet(() => ReadModelText(model, propertyName));
+            string? text = TryReadQuiet(() => ReadModelText(model, propertyName));
             if (!string.IsNullOrWhiteSpace(text))
                 return text;
         }
@@ -828,13 +832,13 @@ public static partial class McpMod
     /// this game version has no such member or it holds nothing readable.</summary>
     private static string? ReadModelText(object model, string propertyName)
     {
-        var property = model.GetType().GetProperty(propertyName);
+        PropertyInfo? property = model.GetType().GetProperty(propertyName);
         if (property == null)
             return null;
-        var raw = property.GetValue(model)?.ToString();
+        string? raw = property.GetValue(model)?.ToString();
         if (string.IsNullOrWhiteSpace(raw))
             return null;
-        var text = StripRichTextTags(raw);
+        string text = StripRichTextTags(raw);
         return string.IsNullOrWhiteSpace(text) ? null : text;
     }
 
@@ -844,9 +848,9 @@ public static partial class McpMod
         var seen = new HashSet<string>(StringComparer.Ordinal);
         TryDo("keywords", () =>
         {
-            foreach (var tip in IHoverTip.RemoveDupes(tips))
+            foreach (IHoverTip tip in IHoverTip.RemoveDupes(tips))
             {
-                var entry = TryRead("keywords.tip", () => DescribeHoverTip(tip, seen));
+                Dictionary<string, object?>? entry = TryRead("keywords.tip", () => DescribeHoverTip(tip, seen));
                 if (entry != null)
                     result.Add(entry);
             }
@@ -916,9 +920,9 @@ public static partial class McpMod
             return null;
         }
 
-        foreach (var child in children)
+        foreach (Node child in children)
         {
-            var val = FindFirst<T>(child);
+            T? val = FindFirst<T>(child);
             if (val != null) return val;
         }
         return null;
@@ -950,7 +954,7 @@ public static partial class McpMod
 
     private static bool IsMapScreenOpenOrVisible()
     {
-        var mapScreen = NMapScreen.Instance;
+        NMapScreen? mapScreen = NMapScreen.Instance;
         return mapScreen != null && (mapScreen.IsOpen || IsNodeVisible(mapScreen));
     }
 
@@ -1015,7 +1019,7 @@ public static partial class McpMod
     {
         try
         {
-            var mapScreen = NMapScreen.Instance;
+            NMapScreen? mapScreen = NMapScreen.Instance;
             return mapScreen != null && IsLiveNode(mapScreen) && mapScreen.IsTraveling;
         }
         catch (ObjectDisposedException)
@@ -1098,7 +1102,7 @@ public static partial class McpMod
     {
         return TryReadQuiet(() =>
         {
-            for (var current = node; current != null && IsLiveNode(current); current = current.GetParent())
+            for (Node? current = node; current != null && IsLiveNode(current); current = current.GetParent())
             {
                 if (ReferenceEquals(current, ancestor))
                     return true;
@@ -1168,10 +1172,10 @@ public static partial class McpMod
 
     private static Dictionary<string, object?>? BuildVisibleFtueState(Node root)
     {
-        var tutorialFtue = FindVisibleAcceptTutorialsFtue(root);
+        NAcceptTutorialsFtue? tutorialFtue = FindVisibleAcceptTutorialsFtue(root);
         if (tutorialFtue != null && IsFtueNodeActive(tutorialFtue))
         {
-            var state = NewStateResult("menu");
+            Dictionary<string, object?> state = NewStateResult("menu");
             state["menu_screen"] = "tutorial_prompt";
             state["message"] = "Enable Tutorials? Choose yes or no.";
             state["options"] = new List<Dictionary<string, object?>>
@@ -1182,11 +1186,11 @@ public static partial class McpMod
             return state;
         }
 
-        var ftue = FindVisibleGenericFtue(root);
+        Node? ftue = FindVisibleGenericFtue(root);
         if (ftue != null)
         {
-            var canAdvance = FindFtueAdvanceButton(ftue) != null;
-            var state = NewStateResult("menu");
+            bool canAdvance = FindFtueAdvanceButton(ftue) != null;
+            Dictionary<string, object?> state = NewStateResult("menu");
             state["menu_screen"] = "tutorial";
             state["message"] = "Tutorial popup active. Use advance to dismiss.";
             state["options"] = new List<Dictionary<string, object?>>
@@ -1197,7 +1201,7 @@ public static partial class McpMod
             return state;
         }
 
-        var popup = BuildVisiblePopupState(root);
+        Dictionary<string, object?>? popup = BuildVisiblePopupState(root);
         if (popup != null)
             return popup;
 
@@ -1206,13 +1210,13 @@ public static partial class McpMod
 
     private static Dictionary<string, object?>? BuildVisiblePopupState(Node root)
     {
-        var popup = FindVisibleVerticalPopup(root);
-        var options = popup != null
+        NVerticalPopup? popup = FindVisibleVerticalPopup(root);
+        List<(string Name, NClickableControl Button)> options = popup != null
             ? GetPopupOptions(popup)
             : GetVisiblePopupButtonOptions(root);
 
         var stateOptions = new List<Dictionary<string, object?>>();
-        foreach (var option in options)
+        foreach ((string Name, NClickableControl Button) option in options)
         {
             stateOptions.Add(new Dictionary<string, object?>(StringComparer.Ordinal)
             {
@@ -1224,7 +1228,7 @@ public static partial class McpMod
         if (stateOptions.Count == 0)
             return null;
 
-        var state = NewStateResult("menu");
+        Dictionary<string, object?> state = NewStateResult("menu");
         state["menu_screen"] = "popup";
         state["message"] = popup != null ? GetVerticalPopupText(popup, "TitleLabel") ?? "Popup active." : "Popup active.";
         state["body"] = popup != null ? GetVerticalPopupText(popup, "BodyLabel") : null;
@@ -1234,7 +1238,7 @@ public static partial class McpMod
 
     private static MegaCrit.Sts2.Core.Nodes.Ftue.NAcceptTutorialsFtue? FindVisibleAcceptTutorialsFtue(Node root)
     {
-        var openModal = GetOpenModalNode();
+        Node? openModal = GetOpenModalNode();
         if (openModal is MegaCrit.Sts2.Core.Nodes.Ftue.NAcceptTutorialsFtue openFtue &&
             IsFtueNodeActive(openFtue))
         {
@@ -1252,20 +1256,20 @@ public static partial class McpMod
 
     private static NVerticalPopup? FindVisibleVerticalPopup(Node root)
     {
-        var openModal = GetOpenModalNode();
+        Node? openModal = GetOpenModalNode();
         if (openModal is NVerticalPopup openPopup && GetPopupOptions(openPopup).Count > 0)
             return openPopup;
 
         if (openModal != null)
         {
-            foreach (var popup in FindAll<NVerticalPopup>(openModal))
+            foreach (NVerticalPopup popup in FindAll<NVerticalPopup>(openModal))
             {
                 if (GetPopupOptions(popup).Count > 0)
                     return popup;
             }
         }
 
-        foreach (var popup in FindAll<NVerticalPopup>(root))
+        foreach (NVerticalPopup popup in FindAll<NVerticalPopup>(root))
         {
             if ((IsNodeVisible(popup) || (openModal != null && IsDescendantOf(popup, openModal))) &&
                 GetPopupOptions(popup).Count > 0)
@@ -1288,24 +1292,24 @@ public static partial class McpMod
     {
         var options = new List<(string Name, NClickableControl Button)>();
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        var openModal = GetOpenModalNode();
+        Node? openModal = GetOpenModalNode();
         if (openModal != null)
         {
-            foreach (var button in FindAll<NClickableControl>(openModal))
+            foreach (NClickableControl button in FindAll<NClickableControl>(openModal))
                 AddVisiblePopupButtonOption(options, seen, button, null, openModal);
         }
 
-        foreach (var button in FindAll<NPopupYesNoButton>(root))
+        foreach (NPopupYesNoButton button in FindAll<NPopupYesNoButton>(root))
         {
             AddVisiblePopupButtonOption(options, seen, button, button.IsYes ? "yes" : "no", null);
         }
 
-        foreach (var modal in FindAll<NModalContainer>(root))
+        foreach (NModalContainer modal in FindAll<NModalContainer>(root))
         {
             if (!IsNodeVisible(modal))
                 continue;
 
-            foreach (var button in FindAll<NClickableControl>(modal))
+            foreach (NClickableControl button in FindAll<NClickableControl>(modal))
                 AddVisiblePopupButtonOption(options, seen, button, null, null);
         }
 
@@ -1322,10 +1326,10 @@ public static partial class McpMod
         if (!(IsControlVisibleInTree(button) || IsControlVisibleInOpenModal(button, openModal)))
             return;
 
-        var label = button is NPopupYesNoButton popupButton
+        string? label = button is NPopupYesNoButton popupButton
             ? GetPopupButtonLabel(popupButton)
             : GetClickableControlLabel(button!);
-        var name = NormalizeMenuOptionName(label) ?? fallback;
+        string? name = NormalizeMenuOptionName(label) ?? fallback;
         if (string.IsNullOrWhiteSpace(name) || !seen.Add(name))
             return;
 
@@ -1340,44 +1344,44 @@ public static partial class McpMod
         if (!IsPopupButtonActionable(button))
             return;
 
-        var label = GetPopupButtonLabel(button!);
-        var name = NormalizeMenuOptionName(label) ?? fallback;
+        string? label = GetPopupButtonLabel(button!);
+        string name = NormalizeMenuOptionName(label) ?? fallback;
         options.Add((name, button!));
     }
 
     private static string? GetVerticalPopupText(NVerticalPopup popup, string propertyName)
     {
-        var label = popup.GetType().GetProperty(propertyName)?.GetValue(popup);
+        object? label = popup.GetType().GetProperty(propertyName)?.GetValue(popup);
         return GetNodeText(label);
     }
 
     private static string? GetPopupButtonLabel(NPopupYesNoButton button)
     {
-        var label = GetInstanceFieldValue(button, "_label");
+        object? label = GetInstanceFieldValue(button, "_label");
         return GetNodeText(label);
     }
 
     private static string? GetClickableControlLabel(NClickableControl button)
     {
-        foreach (var fieldName in new[] { "_label", "_textLabel", "_title", "_buttonLabel" })
+        foreach (string? fieldName in new[] { "_label", "_textLabel", "_title", "_buttonLabel" })
         {
-            var label = GetNodeText(GetInstanceFieldValue(button, fieldName));
+            string? label = GetNodeText(GetInstanceFieldValue(button, fieldName));
             if (!string.IsNullOrWhiteSpace(label))
                 return label;
         }
 
-        foreach (var propName in new[] { "Text", "Label", "Title" })
+        foreach (string? propName in new[] { "Text", "Label", "Title" })
         {
-            var label = SafeGetText(() => button.GetType().GetProperty(propName)?.GetValue(button));
+            string? label = SafeGetText(() => button.GetType().GetProperty(propName)?.GetValue(button));
             if (!string.IsNullOrWhiteSpace(label))
                 return label;
         }
 
-        var childText = FindNodeTextRecursive(button);
+        string? childText = FindNodeTextRecursive(button);
         if (!string.IsNullOrWhiteSpace(childText))
             return childText;
 
-        var nodeName = button.Name.ToString();
+        string nodeName = button.Name.ToString();
         if (!string.IsNullOrWhiteSpace(nodeName))
             return nodeName.EndsWith("Button", StringComparison.OrdinalIgnoreCase)
                 ? nodeName[..^"Button".Length]
@@ -1391,7 +1395,7 @@ public static partial class McpMod
         if (!IsLiveNode(start))
             return null;
 
-        var text = GetNodeText(start);
+        string? text = GetNodeText(start);
         if (!string.IsNullOrWhiteSpace(text))
             return text;
 
@@ -1405,7 +1409,7 @@ public static partial class McpMod
             return null;
         }
 
-        foreach (var child in children)
+        foreach (Node child in children)
         {
             text = FindNodeTextRecursive(child);
             if (!string.IsNullOrWhiteSpace(text))
@@ -1420,9 +1424,9 @@ public static partial class McpMod
         if (node == null)
             return null;
 
-        foreach (var propName in new[] { "Text", "BbcodeText" })
+        foreach (string? propName in new[] { "Text", "BbcodeText" })
         {
-            var text = SafeGetText(() => node.GetType().GetProperty(propName)?.GetValue(node));
+            string? text = SafeGetText(() => node.GetType().GetProperty(propName)?.GetValue(node));
             if (!string.IsNullOrWhiteSpace(text))
                 return text;
         }
@@ -1436,7 +1440,7 @@ public static partial class McpMod
             return null;
 
         var sb = new StringBuilder();
-        foreach (var ch in StripRichTextTags(text).Trim().ToLowerInvariant())
+        foreach (char ch in StripRichTextTags(text).Trim().ToLowerInvariant())
         {
             if (char.IsLetterOrDigit(ch))
                 sb.Append(ch);
@@ -1444,7 +1448,7 @@ public static partial class McpMod
                 sb.Append('_');
         }
 
-        var normalized = sb.ToString().Trim('_');
+        string normalized = sb.ToString().Trim('_');
         return normalized.Length == 0 ? null : normalized;
     }
 
@@ -1452,10 +1456,10 @@ public static partial class McpMod
     {
         if (ReferenceEquals(start, (Godot.Engine.GetMainLoop() as SceneTree)?.Root))
         {
-            var openModal = GetOpenModalNode();
+            Node? openModal = GetOpenModalNode();
             if (openModal != null)
             {
-                var openFtue = FindVisibleGenericFtue(openModal);
+                Node? openFtue = FindVisibleGenericFtue(openModal);
                 if (openFtue != null)
                     return openFtue;
             }
@@ -1464,7 +1468,7 @@ public static partial class McpMod
         if (!IsLiveNode(start))
             return null;
 
-        var typeName = start.GetType().FullName ?? "";
+        string typeName = start.GetType().FullName ?? "";
         if (typeName.StartsWith("MegaCrit.Sts2.Core.Nodes.Ftue.", StringComparison.Ordinal) &&
             !typeName.EndsWith(".NAcceptTutorialsFtue", StringComparison.Ordinal) &&
             IsFtueNodeActive(start))
@@ -1482,9 +1486,9 @@ public static partial class McpMod
             return null;
         }
 
-        foreach (var child in children)
+        foreach (Node child in children)
         {
-            var val = FindVisibleGenericFtue(child);
+            Node? val = FindVisibleGenericFtue(child);
             if (val != null)
                 return val;
         }
@@ -1494,7 +1498,7 @@ public static partial class McpMod
 
     private static NClickableControl? FindFtueAdvanceButton(Node ftue)
     {
-        foreach (var fieldName in new[]
+        foreach (string? fieldName in new[]
         {
             "_confirmButton",
             "_advanceButton",
@@ -1515,7 +1519,7 @@ public static partial class McpMod
 
         try
         {
-            foreach (var field in ftue.GetType().GetFields(
+            foreach (FieldInfo field in ftue.GetType().GetFields(
                          System.Reflection.BindingFlags.Public |
                          System.Reflection.BindingFlags.NonPublic |
                          System.Reflection.BindingFlags.Instance))
@@ -1573,9 +1577,9 @@ public static partial class McpMod
         var entries = new List<RunModifierEntry>();
         var usedKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-        foreach (var tickbox in FindAll<NRunModifierTickbox>(screen))
+        foreach (NRunModifierTickbox tickbox in FindAll<NRunModifierTickbox>(screen))
         {
-            var entry = TryReadQuiet(() => DescribeRunModifier(tickbox, usedKeys));
+            RunModifierEntry? entry = TryReadQuiet(() => DescribeRunModifier(tickbox, usedKeys));
             if (entry != null)
                 entries.Add(entry);
         }
@@ -1586,20 +1590,20 @@ public static partial class McpMod
     /// <summary>One tickbox as an entry, or null when it exposes no modifier.</summary>
     private static RunModifierEntry? DescribeRunModifier(NRunModifierTickbox tickbox, HashSet<string> usedKeys)
     {
-        var modifier = tickbox.Modifier;
+        ModifierModel? modifier = tickbox.Modifier;
         if (modifier == null)
             return null;
 
-        var id = modifier.Id.Entry;
+        string id = modifier.Id.Entry;
 
         string? characterId = modifier is CharacterCards characterCards
             ? TryReadQuiet(() => characterCards.CharacterModel.Entry)
             : null;
 
-        var key = string.IsNullOrEmpty(characterId) ? id : $"{id}_{characterId}";
+        string key = string.IsNullOrEmpty(characterId) ? id : $"{id}_{characterId}";
         if (!usedKeys.Add(key))
         {
-            var suffix = 2;
+            int suffix = 2;
             while (!usedKeys.Add($"{key}_{suffix}"))
                 suffix++;
             key = $"{key}_{suffix}";
@@ -1612,7 +1616,7 @@ public static partial class McpMod
     private static List<string> TickedModifierKeys(IEnumerable<RunModifierEntry> entries)
     {
         var keys = new List<string>();
-        foreach (var entry in entries)
+        foreach (RunModifierEntry entry in entries)
         {
             TryDo(() =>
             {

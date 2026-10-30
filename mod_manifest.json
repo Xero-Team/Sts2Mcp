@@ -1,6 +1,6 @@
 {
-  "id": "STS2_MCP",
-  "name": "STS2 MCP",
+  "id": "Sts2Mcp",
+  "name": "StS2 MCP",
   "author": "kunology",
   "description": "MCP server bridge for Slay the Spire 2",
   "version": "0.5.0",

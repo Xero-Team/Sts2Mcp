@@ -6,7 +6,7 @@ using MegaCrit.Sts2.Core.Entities.Players;
 using MegaCrit.Sts2.Core.Entities.Relics;
 using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Runs;
-using STS2_MCP;
+using Sts2Mcp;
 
 const BindingFlags Fields = BindingFlags.Instance | BindingFlags.NonPublic;
 const BindingFlags Methods = BindingFlags.Static | BindingFlags.NonPublic;

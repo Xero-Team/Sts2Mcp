@@ -1,6 +1,6 @@
 # Provenance
 
-This skill fuses four upstreams and adapts them to STS2_MCP.
+This skill fuses four upstreams and adapts them to Sts2Mcp.
 
 ## Clean Architecture (jasontaylordev)
 
@@ -75,7 +75,7 @@ This skill fuses four upstreams and adapts them to STS2_MCP.
   executable subset. Upstream's tooling claims (`dotnet format` in CI) are not
   imported as gates: this repository has no CI workflow.
 
-## What changed for STS2MCP
+## What changed for Sts2Mcp
 
 - One skill replaces the earlier `reverse-engineer-anything` copy: the ub-mode
   working discipline and the REA evidence route are now a single workflow, so

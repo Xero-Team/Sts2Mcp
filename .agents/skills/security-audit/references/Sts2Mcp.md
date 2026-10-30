@@ -1,4 +1,4 @@
-# STS2_MCP target profile
+# Sts2Mcp target profile
 
 Read this before reconnaissance; it replaces guesswork about the target's shape.
 Ground truth for how the code works is `.agents/skills/sts2-engineering/SKILL.md`,
@@ -6,8 +6,8 @@ Ground truth for how the code works is `.agents/skills/sts2-engineering/SKILL.md
 
 ## What the target is
 
-A Slay the Spire 2 mod (`STS2_MCP.dll`, C#/.NET, Harmony patches, built by
-`STS2_MCP.csproj` + `build.ps1`) that runs *inside the game process* and exposes a
+A Slay the Spire 2 mod (`Sts2Mcp.dll`, C#/.NET, Harmony patches, built by
+`Sts2Mcp.csproj` + `build.ps1`) that runs *inside the game process* and exposes a
 JSON HTTP API, plus a Python MCP bridge (`mcp/server.py`, FastMCP, `httpx`) that
 forwards to it. There is no server-side tenant model, no user accounts, and no
 remote deployment: the trust boundary is "any local process on the machine"
@@ -22,7 +22,7 @@ versus "the player's game process and save/profile data".
 | State serialization and path/name interpolation into responses and logs | `McpMod.StateBuilder.cs`, `McpMod.Formatting.cs`, `McpMod.Helpers.cs` | [MEMORY-SAFETY-AND-BINARY.md](MEMORY-SAFETY-AND-BINARY.md) |
 | Profile, run history, compendium, wiki file and game-data access | `McpMod.Profile.cs`, `McpMod.Compendium.cs`, `McpMod.Wiki.cs` | [DATA-ISOLATION-AND-LIFECYCLE.md](DATA-ISOLATION-AND-LIFECYCLE.md) |
 | MCP bridge: tool schemas, URL/proxy handling, error surfaces | `mcp/server.py` | [AI-AND-LLM.md](AI-AND-LLM.md), [CLIENT-SIDE.md](CLIENT-SIDE.md) |
-| Build, NuGet restore, Harmony patch targets, release of the DLL | `STS2_MCP.csproj`, `build.ps1`, `mod_manifest.json` | [SUPPLY-CHAIN-AND-RELEASE.md](SUPPLY-CHAIN-AND-RELEASE.md) |
+| Build, NuGet restore, Harmony patch targets, release of the DLL | `Sts2Mcp.csproj`, `build.ps1`, `mod_manifest.json` | [SUPPLY-CHAIN-AND-RELEASE.md](SUPPLY-CHAIN-AND-RELEASE.md) |
 
 Skip companions that have no surface here (cloud deployment, browser client,
 mobile, kernel). Say which ones you skipped and why instead of silently narrowing

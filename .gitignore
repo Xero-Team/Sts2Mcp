@@ -27,12 +27,12 @@ start.md
 PULL_REQUEST_DRAFT.md
 
 # Rider / IntelliJ
-/.idea/.idea.STS2_MCP/.idea/.gitignore
-/.idea/.idea.STS2_MCP/.idea/.name
-/.idea/.idea.STS2_MCP/.idea/awsToolkit.xml
-/.idea/.idea.STS2_MCP/.idea/encodings.xml
-/.idea/.idea.STS2_MCP/.idea/indexLayout.xml
-/.idea/.idea.STS2_MCP/.idea/vcs.xml
+/.idea/.idea.Sts2Mcp/.idea/.gitignore
+/.idea/.idea.Sts2Mcp/.idea/.name
+/.idea/.idea.Sts2Mcp/.idea/awsToolkit.xml
+/.idea/.idea.Sts2Mcp/.idea/encodings.xml
+/.idea/.idea.Sts2Mcp/.idea/indexLayout.xml
+/.idea/.idea.Sts2Mcp/.idea/vcs.xml
 /.idea/sts2-mcp.iml
 
 # Local planning

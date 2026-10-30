@@ -2,7 +2,7 @@ using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
-namespace STS2_MCP.Core.Contracts;
+namespace Sts2Mcp.Core.Contracts;
 
 /// <summary>
 /// The single definition of the JSON wire format: snake_case names, absent optional fields, and no

@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 
-namespace STS2_MCP
+namespace Sts2Mcp
 {
     public static partial class McpMod
     {

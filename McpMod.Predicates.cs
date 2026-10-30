@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 
-namespace STS2_MCP;
+namespace Sts2Mcp;
 
 public static partial class McpMod
 {
@@ -69,9 +69,9 @@ public static partial class McpMod
     /// </remarks>
     private static PredicateScan ScanPredicate(MethodBase? method)
     {
-        if (method != null && s_predicateScanCache.TryGetValue(method, out var cached))
+        if (method != null && s_predicateScanCache.TryGetValue(method, out PredicateScan? cached))
             return cached;
-        var scan = ScanPredicateUncached(method);
+        PredicateScan scan = ScanPredicateUncached(method);
         if (method != null)
             s_predicateScanCache[method] = scan;
         return scan;
@@ -84,7 +84,7 @@ public static partial class McpMod
         TryDo(() => { il = method?.GetMethodBody()?.GetILAsByteArray(); });
         if (il == null || method == null)
             return scan;
-        var module = method.Module;
+        Module module = method.Module;
 
         int i = 0;
         while (i < il.Length)
@@ -143,19 +143,19 @@ public static partial class McpMod
         {
             if (isField)
             {
-                var field = module.ResolveField(token);
+                FieldInfo? field = module.ResolveField(token);
                 if (field?.DeclaringType != null && !IsCompilerGenerated(field.DeclaringType))
                     scan.Members.Add($"{field.DeclaringType.Name}.{field.Name}");
                 return;
             }
-            var method = module.ResolveMethod(token);
+            MethodBase? method = module.ResolveMethod(token);
             if (method?.DeclaringType == null)
                 return;
             scan.Members.Add($"{method.DeclaringType.Name}.{method.Name}");
             scan.Calls.Add(method);
             if (method.IsGenericMethod)
             {
-                foreach (var arg in method.GetGenericArguments())
+                foreach (Type arg in method.GetGenericArguments())
                     scan.GenericArgs.Add(arg.Name);
             }
         });
@@ -168,7 +168,7 @@ public static partial class McpMod
             return;
         TryDo(() =>
         {
-            var literal = module.ResolveString(BitConverter.ToInt32(il, tokenOffset));
+            string literal = module.ResolveString(BitConverter.ToInt32(il, tokenOffset));
             if (literal != null)
                 scan.Strings.Add(literal);
         });
@@ -180,7 +180,7 @@ public static partial class McpMod
             return;
         TryDo(() =>
         {
-            var target = module.ResolveMethod(BitConverter.ToInt32(il, tokenOffset));
+            MethodBase? target = module.ResolveMethod(BitConverter.ToInt32(il, tokenOffset));
             if (target != null)
                 scan.FunctionPointers.Add(target);
         });
@@ -254,14 +254,14 @@ public static partial class McpMod
     /// </remarks>
     private static PredicateScan? InlineMonsterCall(PredicateScan outer)
     {
-        foreach (var call in outer.Calls)
+        foreach (MethodBase call in outer.Calls)
         {
-            var declaring = call.DeclaringType;
+            Type? declaring = call.DeclaringType;
             if (declaring == null || !typeof(MegaCrit.Sts2.Core.Models.MonsterModel).IsAssignableFrom(declaring))
                 continue;
             if (string.Equals(call.Name, "get_Creature", StringComparison.Ordinal))
                 continue;
-            var inner = ScanPredicate(call);
+            PredicateScan inner = ScanPredicate(call);
             if (inner.Comparisons.Count > 0 || inner.FunctionPointers.Count > 0)
                 return inner;
         }
@@ -279,13 +279,13 @@ public static partial class McpMod
     /// </remarks>
     private static bool CountExcludesSelf(params PredicateScan?[] scans)
     {
-        foreach (var scan in scans)
+        foreach (PredicateScan? scan in scans)
         {
             if (scan == null)
                 continue;
-            foreach (var pointer in scan.FunctionPointers)
+            foreach (MethodBase pointer in scan.FunctionPointers)
             {
-                var lambda = ScanPredicate(pointer);
+                PredicateScan lambda = ScanPredicate(pointer);
                 // `Creature` declares no equality operators, so `c != owner` is
                 // a reference compare: a `ceq` against the captured owner.
                 bool readsOwner = lambda.Members.Any(member => member.EndsWith(".get_Creature", StringComparison.Ordinal));
@@ -311,7 +311,7 @@ public static partial class McpMod
     {
         if (weightLambda == null)
             return false;
-        var scan = ScanPredicate(weightLambda.Method);
+        PredicateScan scan = ScanPredicate(weightLambda.Method);
         return scan.Members.Count > 0 || scan.HasBranch;
     }
 
@@ -320,7 +320,7 @@ public static partial class McpMod
     {
         if (weightLambda == null)
             return null;
-        var scan = ScanPredicate(weightLambda.Method);
+        PredicateScan scan = ScanPredicate(weightLambda.Method);
         return ReadsAny(scan, ".CanSummon") ? "two_tailed_rat_can_summon" : null;
     }
 
@@ -345,10 +345,10 @@ public static partial class McpMod
         Delegate? lambda, int branchIndex, bool enabled, out bool isSnapshot, bool placementSampled = true)
     {
         isSnapshot = false;
-        var scan = ScanPredicate(lambda?.Method);
+        PredicateScan scan = ScanPredicate(lambda?.Method);
         bool negated = IsNegated(scan);
 
-        var known = MatchKnownCondition(scan, branchIndex, enabled, negated, placementSampled, ref isSnapshot);
+        Dictionary<string, object?>? known = MatchKnownCondition(scan, branchIndex, enabled, negated, placementSampled, ref isSnapshot);
         if (known != null)
             return known;
 
@@ -394,7 +394,7 @@ public static partial class McpMod
         // which of the two the threshold was written against. The comparison and
         // constant may sit one call deeper, in the bool property the predicate
         // reads.
-        var inlined = InlineMonsterCall(scan);
+        PredicateScan? inlined = InlineMonsterCall(scan);
         if (scan.Reads("CombatState.GetTeammatesOf") || scan.Reads("ICombatState.GetTeammatesOf")
             || inlined?.Reads("CombatState.GetTeammatesOf") == true
             || inlined?.Reads("ICombatState.GetTeammatesOf") == true)
@@ -413,7 +413,7 @@ public static partial class McpMod
         // dies, so "not yet died" is "an amalgam is still alive".
         if (scan.Reads("Queen.get_HasAmalgamDied"))
         {
-            var alive = Condition("monster_alive", ("entity_prefix", "TORCH_HEAD_AMALGAM"));
+            Dictionary<string, object?> alive = Condition("monster_alive", ("entity_prefix", "TORCH_HEAD_AMALGAM"));
             return negated ? alive : Condition("not", ("arg", alive));
         }
 
@@ -433,10 +433,10 @@ public static partial class McpMod
         int denominator = scan.Ints.FirstOrDefault(value => value > 1);
         if (denominator <= 1)
             denominator = 2;
-        var charged = Condition("move_seen", ("move_id", "BEETLE_CHARGE"));
-        var half = Condition("owner_hp_fraction",
+        Dictionary<string, object?> charged = Condition("move_seen", ("move_id", "BEETLE_CHARGE"));
+        Dictionary<string, object?> half = Condition("owner_hp_fraction",
             ("cmp", "ge"), ("numerator", 1), ("denominator", denominator), ("floor", true));
-        var either = Condition("or", ("args", new[] { charged, half }));
+        Dictionary<string, object?> either = Condition("or", ("args", new[] { charged, half }));
         return branchIndex == 0 ? either : Condition("not", ("arg", either));
     }
 
@@ -476,7 +476,7 @@ public static partial class McpMod
         // the comparison belongs to that property's body.
         bool comparesDirectly = scan.Comparisons.Any(comparison => !string.Equals(comparison, "ceq", StringComparison.Ordinal))
             || (scan.Comparisons.Count > 0 && !TestsBoolean(scan));
-        var source = comparesDirectly || inlined == null ? scan : inlined;
+        PredicateScan source = comparesDirectly || inlined == null ? scan : inlined;
         // An inner `<=` is itself a negated `>`, and an outer `!` inverts that
         // again, so the two compose.
         bool effectiveNegation = ReferenceEquals(source, scan) ? negated : IsNegated(source) ^ negated;
@@ -527,7 +527,7 @@ public static partial class McpMod
         params (string key, object? value)[] fields)
     {
         var result = new Dictionary<string, object?>(StringComparer.Ordinal) { ["op"] = op };
-        foreach (var (key, value) in fields)
+        foreach ((string? key, object? value) in fields)
             result[key] = value;
         return result;
     }

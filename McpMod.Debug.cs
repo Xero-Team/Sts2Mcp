@@ -17,7 +17,7 @@ using MegaCrit.Sts2.Core.Nodes;
 using MegaCrit.Sts2.Core.Rooms;
 using MegaCrit.Sts2.Core.Runs;
 
-namespace STS2_MCP;
+namespace Sts2Mcp;
 
 // Debug actions used by the emulator's differential-test harness
 // (validate_real_game_trace.py): jump straight into a chosen encounter, and
@@ -32,26 +32,26 @@ public static partial class McpMod
     private static Dictionary<string, object?> ExecuteDebugStartEncounter(
         Dictionary<string, JsonElement> data)
     {
-        if (!data.TryGetValue("encounter", out var encEl)
+        if (!data.TryGetValue("encounter", out JsonElement encEl)
             || encEl.ValueKind != JsonValueKind.String)
         {
             return Error("debug_start_encounter requires a string 'encounter' field");
         }
 
-        var name = encEl.GetString()!;
+        string name = encEl.GetString()!;
         // AllEncounters is the union of each ACT's pools, so it cannot see an encounter
         // that only an event starts -- the Fake Merchant, the Architect, the Battleworn
         // Dummies and the rest. Those are registered models like any other, so fall back
         // to the registry by ModelId: the category slug for EncounterModel plus the
         // class name slugified the way ModelDb.GetEntry does it.
-        var encounter = ModelDb.AllEncounters
+        EncounterModel? encounter = ModelDb.AllEncounters
             .FirstOrDefault(e => string.Equals(e.GetType().Name, name, StringComparison.Ordinal))
             ?? ModelDb.GetByIdOrNull<EncounterModel>(
                 new ModelId(ModelId.SlugifyCategory<EncounterModel>(), StringHelper.Slugify(name)));
         if (encounter == null)
             return Error($"Unknown encounter: {name}");
 
-        var runState = RunManager.Instance.DebugOnlyGetState();
+        RunState? runState = RunManager.Instance.DebugOnlyGetState();
         if (runState == null)
             return Error("No run state available");
 
@@ -81,20 +81,20 @@ public static partial class McpMod
     private static Dictionary<string, object?> ExecuteDebugStartEvent(
         Dictionary<string, JsonElement> data)
     {
-        if (!data.TryGetValue("event", out var evEl)
+        if (!data.TryGetValue("event", out JsonElement evEl)
             || evEl.ValueKind != JsonValueKind.String)
         {
             return Error("debug_start_event requires a string 'event' field");
         }
 
-        var name = evEl.GetString()!;
+        string name = evEl.GetString()!;
         // AllEvents already folds in AllSharedEvents.
-        var eventModel = ModelDb.AllEvents
+        EventModel? eventModel = ModelDb.AllEvents
             .FirstOrDefault(e => string.Equals(e.GetType().Name, name, StringComparison.Ordinal));
         if (eventModel == null)
             return Error($"Unknown event: {name}");
 
-        var runState = RunManager.Instance.DebugOnlyGetState();
+        RunState? runState = RunManager.Instance.DebugOnlyGetState();
         if (runState == null)
             return Error("No run state available");
 
@@ -124,7 +124,7 @@ public static partial class McpMod
     // request.
     private static Dictionary<string, object?> ExecuteDebugStartShop()
     {
-        var runState = RunManager.Instance.DebugOnlyGetState();
+        RunState? runState = RunManager.Instance.DebugOnlyGetState();
         if (runState == null)
             return Error("No run state available");
 
@@ -162,7 +162,7 @@ public static partial class McpMod
     // abandon_existing_run() depends on it.
     private static Dictionary<string, object?> ExecuteReturnToMainMenu()
     {
-        var game = NGame.Instance;
+        NGame? game = NGame.Instance;
         if (game == null)
             return Error("NGame not available");
 
@@ -195,31 +195,31 @@ public static partial class McpMod
         if (!CombatManager.Instance.IsInProgress)
             return Error("Not in combat");
 
-        if (!data.TryGetValue("card", out var cardEl) || cardEl.ValueKind != JsonValueKind.String)
+        if (!data.TryGetValue("card", out JsonElement cardEl) || cardEl.ValueKind != JsonValueKind.String)
             return Error("debug_add_card requires a string 'card' field (the card's entry id, e.g. MOLTEN_FIST)");
 
-        var wanted = cardEl.GetString()!;
-        var canonical = ModelDb.AllCards.FirstOrDefault(c =>
+        string wanted = cardEl.GetString()!;
+        CardModel? canonical = ModelDb.AllCards.FirstOrDefault(c =>
             string.Equals(SafeGetText(() => c.Id.Entry), wanted, StringComparison.OrdinalIgnoreCase)
             || string.Equals(c.GetType().Name, wanted, StringComparison.OrdinalIgnoreCase));
         if (canonical == null)
             return Error($"Unknown card: {wanted}");
 
-        var pileName = data.TryGetValue("pile", out var pileEl) && pileEl.ValueKind == JsonValueKind.String
+        string pileName = data.TryGetValue("pile", out JsonElement pileEl) && pileEl.ValueKind == JsonValueKind.String
             ? pileEl.GetString()!
             : "hand";
-        if (!Enum.TryParse<PileType>(pileName, ignoreCase: true, out var pile)
+        if (!Enum.TryParse<PileType>(pileName, ignoreCase: true, out PileType pile)
             || pile is PileType.None or PileType.Play)
         {
             return Error($"Unknown pile: {pileName} (use hand, draw, discard, exhaust or deck)");
         }
 
-        var combatState = player.Creature.CombatState;
+        ICombatState? combatState = player.Creature.CombatState;
         if (combatState == null)
             return Error("No combat state");
 
-        var card = combatState.CreateCard(canonical, player);
-        if (data.TryGetValue("upgraded", out var upEl) && upEl.ValueKind == JsonValueKind.True)
+        CardModel card = combatState.CreateCard(canonical, player);
+        if (data.TryGetValue("upgraded", out JsonElement upEl) && upEl.ValueKind == JsonValueKind.True)
             CardCmd.Upgrade(card);
 
         // Fire-and-forget, like debug_start_encounter: the game resolves the add on its
@@ -245,8 +245,8 @@ public static partial class McpMod
         if (!CombatManager.Instance.IsInProgress)
             return Error("Not in combat");
 
-        if (!data.TryGetValue("amount", out var amountEl)
-            || !amountEl.TryGetDecimal(out var amount)
+        if (!data.TryGetValue("amount", out JsonElement amountEl)
+            || !amountEl.TryGetDecimal(out decimal amount)
             || amount < 0)
         {
             return Error("debug_set_stars requires a non-negative numeric 'amount' field");
@@ -270,8 +270,8 @@ public static partial class McpMod
         if (!CombatManager.Instance.IsInProgress)
             return Error("Not in combat");
 
-        if (!data.TryGetValue("amount", out var amountEl)
-            || !amountEl.TryGetDecimal(out var amount)
+        if (!data.TryGetValue("amount", out JsonElement amountEl)
+            || !amountEl.TryGetDecimal(out decimal amount)
             || amount < 0)
         {
             return Error("debug_set_energy requires a non-negative numeric 'amount' field");
@@ -302,27 +302,27 @@ public static partial class McpMod
         if (!CombatManager.Instance.IsInProgress)
             return Error("Not in combat");
 
-        if (!data.TryGetValue("enchantment", out var enchEl) || enchEl.ValueKind != JsonValueKind.String)
+        if (!data.TryGetValue("enchantment", out JsonElement enchEl) || enchEl.ValueKind != JsonValueKind.String)
             return Error("debug_enchant_card requires a string 'enchantment' field (e.g. Sharp)");
 
-        var wanted = enchEl.GetString()!;
-        var canonical = ModelDb.DebugEnchantments.FirstOrDefault(e =>
+        string wanted = enchEl.GetString()!;
+        EnchantmentModel? canonical = ModelDb.DebugEnchantments.FirstOrDefault(e =>
             string.Equals(SafeGetText(() => e.Id.Entry), wanted, StringComparison.OrdinalIgnoreCase)
             || string.Equals(e.GetType().Name, wanted, StringComparison.OrdinalIgnoreCase));
         if (canonical == null)
             return Error($"Unknown enchantment: {wanted}");
 
-        var targetError = ResolveDebugCard(player, data, out var pileName, out var index, out var card);
+        Dictionary<string, object?>? targetError = ResolveDebugCard(player, data, out string? pileName, out int index, out CardModel? card);
         if (targetError != null)
             return targetError;
 
         // The amount is the enchantment's own default unless the caller overrides it --
         // Inky and Swift read vars on themselves and ignore it, which is worth seeing.
-        decimal amount = data.TryGetValue("amount", out var amtEl) && amtEl.TryGetDecimal(out var a)
+        decimal amount = data.TryGetValue("amount", out JsonElement amtEl) && amtEl.TryGetDecimal(out decimal a)
             ? a
             : 1m;
 
-        var enchantment = canonical.ToMutable();
+        EnchantmentModel enchantment = canonical.ToMutable();
         if (enchantment == null)
             return Error($"Could not make {wanted} mutable");
 
@@ -356,20 +356,20 @@ public static partial class McpMod
     {
         card = null!;
         index = 0;
-        pileName = data.TryGetValue("pile", out var pileEl) && pileEl.ValueKind == JsonValueKind.String
+        pileName = data.TryGetValue("pile", out JsonElement pileEl) && pileEl.ValueKind == JsonValueKind.String
             ? pileEl.GetString()!
             : "hand";
-        if (!Enum.TryParse<PileType>(pileName, ignoreCase: true, out var pileType)
+        if (!Enum.TryParse<PileType>(pileName, ignoreCase: true, out PileType pileType)
             || pileType is PileType.None or PileType.Play)
         {
             return Error($"Unknown pile: {pileName} (use hand, draw, discard, exhaust or deck)");
         }
 
-        var pile = pileType.GetPile(player);
+        CardPile pile = pileType.GetPile(player);
         if (pile == null)
             return Error($"No {pileName} pile");
 
-        index = data.TryGetValue("index", out var idxEl) && idxEl.TryGetInt32(out var i) ? i : 0;
+        index = data.TryGetValue("index", out JsonElement idxEl) && idxEl.TryGetInt32(out int i) ? i : 0;
         var cards = pile.Cards.ToList();
         if (index < 0 || index >= cards.Count)
             return Error($"index {index} out of range for {pileName} ({cards.Count} cards)");
@@ -409,8 +409,8 @@ public static partial class McpMod
         Player player,
         Dictionary<string, JsonElement> data)
     {
-        if (!data.TryGetValue("amount", out var amountEl)
-            || !amountEl.TryGetDecimal(out var amount)
+        if (!data.TryGetValue("amount", out JsonElement amountEl)
+            || !amountEl.TryGetDecimal(out decimal amount)
             || amount < 0)
         {
             return Error("debug_gain_max_hp requires a non-negative numeric 'amount' field");
@@ -436,7 +436,7 @@ public static partial class McpMod
             return Error("No deck");
 
         var upgradable = deck.Cards.Where(c => c != null && c.IsUpgradable).ToList();
-        foreach (var card in upgradable)
+        foreach (CardModel? card in upgradable)
             CardCmd.Upgrade(card);
 
         return new Dictionary<string, object?>(StringComparer.Ordinal)
@@ -458,26 +458,26 @@ public static partial class McpMod
         if (!CombatManager.Instance.IsInProgress)
             return Error("Not in combat");
 
-        if (!data.TryGetValue("power", out var powerEl) || powerEl.ValueKind != JsonValueKind.String)
+        if (!data.TryGetValue("power", out JsonElement powerEl) || powerEl.ValueKind != JsonValueKind.String)
             return Error("debug_add_power requires a string 'power' field (e.g. VULNERABLE_POWER)");
-        if (!data.TryGetValue("amount", out var amountEl) || !amountEl.TryGetDecimal(out var amount))
+        if (!data.TryGetValue("amount", out JsonElement amountEl) || !amountEl.TryGetDecimal(out decimal amount))
             return Error("debug_add_power requires a numeric 'amount' field");
 
-        var wanted = powerEl.GetString()!;
-        var canonical = ModelDb.AllPowers.FirstOrDefault(p =>
+        string wanted = powerEl.GetString()!;
+        PowerModel? canonical = ModelDb.AllPowers.FirstOrDefault(p =>
             string.Equals(SafeGetText(() => p.Id.Entry), wanted, StringComparison.OrdinalIgnoreCase)
             || string.Equals(p.GetType().Name, wanted, StringComparison.OrdinalIgnoreCase));
         if (canonical == null)
             return Error($"Unknown power: {wanted}");
 
-        var combatState = player.Creature.CombatState;
+        ICombatState? combatState = player.Creature.CombatState;
         if (combatState == null)
             return Error("No combat state");
 
-        var targetId = data.TryGetValue("target", out var targetEl) && targetEl.ValueKind == JsonValueKind.String
+        string targetId = data.TryGetValue("target", out JsonElement targetEl) && targetEl.ValueKind == JsonValueKind.String
             ? targetEl.GetString()!
             : "player";
-        var target = string.Equals(targetId, "player", StringComparison.OrdinalIgnoreCase)
+        Creature? target = string.Equals(targetId, "player", StringComparison.OrdinalIgnoreCase)
             ? player.Creature
             : ResolveTarget(combatState, targetId);
         if (target == null)
@@ -504,7 +504,7 @@ public static partial class McpMod
             player,
             LocalContext.NetId!.Value,
             GameActionType.CombatPlayPhaseOnly);
-        var task = PowerCmd.Apply(context, power, target, amount, applier: null, cardSource: null);
+        Task task = PowerCmd.Apply(context, power, target, amount, applier: null, cardSource: null);
         return context.AssignTaskAndWaitForPauseOrCompletion(task);
     }
 

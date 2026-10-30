@@ -10,7 +10,7 @@ using MegaCrit.Sts2.Core.Runs;
 using MegaCrit.Sts2.Core.Saves;
 using MegaCrit.Sts2.Core.Unlocks;
 
-namespace STS2_MCP;
+namespace Sts2Mcp;
 
 // The potion pools the game rolls against are STATIC for the duration of a run,
 // exactly as the card pools are: PotionPoolModel.GetUnlockedPotions is a pure
@@ -49,7 +49,7 @@ public static partial class McpMod
 
     private static Dictionary<string, object?> BuildPotionPools()
     {
-        var unlockState = ResolvePotionPoolUnlockState(out var source);
+        UnlockState? unlockState = ResolvePotionPoolUnlockState(out string? source);
         if (unlockState == null)
             return new Dictionary<string, object?>(StringComparer.Ordinal) { ["error"] = "No profile or run data available." };
 
@@ -62,16 +62,16 @@ public static partial class McpMod
         }
 
         var pools = new Dictionary<string, object?>(StringComparer.Ordinal);
-        foreach (var pool in ModelDb.AllPotionPools)
+        foreach (PotionPoolModel pool in ModelDb.AllPotionPools)
         {
             // PotionPoolModel has no Title (unlike CardPoolModel), so the
             // ModelId entry is the stable key — "SHARED_POTION_POOL" and so on.
-            var title = SafeGet(() => (object?)pool.Id?.Entry) as string;
+            string? title = SafeGet(() => (object?)pool.Id?.Entry) as string;
             if (string.IsNullOrWhiteSpace(title) || pools.ContainsKey(title))
                 continue;
 
             // A modded or malformed pool must not take down the response.
-            var potions = TryReadQuiet<List<PotionModel>?>(
+            List<PotionModel>? potions = TryReadQuiet<List<PotionModel>?>(
                 () => pool.GetUnlockedPotions(unlockState).ToList());
             if (potions == null)
                 continue;
@@ -86,9 +86,9 @@ public static partial class McpMod
         // with SharedPotionPool, in that order, so a client needs to know which
         // pool belongs to which character to rebuild the same list.
         var characters = new Dictionary<string, object?>(StringComparer.Ordinal);
-        foreach (var character in ModelDb.AllCharacters)
+        foreach (CharacterModel character in ModelDb.AllCharacters)
         {
-            var name = SafeGetText(() => character.Title);
+            string? name = SafeGetText(() => character.Title);
             if (!string.IsNullOrWhiteSpace(name))
                 characters[name] = SafeGet(() => (object?)character.PotionPool?.Id?.Entry);
         }
@@ -131,8 +131,8 @@ public static partial class McpMod
     {
         if (RunManager.Instance?.IsInProgress == true)
         {
-            var runState = RunManager.Instance.DebugOnlyGetState();
-            var player = runState != null ? LocalContext.GetMe(runState) : null;
+            RunState? runState = RunManager.Instance.DebugOnlyGetState();
+            Player? player = runState != null ? LocalContext.GetMe(runState) : null;
             if (player != null)
             {
                 source = "run";
@@ -140,7 +140,7 @@ public static partial class McpMod
             }
         }
 
-        var progress = SaveManager.Instance?.Progress;
+        ProgressState? progress = SaveManager.Instance?.Progress;
         if (progress == null)
         {
             source = "none";

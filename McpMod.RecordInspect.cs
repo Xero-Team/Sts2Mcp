@@ -3,15 +3,18 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Net;
+using System.Reflection;
 using System.Security.Cryptography;
 using System.Text.Json.Nodes;
 using Godot;
 using MegaCrit.Sts2.Core.Multiplayer.Replay;
 using MegaCrit.Sts2.Core.Multiplayer.Serialization;
+using MegaCrit.Sts2.Core.Runs;
+using MegaCrit.Sts2.Core.Runs.History;
 using MegaCrit.Sts2.Core.Saves;
-using STS2_MCP.Recorder;
+using Sts2Mcp.Recorder;
 
-namespace STS2_MCP;
+namespace Sts2Mcp;
 
 public static partial class McpMod
 {
@@ -35,7 +38,7 @@ public static partial class McpMod
         }
         RunHandler(response, () =>
         {
-            var result = RunOnMainThreadBlocking(() => InspectReplay(file));
+            JsonObject result = RunOnMainThreadBlocking(() => InspectReplay(file));
             if (result["error"] is JsonNode err)
                 SendError(response, 400, err.GetValue<string>(), pretty);
             else
@@ -58,10 +61,10 @@ public static partial class McpMod
             slots[run.Players[i].NetId] = (ulong)i;
             run.Players[i].NetId = (ulong)i;
         }
-        foreach (var act in run.MapPointHistory)
-            foreach (var entry in act)
-                foreach (var stat in entry.PlayerStats)
-                    stat.PlayerId = slots.TryGetValue(stat.PlayerId, out var slot) ? slot : ulong.MaxValue;
+        foreach (List<MapPointHistoryEntry> act in run.MapPointHistory)
+            foreach (MapPointHistoryEntry entry in act)
+                foreach (PlayerMapPointHistoryEntry stat in entry.PlayerStats)
+                    stat.PlayerId = slots.TryGetValue(stat.PlayerId, out ulong slot) ? slot : ulong.MaxValue;
         run.SaveTime = 0;
         run.RunTime = 0;
         run.WinTime = 0;
@@ -86,12 +89,12 @@ public static partial class McpMod
     private static JsonObject RunParts(SerializableRun run, Func<IPacketSerializable, string> digest)
     {
         var parts = new JsonObject();
-        foreach (var p in typeof(SerializableRun).GetProperties(System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Public))
+        foreach (PropertyInfo p in typeof(SerializableRun).GetProperties(System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Public))
         {
             if (p.GetIndexParameters().Length != 0 || p.GetMethod == null)
                 continue;
             // A property that throws is skipped; an actual null value is still reported.
-            var (readable, v) = TryReadQuiet<(bool Readable, object? Value)>(
+            (bool readable, object? v) = TryReadQuiet<(bool Readable, object? Value)>(
                 () => (true, p.GetValue(run)));
             if (!readable)
                 continue;
@@ -119,7 +122,7 @@ public static partial class McpMod
         if (run.MapPointHistory.Count == 0)
             return history;
 
-        foreach (var entry in run.MapPointHistory[^1])
+        foreach (MapPointHistoryEntry entry in run.MapPointHistory[^1])
         {
             var e = new JsonObject
             {
@@ -127,7 +130,7 @@ public static partial class McpMod
                 ["rooms"] = string.Join(";", entry.Rooms.Cast<object?>().Select(x => x is IPacketSerializable xp ? digest(xp)[..12] : x?.ToString())),
             };
             var stats = new JsonArray();
-            foreach (var stat in entry.PlayerStats)
+            foreach (PlayerMapPointHistoryEntry stat in entry.PlayerStats)
                 stats.Add(DescribePlayerStats(stat, digest));
             e["player_stats"] = stats;
             history.Add(e);
@@ -138,11 +141,11 @@ public static partial class McpMod
     private static JsonObject DescribePlayerStats(object stat, Func<IPacketSerializable, string> digest)
     {
         var row = new JsonObject();
-        foreach (var sp in stat.GetType().GetProperties(System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Public))
+        foreach (PropertyInfo sp in stat.GetType().GetProperties(System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Public))
         {
             if (sp.GetIndexParameters().Length != 0 || sp.GetMethod == null)
                 continue;
-            var (readable, value) = TryReadQuiet<(bool Readable, object? Value)>(
+            (bool readable, object? value) = TryReadQuiet<(bool Readable, object? Value)>(
                 () => (true, sp.GetValue(stat)));
             if (!readable)
                 continue;
@@ -165,7 +168,7 @@ public static partial class McpMod
         var events = new JsonArray();
         for (int i = 0; i < replay.events.Count; i++)
         {
-            var e = replay.events[i];
+            CombatReplayEvent e = replay.events[i];
             var entry = new JsonObject
             {
                 ["index"] = i,
@@ -222,7 +225,7 @@ public static partial class McpMod
         byte[] bytes = File.ReadAllBytes(full);
         var reader = new PacketReader();
         reader.Reset(bytes);
-        var replay = reader.Read<CombatReplay>();
+        CombatReplay replay = reader.Read<CombatReplay>();
 
         var writer = new PacketWriter { WarnOnGrow = false };
         string Digest<T>(T value) where T : IPacketSerializable
@@ -233,8 +236,8 @@ public static partial class McpMod
             return Convert.ToHexString(SHA256.HashData(writer.Buffer.AsSpan(0, writer.BytePosition))).ToLowerInvariant();
         }
 
-        var events = BuildReplayEvents(replay, Digest);
-        var checksums = BuildReplayChecksums(replay, Digest);
+        JsonArray events = BuildReplayEvents(replay, Digest);
+        JsonArray checksums = BuildReplayChecksums(replay, Digest);
 
         return new JsonObject
         {

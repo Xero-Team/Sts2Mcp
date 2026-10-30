@@ -1,6 +1,6 @@
 using System;
 
-namespace STS2_MCP;
+namespace Sts2Mcp;
 
 /// <summary>
 /// The game's main thread did not run the requested work: the queue was already backed up, or

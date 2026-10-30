@@ -18,13 +18,13 @@ using HarmonyLib;
 using MegaCrit.Sts2.Core.Modding;
 using MegaCrit.Sts2.Core.Multiplayer.Game;
 
-namespace STS2_MCP;
+namespace Sts2Mcp;
 
 [ModInitializer("Initialize")]
 public static partial class McpMod
 {
     // Sourced from the assembly version, which the build stamps from
-    // mod_manifest.json (see STS2_MCP.csproj). mod_manifest.json is the single
+    // mod_manifest.json (see Sts2Mcp.csproj). mod_manifest.json is the single
     // place to bump the version.
     public static readonly string Version = ResolveVersion();
 
@@ -128,7 +128,7 @@ public static partial class McpMod
             // unknown commit is not worth failing a state read over.
             s_buildCommit = TryReadQuiet(() =>
             {
-                var informational = typeof(McpMod).Assembly
+                string? informational = typeof(McpMod).Assembly
                     .GetCustomAttribute<AssemblyInformationalVersionAttribute>()
                     ?.InformationalVersion;
                 int plus = informational?.IndexOf('+') ?? -1;
@@ -168,7 +168,7 @@ public static partial class McpMod
 
     public static void Initialize()
     {
-        var failure = TryAction("startup", () =>
+        string? failure = TryAction("startup", () =>
         {
             // Optional settings UI patches should not block the HTTP bridge itself.
             // The optional speed-settings detours stall startup on this macOS
@@ -207,7 +207,7 @@ public static partial class McpMod
             s_serverThread = new Thread(ServerLoop)
             {
                 IsBackground = true,
-                Name = "STS2_MCP_Server"
+                Name = "Sts2Mcp Server"
             };
             s_serverThread.Start();
 
@@ -219,7 +219,7 @@ public static partial class McpMod
 
     private static void TryApplyHarmonyPatches()
     {
-        var failure = TryAction("harmony.patch_all", () => new Harmony("com.sts2mcp").PatchAll());
+        string? failure = TryAction("harmony.patch_all", () => new Harmony("com.sts2mcp").PatchAll());
         if (failure != null)
             GD.Print($"[STS2 MCP] Optional Harmony settings UI injection skipped: {failure}");
     }
@@ -237,9 +237,9 @@ public static partial class McpMod
         CheckLoadingHandleLeak();
 
         int processed = 0;
-        while (s_mainThreadQueue.TryDequeue(out var action) && processed < 10)
+        while (s_mainThreadQueue.TryDequeue(out Action? action) && processed < 10)
         {
-            var failure = TryAction("main_thread.action", action);
+            string? failure = TryAction("main_thread.action", action);
             if (failure != null)
                 GD.PrintErr($"[STS2 MCP] Main thread action error: {failure}");
             processed++;
@@ -340,7 +340,7 @@ public static partial class McpMod
         {
             try
             {
-                var context = s_listener.GetContext();
+                HttpListenerContext context = s_listener.GetContext();
                 // Handle each request asynchronously so we don't block the listener
                 ThreadPool.QueueUserWorkItem(_ => HandleRequest(context));
             }
@@ -358,8 +358,8 @@ public static partial class McpMod
 
     private static void DispatchRequest(HttpListenerContext context)
     {
-        var request = context.Request;
-        var response = context.Response;
+        HttpListenerRequest request = context.Request;
+        HttpListenerResponse response = context.Response;
         if (!TryPrepareRequest(request, response, out bool pretty))
             return;
 
@@ -461,7 +461,7 @@ public static partial class McpMod
             return;
         }
 
-        var endpoints = BuildEndpointIndex();
+        List<Dictionary<string, object?>> endpoints = BuildEndpointIndex();
         SendJson(response, new Dictionary<string, object?>(StringComparer.Ordinal)
         {
             ["message"] = $"Hello from STS2 MCP v{VersionString}",
@@ -643,9 +643,9 @@ public static partial class McpMod
 
         RunHandler(response, () =>
         {
-            var state = RunOnMainThreadBlocking(() => WithCardValues(unpowered, () =>
+            Dictionary<string, object?> state = RunOnMainThreadBlocking(() => WithCardValues(unpowered, () =>
             {
-                var s = BuildMultiplayerGameState(fullDetail);
+                Dictionary<string, object?> s = BuildMultiplayerGameState(fullDetail);
                 s["detail"] = detail;
                 if (fullDetail)
                     s["relic_bag_generation"] = RelicBagGeneration;
@@ -669,11 +669,11 @@ public static partial class McpMod
     private static void HandlePostMultiplayerAction(HttpListenerRequest request, HttpListenerResponse response)
     {
         bool pretty = WantsPretty(request);
-        var actionRequest = TryReadActionRequest(request, response, pretty, "Missing 'action' field");
+        ActionRequest? actionRequest = TryReadActionRequest(request, response, pretty, "Missing 'action' field");
         if (actionRequest == null)
             return;
 
-        var parsed = actionRequest.Parsed;
+        Dictionary<string, JsonElement> parsed = actionRequest.Parsed;
         string action = actionRequest.Action;
 
         // Menu actions (FTUE/popup dismissal, game-over, character select, etc.) are
@@ -688,7 +688,7 @@ public static partial class McpMod
             RunHandler(response, () =>
             {
                 int? ascension = ReadOptionalInt(parsed, "ascension");
-                var result = RunOnMainThreadBlocking(() => ExecuteMenuSelect(option, seed, ascension));
+                Dictionary<string, object?> result = RunOnMainThreadBlocking(() => ExecuteMenuSelect(option, seed, ascension));
                 SendJson(response, EnsureStatus(result), pretty);
             }, "Menu action failed", null, pretty);
             return;
@@ -696,14 +696,14 @@ public static partial class McpMod
 
         RunHandler(response, () =>
         {
-            var result = RunOnMainThreadBlocking(() => ExecuteMultiplayerAction(action, parsed));
+            Dictionary<string, object?> result = RunOnMainThreadBlocking(() => ExecuteMultiplayerAction(action, parsed));
             SendJson(response, EnsureStatus(result), pretty);
         }, "Multiplayer action failed", null, pretty);
     }
 
     private static int? ReadOptionalInt(Dictionary<string, JsonElement> data, string key)
     {
-        if (!data.TryGetValue(key, out var elem))
+        if (!data.TryGetValue(key, out JsonElement elem))
             return null;
         if (elem.ValueKind == JsonValueKind.Number && elem.TryGetInt32(out int number))
             return number;
@@ -724,7 +724,7 @@ public static partial class McpMod
         option = "";
         seed = null;
 
-        if (parsed.TryGetValue("option", out var optionElem))
+        if (parsed.TryGetValue("option", out JsonElement optionElem))
         {
             if (optionElem.ValueKind != JsonValueKind.String)
             {
@@ -734,7 +734,7 @@ public static partial class McpMod
             option = optionElem.GetString() ?? "";
         }
 
-        if (parsed.TryGetValue("seed", out var seedElem))
+        if (parsed.TryGetValue("seed", out JsonElement seedElem))
         {
             if (seedElem.ValueKind is not (JsonValueKind.String or JsonValueKind.Null))
             {
@@ -772,14 +772,14 @@ public static partial class McpMod
             // merchant inventory, force-clicking the fake merchant / treasure chest). A watcher that
             // polls the state while a human plays must not reopen what the human just closed.
             bool passive = ReadFlagParam(new Dictionary<string, JsonElement>(StringComparer.Ordinal), request, "passive", false);
-            var state = RunOnMainThreadBlocking(() =>
+            Dictionary<string, object?> state = RunOnMainThreadBlocking(() =>
             {
                 s_passiveRead = passive;
                 try
                 {
                     return WithCardValues(unpowered, () =>
                     {
-                        var s = BuildGameState();
+                        Dictionary<string, object?> s = BuildGameState();
                         s["game_version"] = GameVersion();
                         s["values"] = values;
                         return s;
@@ -810,7 +810,7 @@ public static partial class McpMod
     private static bool ReadFlagParam(
         Dictionary<string, JsonElement> data, HttpListenerRequest request, string key, bool fallback)
     {
-        if (data.TryGetValue(key, out var elem))
+        if (data.TryGetValue(key, out JsonElement elem))
         {
             switch (elem.ValueKind)
             {
@@ -851,7 +851,7 @@ public static partial class McpMod
     /// </remarks>
     internal static bool IsSettledState(Dictionary<string, object?> state)
     {
-        if (state.TryGetValue("is_resolving", out var resolving) && resolving is true)
+        if (state.TryGetValue("is_resolving", out object? resolving) && resolving is true)
             return false;
 
         string? stateType = state.GetValueOrDefault("state_type") as string;
@@ -905,7 +905,7 @@ public static partial class McpMod
           .Append(',').Append(battle.GetValueOrDefault("is_play_phase"));
         if (battle.GetValueOrDefault("enemies") is not List<Dictionary<string, object?>> enemies)
             return;
-        foreach (var enemy in enemies)
+        foreach (Dictionary<string, object?> enemy in enemies)
         {
             sb.Append(';').Append(enemy.GetValueOrDefault("entity_id"))
               .Append(':').Append(enemy.GetValueOrDefault("hp"))
@@ -920,7 +920,7 @@ public static partial class McpMod
           .Append('/').Append(player.GetValueOrDefault("energy"));
         if (player.GetValueOrDefault("hand") is not List<Dictionary<string, object?>> hand)
             return;
-        foreach (var card in hand)
+        foreach (Dictionary<string, object?> card in hand)
             sb.Append(';').Append(card.GetValueOrDefault("uid"));
     }
 
@@ -931,7 +931,7 @@ public static partial class McpMod
     private static void AppendSettleResult(
         Dictionary<string, object?> result, string? before, int timeoutMs, bool includeState)
     {
-        var outcome = PollUntilSettled(before, timeoutMs);
+        SettleOutcome outcome = PollUntilSettled(before, timeoutMs);
         result["waited_ms"] = outcome.WaitedMs;
         result["polls"] = outcome.Polls;
         result["settled"] = outcome.Settled;
@@ -1058,7 +1058,7 @@ public static partial class McpMod
             "request.pre_state",
             () => StateFingerprint(RunOnMainThreadBlocking(() => BuildGameState())));
 
-        var result = EnsureStatus(RunOnMainThreadBlocking(action));
+        Dictionary<string, object?> result = EnsureStatus(RunOnMainThreadBlocking(action));
 
         // Waiting on an action the game rejected would just burn the whole timeout.
         if (string.Equals(result.GetValueOrDefault("status") as string, "ok", StringComparison.Ordinal))
@@ -1103,7 +1103,7 @@ public static partial class McpMod
             return null;
         }
 
-        if (parsed == null || !parsed.TryGetValue("action", out var actionElem))
+        if (parsed == null || !parsed.TryGetValue("action", out JsonElement actionElem))
         {
             SendError(response, 400, missingActionMessage, pretty, "missing_action");
             return null;
@@ -1122,11 +1122,11 @@ public static partial class McpMod
     private static void HandlePostAction(HttpListenerRequest request, HttpListenerResponse response)
     {
         bool pretty = WantsPretty(request);
-        var actionRequest = TryReadActionRequest(request, response, pretty, "Missing 'action' field");
+        ActionRequest? actionRequest = TryReadActionRequest(request, response, pretty, "Missing 'action' field");
         if (actionRequest == null)
             return;
 
-        var parsed = actionRequest.Parsed;
+        Dictionary<string, JsonElement> parsed = actionRequest.Parsed;
         string action = actionRequest.Action;
 
         // The recorder's switch works with or without a run, and is not itself recorded.
@@ -1134,7 +1134,7 @@ public static partial class McpMod
         {
             RunHandler(response, () =>
             {
-                if (!parsed.TryGetValue("enabled", out var en) || en.ValueKind is not (JsonValueKind.True or JsonValueKind.False))
+                if (!parsed.TryGetValue("enabled", out JsonElement en) || en.ValueKind is not (JsonValueKind.True or JsonValueKind.False))
                 {
                     SendError(response, 400, "set_recording needs 'enabled': true or false", pretty);
                     return;
@@ -1169,7 +1169,7 @@ public static partial class McpMod
         {
             return RunActionHandler(response, () =>
             {
-                var result = ExecuteWithOptionalWait(request, parsed,
+                Dictionary<string, object?> result = ExecuteWithOptionalWait(request, parsed,
                     Recorder.CombatRecorder.InHandler(apiRequest, () => ExecuteTimelineRevealEpochs()));
                 SendJson(response, result, pretty);
                 return result.GetValueOrDefault("status") as string;
@@ -1185,7 +1185,7 @@ public static partial class McpMod
             return RunActionHandler(response, () =>
             {
                 int? ascension = ReadOptionalInt(parsed, "ascension");
-                var result = ExecuteWithOptionalWait(request, parsed,
+                Dictionary<string, object?> result = ExecuteWithOptionalWait(request, parsed,
                     Recorder.CombatRecorder.InHandler(apiRequest, () => ExecuteMenuSelect(option, seed, ascension)));
                 SendJson(response, result, pretty);
                 return result.GetValueOrDefault("status") as string;
@@ -1198,7 +1198,7 @@ public static partial class McpMod
             return RunActionHandler(response, () =>
             {
                 bool timeScale = string.Equals(action, "set_time_scale", StringComparison.Ordinal);
-                var result = ExecuteWithOptionalWait(request, parsed,
+                Dictionary<string, object?> result = ExecuteWithOptionalWait(request, parsed,
                     Recorder.CombatRecorder.InHandler(apiRequest, () => timeScale
                         ? ExecuteSetTimeScale(parsed)
                         : ExecuteSetAscension(parsed)));
@@ -1209,7 +1209,7 @@ public static partial class McpMod
 
         return RunActionHandler(response, () =>
         {
-            var result = ExecuteWithOptionalWait(request, parsed,
+            Dictionary<string, object?> result = ExecuteWithOptionalWait(request, parsed,
                 Recorder.CombatRecorder.InHandler(apiRequest, () => ExecuteAction(action, parsed)));
             SendJson(response, result, pretty);
             return result.GetValueOrDefault("status") as string;
@@ -1220,9 +1220,9 @@ public static partial class McpMod
         Justification = "scripts/audit_endpoints.py asserts this structured-dispatch guard exists; the action paths stopped calling it in the fork merge and re-wiring it changes HTTP status codes, which needs its own decision.")]
     private static void SendActionResultJson(HttpListenerResponse response, Dictionary<string, object?> result)
     {
-        if (result.TryGetValue("status", out var status) && string.Equals(status as string, "error", StringComparison.Ordinal))
+        if (result.TryGetValue("status", out object? status) && string.Equals(status as string, "error", StringComparison.Ordinal))
         {
-            if (result.TryGetValue("error_code", out var errorCode))
+            if (result.TryGetValue("error_code", out object? errorCode))
             {
                 response.StatusCode = (errorCode as string) switch
                 {

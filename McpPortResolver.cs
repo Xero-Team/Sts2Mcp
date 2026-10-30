@@ -2,7 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 
-namespace STS2_MCP;
+namespace Sts2Mcp;
 
 internal static class McpPortResolver
 {

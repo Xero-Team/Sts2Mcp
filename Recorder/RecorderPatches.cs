@@ -12,7 +12,7 @@ using MegaCrit.Sts2.Core.Multiplayer.Replay;
 using MegaCrit.Sts2.Core.Runs;
 using MegaCrit.Sts2.Core.Saves;
 
-namespace STS2_MCP.Recorder;
+namespace Sts2Mcp.Recorder;
 
 /// <summary>
 /// The recorder's Harmony patches. Applied by hand (not [HarmonyPatch] + PatchAll) so that
@@ -41,7 +41,7 @@ internal static class RecorderPatches
 
     internal static void Apply()
     {
-        var w = typeof(CombatReplayWriter);
+        Type w = typeof(CombatReplayWriter);
         Patch(w, nameof(CombatReplayWriter.RecordInitialState), postfix: nameof(InitialStatePostfix));
         Patch(w, "RecordGameAction", prefix: nameof(EventCountPrefix), postfix: nameof(GameActionPostfix));
         Patch(w, "RecordActionResume", prefix: nameof(EventCountPrefix), postfix: nameof(ResumePostfix));
@@ -49,7 +49,7 @@ internal static class RecorderPatches
         Patch(w, "RecordChecksum", prefix: nameof(ChecksumCountPrefix), postfix: nameof(ChecksumPostfix));
         Patch(w, nameof(CombatReplayWriter.WriteReplay), prefix: nameof(WriteReplayPrefix));
 
-        var set = typeof(ActionQueueSet);
+        Type set = typeof(ActionQueueSet);
         Patch(set, nameof(ActionQueueSet.EnqueueWithoutSynchronizing), postfix: nameof(EnqueuedPostfix));
         Patch(set, nameof(ActionQueueSet.PauseActionForPlayerChoice), prefix: nameof(PausedPrefix), postfix: nameof(PausedPostfix));
         Patch(set, nameof(ActionQueueSet.ResumeActionWithoutSynchronizing), postfix: nameof(ResumedPostfix));
@@ -57,7 +57,7 @@ internal static class RecorderPatches
         Patch(typeof(ActionQueueSynchronizer), nameof(ActionQueueSynchronizer.RequestEnqueue), prefix: nameof(RequestEnqueuePrefix));
         Patch(typeof(PlayerChoiceSynchronizer), nameof(PlayerChoiceSynchronizer.ReserveChoiceId), postfix: nameof(ReservePostfix));
         // BranchingPlayerChoiceContext only forwards to the context it wraps, which is patched itself.
-        foreach (var ctx in new[] { typeof(GameActionPlayerChoiceContext), typeof(HookPlayerChoiceContext),
+        foreach (Type? ctx in new[] { typeof(GameActionPlayerChoiceContext), typeof(HookPlayerChoiceContext),
                                     typeof(BlockingPlayerChoiceContext), typeof(ThrowingPlayerChoiceContext) })
             Patch(ctx, nameof(PlayerChoiceContext.SignalPlayerChoiceBegun),
                 prefix: nameof(ChoiceBegunPrefix), postfix: nameof(ChoiceBegunPostfix));
@@ -69,7 +69,7 @@ internal static class RecorderPatches
         Patch(typeof(MegaCrit.Sts2.Core.DevConsole.DevConsole), nameof(MegaCrit.Sts2.Core.DevConsole.DevConsole.ProcessCommand),
             prefix: nameof(ConsolePrefix), parameters: new[] { typeof(string) });
         // Counted only: AC2 asks that recording sends nothing to Sentry (docs/recording.md).
-        foreach (var m in AccessTools.GetDeclaredMethods(typeof(SentryService))
+        foreach (MethodInfo? m in AccessTools.GetDeclaredMethods(typeof(SentryService))
                      .Where(m => string.Equals(m.Name, nameof(SentryService.CaptureException), StringComparison.Ordinal)))
         {
             s_harmony.Patch(m, prefix: new HarmonyMethod(typeof(RecorderPatches), nameof(SentryPrefix)));
@@ -86,7 +86,7 @@ internal static class RecorderPatches
 
     private static void Patch(Type type, string method, string? prefix = null, string? postfix = null, Type[]? parameters = null)
     {
-        var original = (parameters == null ? AccessTools.DeclaredMethod(type, method) : AccessTools.DeclaredMethod(type, method, parameters))
+        MethodInfo original = (parameters == null ? AccessTools.DeclaredMethod(type, method) : AccessTools.DeclaredMethod(type, method, parameters))
             ?? throw new MissingMethodException(type.FullName, method);
         s_harmony.Patch(original,
             prefix: prefix == null ? null : new HarmonyMethod(typeof(RecorderPatches), prefix),
@@ -167,10 +167,10 @@ internal static class RecorderPatches
     /// </summary>
     private static bool GoesThroughQueue(MegaCrit.Sts2.Core.DevConsole.DevConsole console, string inputValue)
     {
-        var rm = RunManager.Instance;
+        RunManager rm = RunManager.Instance;
         if (rm.IsSingleplayerOrFakeMultiplayer)
             return false;
-        var run = rm.DebugOnlyGetState();
+        RunState? run = rm.DebugOnlyGetState();
         if (run == null || MegaCrit.Sts2.Core.Context.LocalContext.GetMe(run) == null)
             return false;
         string name = inputValue.Trim().Split(' ')[0].ToLowerInvariant();
@@ -187,11 +187,11 @@ internal static class RecorderPatches
     {
         if (set == null || s_queuesField?.GetValue(set) is not System.Collections.IEnumerable queues)
             yield break;
-        foreach (var q in queues)
+        foreach (object? q in queues)
         {
             if (q == null || AccessTools.Field(q.GetType(), "actions")?.GetValue(q) is not IEnumerable<GameAction> actions)
                 continue;
-            foreach (var a in actions.ToList())
+            foreach (GameAction? a in actions.ToList())
                 yield return a;
         }
     }

@@ -1,4 +1,4 @@
-namespace STS2_MCP.Core.Contracts;
+namespace Sts2Mcp.Core.Contracts;
 
 /// <summary>
 /// The documented <c>GET /api/v1/settings</c> body: the game's saved display, audio, gameplay and

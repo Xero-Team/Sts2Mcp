@@ -10,7 +10,7 @@ using MegaCrit.Sts2.Core.Commands;
 using MegaCrit.Sts2.Core.Entities.Cards;
 using MegaCrit.Sts2.Core.Models;
 
-namespace STS2_MCP;
+namespace Sts2Mcp;
 
 public static partial class McpMod
 {
@@ -34,7 +34,7 @@ public static partial class McpMod
 
     private static void AddCardSelectionContext(Dictionary<string, object?> state)
     {
-        var selection = Volatile.Read(ref s_activeCardSelection);
+        ActiveCardSelection? selection = Volatile.Read(ref s_activeCardSelection);
         if (selection == null)
             return;
 
@@ -86,9 +86,9 @@ public static partial class McpMod
 
     private static Type? SelectionCallerType()
     {
-        foreach (var frame in new StackTrace().GetFrames() ?? Array.Empty<StackFrame>())
+        foreach (StackFrame frame in new StackTrace().GetFrames() ?? Array.Empty<StackFrame>())
         {
-            var type = frame.GetMethod()?.DeclaringType;
+            Type? type = frame.GetMethod()?.DeclaringType;
             while (type?.DeclaringType != null)
                 type = type.DeclaringType;
             string ns = type?.Namespace ?? "";
@@ -160,10 +160,10 @@ public static partial class McpMod
 
         private static void Prefix(MethodBase __originalMethod, object[] __args)
         {
-            var prefs = __args.OfType<CardSelectorPrefs>().Cast<CardSelectorPrefs?>().FirstOrDefault();
-            var source = __args.OfType<AbstractModel>().FirstOrDefault();
-            var pile = __args.OfType<CardPile>().FirstOrDefault();
-            var callerType = source?.GetType() ?? SelectionCallerType();
+            CardSelectorPrefs? prefs = __args.OfType<CardSelectorPrefs>().Cast<CardSelectorPrefs?>().FirstOrDefault();
+            AbstractModel? source = __args.OfType<AbstractModel>().FirstOrDefault();
+            CardPile? pile = __args.OfType<CardPile>().FirstOrDefault();
+            Type? callerType = source?.GetType() ?? SelectionCallerType();
             string? originId = null;
             TryDo(() => { originId = source?.Id.Entry; });
 

@@ -8,7 +8,7 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Threading;
 
-namespace STS2_MCP.Recorder;
+namespace Sts2Mcp.Recorder;
 
 /// <summary>
 /// Appends record lines on a thread of its own, so the game's main thread only builds the
@@ -50,7 +50,7 @@ internal sealed class RecordWriter
     internal RecordWriter()
     {
         // The thread is never joined: the writer lives as long as the process does.
-        new Thread(Run) { IsBackground = true, Name = "STS2_MCP_Recorder" }.Start();
+        new Thread(Run) { IsBackground = true, Name = "Sts2Mcp_Recorder" }.Start();
     }
 
     internal void AppendLine(string path, JsonObject json) => _queue.Add(new Line(path, json));
@@ -73,7 +73,7 @@ internal sealed class RecordWriter
         Justification = "Failures and LastError carry the type and the message by design - that is what the status endpoint reports.")]
     private void Run()
     {
-        foreach (var item in _queue.GetConsumingEnumerable())
+        foreach (Item item in _queue.GetConsumingEnumerable())
         {
             try
             {
@@ -87,12 +87,12 @@ internal sealed class RecordWriter
                         File.WriteAllBytes(raw.Path, raw.Bytes);
                         break;
                     case Close close:
-                        if (_open.Remove(close.Path, out var fs))
+                        if (_open.Remove(close.Path, out FileStream? fs))
                             fs.Dispose();
                         _prevHash.Remove(close.Path);
                         break;
                     case Barrier barrier:
-                        foreach (var stream in _open.Values)
+                        foreach (FileStream stream in _open.Values)
                             stream.Flush(flushToDisk: false);
                         barrier.Done.Set();
                         break;
@@ -110,12 +110,12 @@ internal sealed class RecordWriter
 
     private void WriteLine(Line line)
     {
-        _prevHash.TryGetValue(line.Path, out var prev);
+        _prevHash.TryGetValue(line.Path, out string? prev);
         line.Json["prev"] = prev;
         byte[] bytes = Encoding.UTF8.GetBytes(line.Json.ToJsonString(LineOptions));
         _prevHash[line.Path] = Convert.ToHexString(SHA256.HashData(bytes)).ToLowerInvariant();
 
-        if (!_open.TryGetValue(line.Path, out var fs))
+        if (!_open.TryGetValue(line.Path, out FileStream? fs))
         {
             Directory.CreateDirectory(System.IO.Path.GetDirectoryName(line.Path)!);
             fs = new FileStream(line.Path, FileMode.Append, FileAccess.Write, FileShare.Read);

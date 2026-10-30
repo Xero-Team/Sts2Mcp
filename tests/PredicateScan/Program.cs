@@ -135,7 +135,7 @@ public sealed class Weights
     public Func<float> Live() => () => (!CanSummon()) ? 1f : (1f / 12f);
 }
 
-namespace STS2_MCP
+namespace Sts2Mcp
 {
     public static partial class McpMod
     {

@@ -1,4 +1,4 @@
-namespace STS2_MCP.Core.Contracts;
+namespace Sts2Mcp.Core.Contracts;
 
 /// <summary>Channel volumes of <see cref="SettingsResponse"/>.</summary>
 /// <remarks>

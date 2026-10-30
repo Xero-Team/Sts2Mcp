@@ -27,31 +27,31 @@ using MegaCrit.Sts2.Core.Nodes.Screens.TreasureRoomRelic;
 using MegaCrit.Sts2.Core.Rooms;
 using MegaCrit.Sts2.Core.Runs;
 
-namespace STS2_MCP;
+namespace Sts2Mcp;
 
 public static partial class McpMod
 {
     /// <summary>Called through BuildMultiplayerGameState(), which brackets it with the warning collector.</summary>
     private static Dictionary<string, object?> BuildMultiplayerGameStateCore(bool fullDetail = false)
     {
-        var result = NewStateResult(kind: "multiplayer_state");
+        Dictionary<string, object?> result = NewStateResult(kind: "multiplayer_state");
         var tree = Engine.GetMainLoop() as SceneTree;
 
-        var earlyState = BuildMultiplayerPreflightState(result, tree, out var runState);
+        Dictionary<string, object?>? earlyState = BuildMultiplayerPreflightState(result, tree, out RunState? runState);
         if (earlyState != null)
             return earlyState;
 
-        AppendMultiplayerMetadata(result, runState, out var localPlayer);
+        AppendMultiplayerMetadata(result, runState, out Player? localPlayer);
 
         // Same overlay-first detection logic as singleplayer
-        var topOverlay = NOverlayStack.Instance?.Peek();
-        var currentRoom = runState.CurrentRoom;
+        IOverlayScreen? topOverlay = NOverlayStack.Instance?.Peek();
+        AbstractRoom? currentRoom = runState.CurrentRoom;
         bool mapIsOpen = IsMapScreenOpenOrVisible();
         AppendMultiplayerScreenState(result, runState, topOverlay, currentRoom, mapIsOpen);
 
         if (currentRoom is CombatRoom
             && CombatManager.Instance.IsInProgress
-            && result.TryGetValue("state_type", out var overlayStateType)
+            && result.TryGetValue("state_type", out object? overlayStateType)
             && overlayStateType is string overlayType
             && overlayType is "card_select" or "bundle_select")
         {
@@ -78,7 +78,7 @@ public static partial class McpMod
 
         if (tree?.Root != null)
         {
-            var ftueState = BuildVisibleFtueState(tree.Root);
+            Dictionary<string, object?>? ftueState = BuildVisibleFtueState(tree.Root);
             if (ftueState != null)
                 return WithStateEnvelope(ftueState, "multiplayer_state");
         }
@@ -90,7 +90,7 @@ public static partial class McpMod
             return result;
         }
 
-        var currentRun = RunManager.Instance.DebugOnlyGetState();
+        RunState? currentRun = RunManager.Instance.DebugOnlyGetState();
         if (currentRun == null)
         {
             result["state_type"] = "unknown";
@@ -288,7 +288,7 @@ public static partial class McpMod
 
         if (CombatManager.Instance.IsInProgress)
         {
-            var playerHand = NPlayerHand.Instance;
+            NPlayerHand? playerHand = NPlayerHand.Instance;
             if (playerHand != null && playerHand.IsInCardSelection)
             {
                 result["state_type"] = "hand_select";
@@ -424,7 +424,7 @@ public static partial class McpMod
         };
         // Run RNG streams on every screen, not just in combat. The host-synced
         // RunRngSet is shared by all players, so these counters reflect everyone.
-        var runRng = BuildRngStreams(runState);
+        Dictionary<string, object?>? runRng = BuildRngStreams(runState);
         if (runRng != null)
             runInfo["rng"] = runRng;
         runInfo["visited_event_ids"] = runState.VisitedEventIds.Select(id => id.Entry).ToList();
@@ -433,7 +433,7 @@ public static partial class McpMod
         // Keep the route-planning contract identical to singleplayer. These
         // pre-rolled queues are shared run state in co-op too; omitting them
         // forced every multiplayer map decision onto the local-node fallback.
-        var actInfo = BuildActState(runState);
+        Dictionary<string, object?>? actInfo = BuildActState(runState);
         if (actInfo != null)
             result["act"] = actInfo;
 
@@ -466,7 +466,7 @@ public static partial class McpMod
 
     private static Dictionary<string, object?> BuildMultiplayerBattleState(RunState runState)
     {
-        var combatState = CombatManager.Instance.DebugOnlyGetState();
+        CombatState? combatState = CombatManager.Instance.DebugOnlyGetState();
         var battle = new Dictionary<string, object?>(StringComparer.Ordinal);
 
         if (combatState == null)
@@ -484,17 +484,17 @@ public static partial class McpMod
         battle["player_actions_disabled"] = CombatManager.Instance.PlayerActionsDisabled;
         battle["all_players_ready"] = CombatManager.Instance.AllPlayersReadyToEndTurn();
 
-        var localPlayer = LocalContext.GetMe(runState);
+        Player? localPlayer = LocalContext.GetMe(runState);
         if (localPlayer != null)
         {
-            var isReady = CombatManager.Instance.IsPlayerReadyToEndTurn(localPlayer);
+            bool isReady = CombatManager.Instance.IsPlayerReadyToEndTurn(localPlayer);
             battle["local_player_ready_to_end_turn"] = isReady;
 
-            var endTurnBlockedReason = GetMultiplayerEndTurnBlockedReason(localPlayer);
+            string? endTurnBlockedReason = GetMultiplayerEndTurnBlockedReason(localPlayer);
             battle["can_end_turn"] = endTurnBlockedReason == null;
             battle["end_turn_blocked_reason"] = endTurnBlockedReason;
 
-            var undoBlockedReason = GetMultiplayerUndoEndTurnBlockedReason(localPlayer);
+            string? undoBlockedReason = GetMultiplayerUndoEndTurnBlockedReason(localPlayer);
             battle["can_undo_end_turn"] = undoBlockedReason == null;
             battle["undo_end_turn_blocked_reason"] = undoBlockedReason;
         }
@@ -503,7 +503,7 @@ public static partial class McpMod
 
         // Run RNG stream coordinates — the host-synced RunRngSet is shared by
         // all players in lockstep MP, so the local counters reflect everyone.
-        var rngStreams = BuildRngStreams(runState);
+        Dictionary<string, object?>? rngStreams = BuildRngStreams(runState);
         if (rngStreams != null)
             battle["rng_streams"] = rngStreams;
 
@@ -551,7 +551,7 @@ public static partial class McpMod
         // round and the card id.
         return TryReadQuiet<int?>(() =>
             s_historyTurnNumbersField?.GetValue(entry) is Dictionary<ulong, int> turns
-            && turns.TryGetValue(owner.NetId, out var turn)
+            && turns.TryGetValue(owner.NetId, out int turn)
                 ? turn
                 : null);
     }
@@ -583,9 +583,9 @@ public static partial class McpMod
     {
         var plays = new List<Dictionary<string, object?>>();
         int idx = 0;
-        foreach (var entry in CombatManager.Instance.History.CardPlaysFinished)
+        foreach (CardPlayFinishedEntry entry in CombatManager.Instance.History.CardPlaysFinished)
         {
-            var cardPlay = entry.CardPlay;
+            CardPlay cardPlay = entry.CardPlay;
             string? target = null;
             TryDo(() =>
             {
@@ -652,7 +652,7 @@ public static partial class McpMod
     {
         var rows = new List<Dictionary<string, object?>>();
         int idx = 0;
-        foreach (var entry in CombatManager.Instance.History.Entries)
+        foreach (CombatHistoryEntry entry in CombatManager.Instance.History.Entries)
         {
             string kind;
             CardModel? card;
@@ -668,10 +668,10 @@ public static partial class McpMod
             if (card == null)
                 continue;
 
-            var owner = CardOwner(card);
+            Player? owner = CardOwner(card);
             // An entry whose turn test throws cannot be placed in this window, so it is
             // skipped rather than reported without its scope.
-            var inScope = TryReadQuiet<bool?>(() =>
+            bool? inScope = TryReadQuiet<bool?>(() =>
                 entry.HappenedThisTurn(combatState)
                 || (owner != null && entry.HappenedLastPlayerTurn(owner)));
             if (inScope != true)
@@ -716,17 +716,17 @@ public static partial class McpMod
         // (dealer-less DoTs) are skipped.
         int rounds = Math.Max(1, currentRound);
         var totals = new Dictionary<Player, int[]>();
-        foreach (var entry in CombatManager.Instance.History.Entries)
+        foreach (CombatHistoryEntry entry in CombatManager.Instance.History.Entries)
         {
             if (entry is not DamageReceivedEntry dmg)
                 continue;
             if (dmg.Dealer == null || !dmg.Receiver.IsMonster)
                 continue;
-            var owner = dmg.Dealer.Player ?? dmg.Dealer.PetOwner;
+            Player? owner = dmg.Dealer.Player ?? dmg.Dealer.PetOwner;
             if (owner == null)
                 continue;
             int round = Math.Clamp(GetEntryRound(entry), 1, rounds);
-            if (!totals.TryGetValue(owner, out var byRound))
+            if (!totals.TryGetValue(owner, out int[]? byRound))
             {
                 byRound = new int[rounds];
                 totals[owner] = byRound;
@@ -735,9 +735,9 @@ public static partial class McpMod
         }
 
         var result = new List<Dictionary<string, object?>>();
-        foreach (var player in runState.Players)
+        foreach (Player player in runState.Players)
         {
-            totals.TryGetValue(player, out var byRound);
+            totals.TryGetValue(player, out int[]? byRound);
             result.Add(new Dictionary<string, object?>(StringComparer.Ordinal)
             {
                 ["player"] = SafeGetText(() => player.Character.Title),
@@ -763,7 +763,7 @@ public static partial class McpMod
         if (CombatManager.Instance.IsPlayerReadyToEndTurn(player))
             return "AlreadyReady";
 
-        var hand = NCombatRoom.Instance?.Ui?.Hand;
+        NPlayerHand? hand = NCombatRoom.Instance?.Ui?.Hand;
         if (hand != null && hand.InCardPlay)
             return "CardInPlay";
         if (hand != null && hand.CurrentMode != NPlayerHand.Mode.Play)
@@ -795,17 +795,17 @@ public static partial class McpMod
     private static Dictionary<string, object?> BuildMultiplayerMapState(RunState runState)
     {
         // Start with the standard map state
-        var state = BuildMapState(runState);
+        Dictionary<string, object?> state = BuildMapState(runState);
 
         // Add per-player vote data
         TryDo("map.votes", () =>
         {
-            var mapSync = RunManager.Instance.MapSelectionSynchronizer;
+            MapSelectionSynchronizer mapSync = RunManager.Instance.MapSelectionSynchronizer;
             var votes = new List<Dictionary<string, object?>>();
 
-            foreach (var player in runState.Players)
+            foreach (Player player in runState.Players)
             {
-                var vote = mapSync.GetVote(player);
+                MapVote? vote = mapSync.GetVote(player);
                 votes.Add(new Dictionary<string, object?>(StringComparer.Ordinal)
                 {
                     ["player"] = SafeGetText(() => player.Character.Title),
@@ -829,12 +829,12 @@ public static partial class McpMod
     private static Dictionary<string, object?> BuildMultiplayerEventState(EventRoom eventRoom, RunState runState)
     {
         // Start with the standard event state
-        var state = BuildEventState(eventRoom);
+        Dictionary<string, object?> state = BuildEventState(eventRoom);
 
         // Add multiplayer-specific event data
         TryDo("event.votes", () =>
         {
-            var eventSync = RunManager.Instance.EventSynchronizer;
+            EventSynchronizer eventSync = RunManager.Instance.EventSynchronizer;
             bool isShared = false;
             // Left silent: IsShared throws whenever no event is in progress, which is the
             // normal reading on every other screen - a warning here would fire constantly.
@@ -844,9 +844,9 @@ public static partial class McpMod
             if (isShared)
             {
                 var votes = new List<Dictionary<string, object?>>();
-                foreach (var player in runState.Players)
+                foreach (Player player in runState.Players)
                 {
-                    var vote = eventSync.GetPlayerVote(player);
+                    uint? vote = eventSync.GetPlayerVote(player);
                     votes.Add(new Dictionary<string, object?>(StringComparer.Ordinal)
                     {
                         ["player"] = SafeGetText(() => player.Character.Title),
@@ -872,22 +872,22 @@ public static partial class McpMod
         // TreasureRoom.Enter(), so relics are already generated. The chest click
         // just triggers the UI animation + gold via OneOffSynchronizer - same path
         // as a human click or the game's own AutoSlay handler.
-        var state = BuildTreasureState();
+        Dictionary<string, object?> state = BuildTreasureState();
 
         // Add per-player bid data
         TryDo("treasure.bids", () =>
         {
-            var treasureSync = RunManager.Instance.TreasureRoomRelicSynchronizer;
-            var currentRelics = treasureSync.CurrentRelics;
+            TreasureRoomRelicSynchronizer treasureSync = RunManager.Instance.TreasureRoomRelicSynchronizer;
+            IReadOnlyList<RelicModel>? currentRelics = treasureSync.CurrentRelics;
 
             state["is_bidding_phase"] = currentRelics != null;
 
             if (currentRelics != null)
             {
                 var bids = new List<Dictionary<string, object?>>();
-                foreach (var player in runState.Players)
+                foreach (Player player in runState.Players)
                 {
-                    var vote = treasureSync.GetPlayerVote(player);
+                    TreasureRoomRelicSynchronizer.PlayerVote? vote = treasureSync.GetPlayerVote(player);
                     bids.Add(new Dictionary<string, object?>(StringComparer.Ordinal)
                     {
                         ["player"] = SafeGetText(() => player.Character.Title),
@@ -938,7 +938,7 @@ public static partial class McpMod
 
         // Each player rolls their own rewards/shops/transformations off a
         // slot-seeded PlayerRngSet. See McpMod.RngStreams.cs.
-        var playerRng = BuildPlayerRngStreams(player);
+        Dictionary<string, object?>? playerRng = BuildPlayerRngStreams(player);
         if (playerRng != null)
             entry["rng"] = playerRng;
 
@@ -960,7 +960,7 @@ public static partial class McpMod
 
     private static void AppendTeammateState(Dictionary<string, object?> entry, Player player)
     {
-        var pets = BuildPetsState(player);
+        List<Dictionary<string, object?>> pets = BuildPetsState(player);
         if (pets.Count > 0)
         {
             entry["pets"] = pets;
@@ -979,15 +979,15 @@ public static partial class McpMod
     /// </summary>
     private static void AppendTeammateCombatState(Dictionary<string, object?> entry, Player player)
     {
-        var cs = player.PlayerCombatState;
+        PlayerCombatState? cs = player.PlayerCombatState;
         if (cs == null)
             return;
 
         var hand = new List<Dictionary<string, object?>>();
         int cardIndex = 0;
-        foreach (var card in cs.Hand.Cards)
+        foreach (CardModel card in cs.Hand.Cards)
         {
-            var info = BuildCardInfo(card);
+            Dictionary<string, object?> info = BuildCardInfo(card);
             info["index"] = cardIndex++;
             info["target_type"] = card.TargetType.ToString();
             hand.Add(info);
@@ -1041,12 +1041,12 @@ public static partial class McpMod
     private static void AddFullRunPlayerDetail(Dictionary<string, object?> entry, Player player)
     {
         var deck = new List<Dictionary<string, object?>>();
-        var deckFailure = TryAction("multiplayer.master_deck", () =>
+        string? deckFailure = TryAction("multiplayer.master_deck", () =>
         {
             int deckIndex = 0;
-            foreach (var card in player.Deck.Cards)
+            foreach (CardModel card in player.Deck.Cards)
             {
-                var info = BuildCardInfo(card);
+                Dictionary<string, object?> info = BuildCardInfo(card);
                 info["index"] = deckIndex++;
                 deck.Add(info);
             }

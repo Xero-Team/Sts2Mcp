@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Net;
+using System.Reflection;
 using System.Text.Json;
 using Godot;
 using MegaCrit.Sts2.Core.Achievements;
@@ -13,7 +14,7 @@ using MegaCrit.Sts2.Core.Runs;
 using MegaCrit.Sts2.Core.Saves;
 using MegaCrit.Sts2.Core.Saves.Managers;
 
-namespace STS2_MCP;
+namespace Sts2Mcp;
 
 public static partial class McpMod
 {
@@ -34,14 +35,14 @@ public static partial class McpMod
     private static void HandlePostProfiles(HttpListenerRequest request, HttpListenerResponse response)
     {
         bool pretty = WantsPretty(request);
-        var actionRequest = TryReadActionRequest(
+        ActionRequest? actionRequest = TryReadActionRequest(
             request, response, pretty, "Missing 'action' field. Use: switch, delete");
         if (actionRequest == null)
             return;
 
-        var parsed = actionRequest.Parsed;
+        Dictionary<string, JsonElement> parsed = actionRequest.Parsed;
         string action = actionRequest.Action;
-        if (!parsed.TryGetValue("profile_id", out var idElem))
+        if (!parsed.TryGetValue("profile_id", out JsonElement idElem))
         {
             SendError(response, 400, "Missing 'profile_id' field. Use a profile slot 1-3.", "missing_profile_id");
             return;
@@ -65,9 +66,9 @@ public static partial class McpMod
     private static void SendProfileActionJson(
         HttpListenerResponse response, Dictionary<string, object?> result, bool pretty = false)
     {
-        if (result.TryGetValue("status", out var status) && string.Equals(status as string, "error", StringComparison.Ordinal))
+        if (result.TryGetValue("status", out object? status) && string.Equals(status as string, "error", StringComparison.Ordinal))
         {
-            response.StatusCode = result.TryGetValue("error_code", out var errorCode)
+            response.StatusCode = result.TryGetValue("error_code", out object? errorCode)
                 ? (errorCode as string) switch
                 {
                     "invalid_profile_id" or "unknown_profile_action" => 400,
@@ -82,7 +83,7 @@ public static partial class McpMod
 
     private static Dictionary<string, object?> BuildProfilesSummary()
     {
-        var sm = SaveManager.Instance;
+        SaveManager sm = SaveManager.Instance;
         if (sm == null)
             return Error("Save manager is not available", "save_manager_unavailable");
 
@@ -98,7 +99,7 @@ public static partial class McpMod
 
             string? path = null;
             string? resolvedPath = null;
-            var profileRoot = $"profile{i}";
+            string profileRoot = $"profile{i}";
             TryDo(() =>
             {
                 path = GetProfileProgressPath(i);
@@ -128,7 +129,7 @@ public static partial class McpMod
 
     private static Dictionary<string, object?> ExecuteProfileAction(string action, int profileId)
     {
-        var sm = SaveManager.Instance;
+        SaveManager sm = SaveManager.Instance;
         if (sm == null)
             return Error("Save manager is not available", "save_manager_unavailable");
         if (profileId is < 1 or > 3)
@@ -161,7 +162,7 @@ public static partial class McpMod
                 };
             }
 
-            var mainMenu = FindFirst<NMainMenu>(tree.Root);
+            NMainMenu? mainMenu = FindFirst<NMainMenu>(tree.Root);
             if (mainMenu != null && IsNodeVisible(mainMenu))
             {
                 mainMenu.OpenProfileScreen();
@@ -197,7 +198,7 @@ public static partial class McpMod
 
     private static bool TrySwitchProfileViaOpenScreen(Node root, int profileId)
     {
-        var profileScreen = FindFirst<NProfileScreen>(root);
+        NProfileScreen? profileScreen = FindFirst<NProfileScreen>(root);
         if (profileScreen == null || !IsNodeVisible(profileScreen))
             return false;
 
@@ -205,13 +206,13 @@ public static partial class McpMod
         if (buttons == null)
             return false;
 
-        foreach (var btn in buttons)
+        foreach (object? btn in buttons)
         {
-            var btnId = GetInstanceFieldValue(btn, "_profileId");
+            object? btnId = GetInstanceFieldValue(btn, "_profileId");
             if (btnId is not int id || id != profileId)
                 continue;
 
-            var switchMethod = btn.GetType().GetMethod(
+            MethodInfo? switchMethod = btn.GetType().GetMethod(
                 "SwitchToThisProfile",
                 System.Reflection.BindingFlags.Public |
                 System.Reflection.BindingFlags.NonPublic |
@@ -225,16 +226,16 @@ public static partial class McpMod
 
     internal static object BuildProfile()
     {
-        var saveManager = SaveManager.Instance;
-        var progress = saveManager?.Progress;
+        SaveManager? saveManager = SaveManager.Instance;
+        ProgressState? progress = saveManager?.Progress;
         if (saveManager == null || progress == null)
             return Error("No profile data available.", "profile_data_unavailable");
 
         var result = new Dictionary<string, object?>(StringComparer.Ordinal);
-        var profileId = saveManager.CurrentProfileId;
-        var progressPath = GetProfileProgressPath(profileId);
-        var resolvedProgressPath = ResolveProfileProgressPath(profileId);
-        var profileRoot = GetProfileRootFromProgressPath(progressPath, profileId);
+        int profileId = saveManager.CurrentProfileId;
+        string? progressPath = GetProfileProgressPath(profileId);
+        string? resolvedProgressPath = ResolveProfileProgressPath(profileId);
+        string profileRoot = GetProfileRootFromProgressPath(progressPath, profileId);
         result["status"] = "ok";
         result["kind"] = "profile";
         result["profile_id"] = profileId;
@@ -260,9 +261,9 @@ public static partial class McpMod
         IReadOnlyDictionary<ModelId, CharacterStats> stats)
     {
         var rows = new List<Dictionary<string, object?>>();
-        foreach (var kv in stats.OrderBy(kv => kv.Key.Entry, StringComparer.Ordinal))
+        foreach (KeyValuePair<ModelId, CharacterStats> kv in stats.OrderBy(kv => kv.Key.Entry, StringComparer.Ordinal))
         {
-            var row = kv.Value;
+            CharacterStats row = kv.Value;
             rows.Add(new Dictionary<string, object?>(StringComparer.Ordinal)
             {
                 ["id"] = kv.Key.Entry,
@@ -283,9 +284,9 @@ public static partial class McpMod
         IReadOnlyDictionary<ModelId, CardStats> stats)
     {
         var rows = new List<Dictionary<string, object?>>();
-        foreach (var kv in stats.OrderBy(kv => kv.Key.Entry, StringComparer.Ordinal))
+        foreach (KeyValuePair<ModelId, CardStats> kv in stats.OrderBy(kv => kv.Key.Entry, StringComparer.Ordinal))
         {
-            var row = kv.Value;
+            CardStats row = kv.Value;
             rows.Add(new Dictionary<string, object?>(StringComparer.Ordinal)
             {
                 ["id"] = kv.Key.Entry,
@@ -302,7 +303,7 @@ public static partial class McpMod
         IReadOnlyDictionary<ModelId, EncounterStats> stats)
     {
         var rows = new List<Dictionary<string, object?>>();
-        foreach (var kv in stats.OrderBy(kv => kv.Key.Entry, StringComparer.Ordinal))
+        foreach (KeyValuePair<ModelId, EncounterStats> kv in stats.OrderBy(kv => kv.Key.Entry, StringComparer.Ordinal))
         {
             rows.Add(BuildFightStatRow(kv.Key.Entry, kv.Value.TotalWins, kv.Value.TotalLosses, kv.Value.FightStats));
         }
@@ -313,7 +314,7 @@ public static partial class McpMod
         IReadOnlyDictionary<ModelId, EnemyStats> stats)
     {
         var rows = new List<Dictionary<string, object?>>();
-        foreach (var kv in stats.OrderBy(kv => kv.Key.Entry, StringComparer.Ordinal))
+        foreach (KeyValuePair<ModelId, EnemyStats> kv in stats.OrderBy(kv => kv.Key.Entry, StringComparer.Ordinal))
         {
             rows.Add(BuildFightStatRow(kv.Key.Entry, kv.Value.TotalWins, kv.Value.TotalLosses, kv.Value.FightStats));
         }
@@ -333,7 +334,7 @@ public static partial class McpMod
             ["total_losses"] = totalLosses
         };
         var byCharacter = new List<Dictionary<string, object?>>();
-        foreach (var fs in fightStats)
+        foreach (FightStats fs in fightStats)
         {
             byCharacter.Add(new Dictionary<string, object?>(StringComparer.Ordinal)
             {
@@ -351,7 +352,7 @@ public static partial class McpMod
         IReadOnlyDictionary<ModelId, AncientStats> stats)
     {
         var rows = new List<Dictionary<string, object?>>();
-        foreach (var kv in stats.OrderBy(kv => kv.Key.Entry, StringComparer.Ordinal))
+        foreach (KeyValuePair<ModelId, AncientStats> kv in stats.OrderBy(kv => kv.Key.Entry, StringComparer.Ordinal))
         {
             var row = new Dictionary<string, object?>(StringComparer.Ordinal)
             {
@@ -361,7 +362,7 @@ public static partial class McpMod
                 ["total_losses"] = kv.Value.TotalLosses
             };
             var byCharacter = new List<Dictionary<string, object?>>();
-            foreach (var cs in kv.Value.CharStats)
+            foreach (AncientCharacterStats cs in kv.Value.CharStats)
             {
                 byCharacter.Add(new Dictionary<string, object?>(StringComparer.Ordinal)
                 {
@@ -395,7 +396,7 @@ public static partial class McpMod
         IReadOnlyDictionary<Achievement, long> unlocked)
     {
         var rows = new List<Dictionary<string, object?>>();
-        foreach (var kv in unlocked)
+        foreach (KeyValuePair<Achievement, long> kv in unlocked)
         {
             rows.Add(new Dictionary<string, object?>(StringComparer.Ordinal)
             {

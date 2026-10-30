@@ -1,6 +1,6 @@
 # Full API Reference
 
-HTTP API served by the STS2_MCP mod on `localhost:15526`. No authentication. Local use only.
+HTTP API served by the Sts2Mcp mod on `localhost:15526`. No authentication. Local use only.
 
 **Endpoints:**
 - `GET  /` — health check: `{ "message", "status", "version", "commit", "schema_version" }`

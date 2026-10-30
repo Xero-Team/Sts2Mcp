@@ -7,9 +7,13 @@ using System.Reflection;
 using MegaCrit.Sts2.Core.Context;
 using MegaCrit.Sts2.Core.Entities.Creatures;
 using MegaCrit.Sts2.Core.Entities.Players;
+using MegaCrit.Sts2.Core.Entities.Relics;
+using MegaCrit.Sts2.Core.Models;
+using MegaCrit.Sts2.Core.Random;
 using MegaCrit.Sts2.Core.Runs;
+using MegaCrit.Sts2.Core.Saves.Runs;
 
-namespace STS2_MCP;
+namespace Sts2Mcp;
 
 public static partial class McpMod
 {
@@ -70,7 +74,7 @@ public static partial class McpMod
     {
         return TryRead(() =>
         {
-            var rngSet = runState.Rng;
+            RunRngSet rngSet = runState.Rng;
             if (rngSet == null)
                 return null;
 
@@ -81,7 +85,7 @@ public static partial class McpMod
             // `new Rng(runState.Rng.Seed, $"act_{act}_map")` derived purely from
             // this seed, so a consumer can reconstruct the whole layout (and any
             // other ad-hoc `new Rng(Seed, name)` stream) from run_seed alone.
-            var runSeed = SafeGet(() => GetInstanceMemberValue(rngSet, "Seed"));
+            object? runSeed = SafeGet(() => GetInstanceMemberValue(rngSet, "Seed"));
             if (runSeed != null)
                 streams["run_seed"] = runSeed;
             streams["run_string_seed"] = rngSet.StringSeed;
@@ -90,7 +94,7 @@ public static partial class McpMod
 
             // UnknownMapPoint's odds accumulate across the act, so the counter
             // alone cannot tell you what a "?" node will roll into.
-            var odds = BuildOddsSet(SafeGet(() => (object?)runState.Odds));
+            Dictionary<string, object?>? odds = BuildOddsSet(SafeGet(() => (object?)runState.Odds));
             if (odds != null)
                 streams["odds"] = odds;
 
@@ -112,24 +116,24 @@ public static partial class McpMod
     {
         return TryRead(() =>
         {
-            var rngSet = player.PlayerRng;
+            PlayerRngSet rngSet = player.PlayerRng;
             if (rngSet == null)
                 return null;
 
             var streams = new Dictionary<string, object?>(StringComparer.Ordinal);
 
-            var seedProp = rngSet.GetType().GetProperty("Seed", BindingFlags.Public | BindingFlags.Instance);
-            var seed = seedProp?.GetValue(rngSet);
+            PropertyInfo? seedProp = rngSet.GetType().GetProperty("Seed", BindingFlags.Public | BindingFlags.Instance);
+            object? seed = seedProp?.GetValue(rngSet);
             if (seed != null)
                 streams["seed"] = seed;
 
-            var slot = SafeGet(() => (object?)player.RunState.GetPlayerSlotIndex(player));
+            object? slot = SafeGet(() => (object?)player.RunState.GetPlayerSlotIndex(player));
             if (slot != null)
                 streams["slot_index"] = slot;
 
             SweepRngSet(rngSet, streams);
 
-            var odds = BuildOddsSet(SafeGet(() => (object?)player.PlayerOdds));
+            Dictionary<string, object?>? odds = BuildOddsSet(SafeGet(() => (object?)player.PlayerOdds));
             if (odds != null)
                 streams["odds"] = odds;
 
@@ -147,7 +151,7 @@ public static partial class McpMod
     {
         return TryRead(() =>
         {
-            var monster = creature.Monster;
+            MonsterModel? monster = creature.Monster;
             if (monster == null || !monster.IsMutable)
                 return null;
             return RngCoords(monster.Rng);
@@ -166,12 +170,12 @@ public static partial class McpMod
     /// </summary>
     private static void SweepRngSet(object rngSet, Dictionary<string, object?> into)
     {
-        var type = rngSet.GetType();
+        Type type = rngSet.GetType();
 
-        if (!s_rngSetProps.TryGetValue(type, out var props))
+        if (!s_rngSetProps.TryGetValue(type, out PropertyInfo[]? props))
         {
             var found = new List<PropertyInfo>();
-            foreach (var prop in type.GetProperties(BindingFlags.Public | BindingFlags.Instance))
+            foreach (PropertyInfo prop in type.GetProperties(BindingFlags.Public | BindingFlags.Instance))
             {
                 if (string.Equals(prop.PropertyType.Name, "Rng", StringComparison.Ordinal) && prop.CanRead && prop.GetIndexParameters().Length == 0)
                     found.Add(prop);
@@ -182,19 +186,19 @@ public static partial class McpMod
 
         var seen = new HashSet<object>(ReferenceEqualityComparer.Instance);
 
-        foreach (var prop in props)
+        foreach (PropertyInfo prop in props)
         {
-            var rng = SafeGet(() => prop.GetValue(rngSet));
+            object? rng = SafeGet(() => prop.GetValue(rngSet));
             if (rng == null)
                 continue;
-            var coords = RngCoords(rng);
+            Dictionary<string, object?>? coords = RngCoords(rng);
             if (coords == null)
                 continue;
             seen.Add(rng);
             into[SnakeCase(prop.Name)] = coords;
         }
 
-        if (!s_rngSetDictField.TryGetValue(type, out var dictField))
+        if (!s_rngSetDictField.TryGetValue(type, out FieldInfo? dictField))
         {
             dictField = type.GetFields(BindingFlags.NonPublic | BindingFlags.Instance)
                 .FirstOrDefault(field => typeof(IDictionary).IsAssignableFrom(field.FieldType));
@@ -211,10 +215,10 @@ public static partial class McpMod
         {
             if (entry.Value == null || seen.Contains(entry.Value))
                 continue;
-            var coords = RngCoords(entry.Value);
+            Dictionary<string, object?>? coords = RngCoords(entry.Value);
             if (coords == null)
                 continue;
-            var name = entry.Key?.ToString();
+            string? name = entry.Key?.ToString();
             if (string.IsNullOrEmpty(name))
                 continue;
             into[SnakeCase(name)] = coords;
@@ -231,8 +235,8 @@ public static partial class McpMod
 
         // Main-branch builds through v0.107 expose the constructor seed and a
         // consumed-value counter directly. Keep that wire shape unchanged.
-        var seed = SafeGet(() => GetInstanceMemberValue(rng, "Seed"));
-        var counter = SafeGet(() => GetInstanceMemberValue(rng, "Counter"));
+        object? seed = SafeGet(() => GetInstanceMemberValue(rng, "Seed"));
+        object? counter = SafeGet(() => GetInstanceMemberValue(rng, "Counter"));
         if (seed != null && counter != null)
         {
             return new Dictionary<string, object?>(StringComparer.Ordinal)
@@ -245,14 +249,14 @@ public static partial class McpMod
         // v0.110 made the seed unrecoverable and serializes the live xoshiro
         // state instead. Reflection keeps this DLL loadable on older builds,
         // where neither ToSerializable nor SerializableRng exists.
-        var serialized = SafeGet(() => rng.GetType()
+        object? serialized = SafeGet(() => rng.GetType()
             .GetMethod("ToSerializable", BindingFlags.Public | BindingFlags.Instance, null, Type.EmptyTypes, null)
             ?.Invoke(rng, null));
         if (serialized == null)
             return null;
 
         counter = SafeGet(() => GetInstanceMemberValue(serialized, "counter"));
-        var state = new object?[4];
+        object?[] state = new object?[4];
         for (int i = 0; i < state.Length; i++)
             state[i] = SafeGet(() => GetInstanceMemberValue(serialized, $"state{i}"));
 
@@ -277,11 +281,11 @@ public static partial class McpMod
         if (oddsSet == null)
             return null;
 
-        var type = oddsSet.GetType();
-        if (!s_oddsSetProps.TryGetValue(type, out var props))
+        Type type = oddsSet.GetType();
+        if (!s_oddsSetProps.TryGetValue(type, out PropertyInfo[]? props))
         {
             var found = new List<PropertyInfo>();
-            foreach (var prop in type.GetProperties(BindingFlags.Public | BindingFlags.Instance))
+            foreach (PropertyInfo prop in type.GetProperties(BindingFlags.Public | BindingFlags.Instance))
             {
                 if (prop.CanRead && prop.GetIndexParameters().Length == 0 && !prop.PropertyType.IsPrimitive)
                     found.Add(prop);
@@ -291,10 +295,10 @@ public static partial class McpMod
         }
 
         var result = new Dictionary<string, object?>(StringComparer.Ordinal);
-        foreach (var prop in props)
+        foreach (PropertyInfo prop in props)
         {
-            var odds = SafeGet(() => prop.GetValue(oddsSet));
-            var values = OddsValues(odds);
+            object? odds = SafeGet(() => prop.GetValue(oddsSet));
+            Dictionary<string, object?>? values = OddsValues(odds);
             if (values != null)
                 result[SnakeCase(prop.Name)] = values;
         }
@@ -307,11 +311,11 @@ public static partial class McpMod
         if (odds == null)
             return null;
 
-        var type = odds.GetType();
-        if (!s_oddsValueProps.TryGetValue(type, out var props))
+        Type type = odds.GetType();
+        if (!s_oddsValueProps.TryGetValue(type, out PropertyInfo[]? props))
         {
             var found = new List<PropertyInfo>();
-            foreach (var prop in type.GetProperties(BindingFlags.Public | BindingFlags.Instance))
+            foreach (PropertyInfo prop in type.GetProperties(BindingFlags.Public | BindingFlags.Instance))
             {
                 if (prop.PropertyType == typeof(float) && prop.CanRead && prop.GetIndexParameters().Length == 0)
                     found.Add(prop);
@@ -324,9 +328,9 @@ public static partial class McpMod
             return null;
 
         var values = new Dictionary<string, object?>(StringComparer.Ordinal);
-        foreach (var prop in props)
+        foreach (PropertyInfo prop in props)
         {
-            var value = SafeGet(() => prop.GetValue(odds));
+            object? value = SafeGet(() => prop.GetValue(odds));
             if (value != null)
                 values[SnakeCase(prop.Name)] = value;
         }
@@ -344,7 +348,7 @@ public static partial class McpMod
         var sb = new System.Text.StringBuilder(name.Length + 4);
         for (int i = 0; i < name.Length; i++)
         {
-            var c = name[i];
+            char c = name[i];
             if (char.IsUpper(c))
             {
                 if (i > 0)
@@ -390,9 +394,9 @@ public static partial class McpMod
             return new Dictionary<string, object?>(StringComparer.Ordinal) { ["error"] = "No run in progress." };
 
         var players = new List<Dictionary<string, object?>>();
-        foreach (var player in runState.Players)
+        foreach (Player player in runState.Players)
         {
-            var bag = BuildRelicGrabBag(player);
+            Dictionary<string, object?>? bag = BuildRelicGrabBag(player);
             if (bag == null)
                 continue;
             var entry = new Dictionary<string, object?>(StringComparer.Ordinal)
@@ -440,7 +444,7 @@ public static partial class McpMod
     {
         return TryRead(() =>
         {
-            var bag = player.RelicGrabBag;
+            RelicGrabBag bag = player.RelicGrabBag;
             if (bag == null || !bag.IsPopulated)
                 return null;
 
@@ -448,16 +452,16 @@ public static partial class McpMod
 
             // ToSerializable is the game's own public view of the deques and
             // keeps their order, so this cannot drift from what the save holds.
-            var save = bag.ToSerializable();
-            foreach (var pair in save.RelicIdLists)
+            SerializableRelicGrabBag save = bag.ToSerializable();
+            foreach (KeyValuePair<RelicRarity, List<ModelId>> pair in save.RelicIdLists)
             {
                 var ids = new List<string>();
-                foreach (var id in pair.Value)
+                foreach (ModelId id in pair.Value)
                     ids.Add(id.Entry);
                 result[SnakeCase(pair.Key.ToString())] = ids;
             }
 
-            var fallback = ReadMpFallback(bag);
+            List<string>? fallback = ReadMpFallback(bag);
             if (fallback == null)
                 return null; // An unreadable queue cannot certify exhaustion.
             result["mp_fallback"] = fallback;
@@ -473,17 +477,17 @@ public static partial class McpMod
     {
         return TryRead(() =>
         {
-            var field = bag.GetType().GetField(
+            FieldInfo? field = bag.GetType().GetField(
                 "_mpFallbackDequeue", BindingFlags.NonPublic | BindingFlags.Instance);
             if (field?.GetValue(bag) is not IEnumerable relics)
                 return null;
 
             var ids = new List<string>();
-            foreach (var relic in relics)
+            foreach (object? relic in relics)
             {
-                var idProp = relic?.GetType().GetProperty("Id");
-                var id = idProp?.GetValue(relic);
-                var entry = id?.GetType().GetProperty("Entry")?.GetValue(id) as string;
+                PropertyInfo? idProp = relic?.GetType().GetProperty("Id");
+                object? id = idProp?.GetValue(relic);
+                string? entry = id?.GetType().GetProperty("Entry")?.GetValue(id) as string;
                 if (entry != null)
                     ids.Add(entry);
             }

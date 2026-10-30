@@ -1,4 +1,4 @@
-namespace STS2_MCP.Core.Contracts;
+namespace Sts2Mcp.Core.Contracts;
 
 /// <summary>
 /// The 503 for "the game's main thread never picked this up". <c>retry: true</c> is the contract:

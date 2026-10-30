@@ -22,20 +22,20 @@ not supported by this branch.
 
 Grab the [latest release](https://github.com/Gennadiyev/STS2MCP/releases/latest) and follow the instructions:
 
-1. Copy `STS2_MCP.dll` and `STS2_MCP.json` to `<game_install>/mods/`
+1. Copy `Sts2Mcp.dll` and `Sts2Mcp.json` to `<game_install>/mods/`
 2. Launch the game and enable mods in settings (a consent dialog appears on first launch)
 3. The mod starts an HTTP server on port `15526` automatically. It first tries a wildcard bind, then explicit local IPv4 addresses, and finally loopback-only (`localhost`) if broader binds are unavailable.
 
-To use a different game API port on the next launch, set `STS2_PORT` in the game process environment or create a `.env` file next to the installed `STS2_MCP.dll`:
+To use a different game API port on the next launch, set `STS2_PORT` in the game process environment or create a `.env` file next to the installed `Sts2Mcp.dll`:
 
 ```dotenv
 STS2_PORT=15527
 ```
 
-Shell environment variables take precedence over `.env`, and the legacy `STS2_MCP.conf` port remains supported when `STS2_PORT` is unset.
+Shell environment variables take precedence over `.env`, and the `Sts2Mcp.conf` port remains supported when `STS2_PORT` is unset.
 
 > [!note]
-> The release DLL is a platform-agnostic .NET assembly — the same `STS2_MCP.dll` and `STS2_MCP.json` work on Windows, Linux, and macOS. No separate builds are needed.
+> The release DLL is a platform-agnostic .NET assembly — the same `Sts2Mcp.dll` and `Sts2Mcp.json` work on Windows, Linux, and macOS. No separate builds are needed.
 
 #### macOS install
 
@@ -52,8 +52,8 @@ To install, right-click `SlayTheSpire2.app` → **Show Package Contents**, navig
 GAME_DIR="$HOME/Library/Application Support/Steam/steamapps/common/Slay the Spire 2"
 MODS_DIR="$GAME_DIR/SlayTheSpire2.app/Contents/MacOS/mods"
 mkdir -p "$MODS_DIR"
-cp STS2_MCP.dll "$MODS_DIR/"
-cp STS2_MCP.json "$MODS_DIR/"
+cp Sts2Mcp.dll "$MODS_DIR/"
+cp Sts2Mcp.json "$MODS_DIR/"
 ```
 
 Launch the game and open **Settings → Mods**. The mod should appear in the list. A consent dialog appears on first launch — accept it to enable mod loading. Once enabled, verify the HTTP server is running:
@@ -136,7 +136,7 @@ uv run --project mcp python scripts/test_mcp_server.py
 Install [uv](https://docs.astral.sh/uv/) if you don't have it (macOS: `brew install uv`). Then run the server once to install dependencies:
 
 ```bash
-uv run --directory /path/to/STS2_MCP/mcp python server.py --help
+uv run --directory /path/to/STS2MCP/mcp python server.py --help
 ```
 
 `uv` reads `mcp/pyproject.toml`, creates an isolated virtual environment, and installs the pinned dependencies from `mcp/uv.lock`. Subsequent runs reuse the environment instantly.
@@ -148,7 +148,7 @@ Add the server to your AI client's MCP config:
   "mcpServers": {
     "sts2": {
       "command": "uv",
-      "args": ["run", "--directory", "/path/to/STS2_MCP/mcp", "python", "server.py"]
+      "args": ["run", "--directory", "/path/to/STS2MCP/mcp", "python", "server.py"]
     }
   }
 }
@@ -214,7 +214,7 @@ resolved game/data directories, and the build stops with an actionable error whe
 **Make** (Linux, macOS, WSL, or Git Bash):
 
 ```bash
-make build       # Release build -> out/STS2_MCP/
+make build       # Release build -> out/Sts2Mcp/
 make test        # headless harnesses under tests/
 make verify      # the local gate: build + format check + tests
 make install     # copy the package into <game>/mods/
@@ -234,11 +234,11 @@ $env:STS2_GAME_DIR = "D:\SteamLibrary\steamapps\common\Slay the Spire 2"
 .\build.ps1
 ```
 
-The build automatically creates a directly installable package in `out/STS2_MCP/`. It removes the .NET-generated `STS2_MCP.deps.json` and writes the STS2 manifest as `STS2_MCP.json`. Copy both files to `<game_install>/mods/`:
+The build automatically creates a directly installable package in `out/Sts2Mcp/`. It removes the .NET-generated `Sts2Mcp.deps.json` and writes the mod manifest as `Sts2Mcp.json`. Copy both files to `<game_install>/mods/`:
 
 ```
-out/STS2_MCP/STS2_MCP.dll           ->  <game_install>/mods/STS2_MCP.dll
-out/STS2_MCP/STS2_MCP.json          ->  <game_install>/mods/STS2_MCP.json
+out/Sts2Mcp/Sts2Mcp.dll           ->  <game_install>/mods/Sts2Mcp.dll
+out/Sts2Mcp/Sts2Mcp.json          ->  <game_install>/mods/Sts2Mcp.json
 ```
 
 ### Build instructions for macOS
@@ -256,7 +256,7 @@ Homebrew installs `dotnet@9` as keg-only, so the exports above are required for 
 Then configure the game path as above and run `make build`, or build with `dotnet` directly (the PowerShell script is Windows-only):
 
 ```bash
-dotnet build STS2_MCP.csproj -c Release -o out/STS2_MCP
+dotnet build Sts2Mcp.csproj -c Release -o out/Sts2Mcp
 ```
 
 On macOS the game ships as an app bundle. `Directory.Build.props` detects macOS and resolves the data directory to `SlayTheSpire2.app/Contents/Resources/data_sts2_macos_arm64` automatically.
@@ -267,12 +267,12 @@ The mods directory on macOS lives inside the app bundle at `SlayTheSpire2.app/Co
 GAME_DIR="$HOME/Library/Application Support/Steam/steamapps/common/Slay the Spire 2"
 MODS_DIR="$GAME_DIR/SlayTheSpire2.app/Contents/MacOS/mods"
 mkdir -p "$MODS_DIR"
-cp out/STS2_MCP/STS2_MCP.dll "$MODS_DIR/"
-cp out/STS2_MCP/STS2_MCP.json "$MODS_DIR/"
+cp out/Sts2Mcp/Sts2Mcp.dll "$MODS_DIR/"
+cp out/Sts2Mcp/Sts2Mcp.json "$MODS_DIR/"
 ```
 
 > [!NOTE] 
-> The build copies `mod_manifest.json` to `out/STS2_MCP/STS2_MCP.json` automatically because the game's mod loader expects the manifest filename to match the mod ID.
+> The build copies `mod_manifest.json` to `out/Sts2Mcp/Sts2Mcp.json` automatically because the game's mod loader expects the manifest filename to match the mod ID.
 
 ## License
 
@@ -288,7 +288,7 @@ I start building this mod with the hope that I can co-op with an AI player. Sing
 
 First of all, I play lots of games, including service games that has daily/weekly tasks. I really hoped that modern AI could save me from the grind, which, if you have tried one or more of the GUI agents, never really materialized. Let's face it: modern AI is still pretty bad at gaming because no one cares.
 
-About my intention, as a researcher that loves playing games, the purpose of STS2MCP is to test AI models and agents in a rarely explored (we call it out-of-distribution) domain. Ultimately, this might turn into a benchmark for evaluating the reasoning and decision-making capabilities of different language models.
+About my intention, as a researcher that loves playing games, the purpose of Sts2Mcp is to test AI models and agents in a rarely explored (we call it out-of-distribution) domain. Ultimately, this might turn into a benchmark for evaluating the reasoning and decision-making capabilities of different language models.
 
 STS2 is just an example to show how good (or bad) current AI agents are at playing such games. **I have no intention to replace human players with AI, and I would definitely rather play STS2 myself** as a big fan of the game.
 

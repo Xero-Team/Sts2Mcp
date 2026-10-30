@@ -8,7 +8,7 @@ using MegaCrit.Sts2.Core.Combat.History.Entries;
 using MegaCrit.Sts2.Core.Entities.Creatures;
 using MegaCrit.Sts2.Core.Entities.Players;
 using MegaCrit.Sts2.Core.ValueProps;
-using STS2_MCP;
+using Sts2Mcp;
 
 // Exercise the compiled exporter against the real game's history predicates.
 // Construct damage results directly; this does not run CreatureCmd or Godot.

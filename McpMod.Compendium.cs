@@ -11,7 +11,7 @@ using MegaCrit.Sts2.Core.Runs;
 using MegaCrit.Sts2.Core.Saves;
 using MegaCrit.Sts2.Core.Saves.Managers;
 
-namespace STS2_MCP;
+namespace Sts2Mcp;
 
 public static partial class McpMod
 {
@@ -27,7 +27,7 @@ public static partial class McpMod
         bool pretty = WantsPretty(request);
         RunHandler(response, () =>
         {
-            var snapshot = RunOnMainThreadBlocking(BuildCompendiumSnapshot);
+            CompendiumSnapshot snapshot = RunOnMainThreadBlocking(BuildCompendiumSnapshot);
             SendReadResultJson(response, BuildCompendiumResponse(snapshot), pretty);
         }, "Failed to build compendium", "compendium_build_failed", pretty);
     }
@@ -39,15 +39,15 @@ public static partial class McpMod
 
     private static CompendiumSnapshot BuildCompendiumSnapshot()
     {
-        var progress = SaveManager.Instance?.Progress;
-        var saveManager = SaveManager.Instance;
+        ProgressState? progress = SaveManager.Instance?.Progress;
+        SaveManager? saveManager = SaveManager.Instance;
         if (progress == null || saveManager == null)
             return new CompendiumSnapshot { ErrorMessage = "No profile data available.", ErrorCode = "profile_data_unavailable" };
 
-        var profileId = saveManager.CurrentProfileId;
-        var progressPath = GetProfileProgressPath(profileId);
-        var resolvedProgressPath = ResolveProfileProgressPath(profileId);
-        var profileRoot = GetProfileRootFromProgressPath(progressPath, profileId);
+        int profileId = saveManager.CurrentProfileId;
+        string? progressPath = GetProfileProgressPath(profileId);
+        string? resolvedProgressPath = ResolveProfileProgressPath(profileId);
+        string profileRoot = GetProfileRootFromProgressPath(progressPath, profileId);
 
         var globalStats = new Dictionary<string, object?>(StringComparer.Ordinal);
         AddProfileTotals(globalStats, progress);
@@ -77,7 +77,7 @@ public static partial class McpMod
         if (snapshot.ErrorMessage != null)
             return Error(snapshot.ErrorMessage, snapshot.ErrorCode);
 
-        var runHistory = BuildRunHistorySection(snapshot);
+        Dictionary<string, object?> runHistory = BuildRunHistorySection(snapshot);
 
         return new Dictionary<string, object?>(StringComparer.Ordinal)
         {
@@ -118,7 +118,7 @@ public static partial class McpMod
     private static List<Dictionary<string, object?>> BuildEncounterStats(dynamic progress)
     {
         var result = new List<Dictionary<string, object?>>();
-        foreach (var kv in progress.EncounterStats)
+        foreach (dynamic kv in progress.EncounterStats)
             result.Add(BuildFightStatsEntry(kv.Key.Entry, kv.Value));
         return SortDictionaryListByStringField(result, "id");
     }
@@ -126,7 +126,7 @@ public static partial class McpMod
     private static List<Dictionary<string, object?>> BuildEnemyStats(dynamic progress)
     {
         var result = new List<Dictionary<string, object?>>();
-        foreach (var kv in progress.EnemyStats)
+        foreach (dynamic kv in progress.EnemyStats)
             result.Add(BuildFightStatsEntry(kv.Key.Entry, kv.Value));
         return SortDictionaryListByStringField(result, "id");
     }
@@ -141,7 +141,7 @@ public static partial class McpMod
         };
 
         var byCharacter = new List<Dictionary<string, object?>>();
-        foreach (var fs in stats.FightStats)
+        foreach (dynamic fs in stats.FightStats)
         {
             byCharacter.Add(new Dictionary<string, object?>(StringComparer.Ordinal)
             {
@@ -152,7 +152,7 @@ public static partial class McpMod
         }
         if (byCharacter.Count > 0)
             entry["by_character"] = byCharacter
-                .OrderBy(item => item.TryGetValue("character", out var value) ? value?.ToString() : "", StringComparer.Ordinal)
+                .OrderBy(item => item.TryGetValue("character", out object? value) ? value?.ToString() : "", StringComparer.Ordinal)
                 .ToList();
 
         return entry;
@@ -163,14 +163,14 @@ public static partial class McpMod
         string field)
     {
         return items
-            .OrderBy(item => item.TryGetValue(field, out var value) ? value?.ToString() : "", StringComparer.Ordinal)
+            .OrderBy(item => item.TryGetValue(field, out object? value) ? value?.ToString() : "", StringComparer.Ordinal)
             .ToList();
     }
 
     private static Dictionary<string, object?> BuildRunHistoryProgressMembers(object progress)
     {
         var values = new Dictionary<string, object?>(StringComparer.Ordinal);
-        foreach (var member in GetRunHistoryMembers(progress.GetType()))
+        foreach (MemberInfo member in GetRunHistoryMembers(progress.GetType()))
         {
             TryDo(() =>
             {
@@ -206,8 +206,8 @@ public static partial class McpMod
 
     private static Dictionary<string, object?> BuildRunHistorySection(CompendiumSnapshot snapshot)
     {
-        var values = snapshot.RunHistoryProgressMembers;
-        var historyDirectory = FindRunHistoryDirectory(snapshot);
+        Dictionary<string, object?> values = snapshot.RunHistoryProgressMembers;
+        string? historyDirectory = FindRunHistoryDirectory(snapshot);
         if (historyDirectory != null)
         {
             var files = Directory.GetFiles(historyDirectory, "*.run")
@@ -254,11 +254,11 @@ public static partial class McpMod
         };
 
         // A run file that will not parse still reports its name, size and timestamp.
-        var parseFailure = TryAction("compendium.run_history_entry", () =>
+        string? parseFailure = TryAction("compendium.run_history_entry", () =>
         {
-            using var stream = file.OpenRead();
+            using FileStream stream = file.OpenRead();
             using var document = JsonDocument.Parse(stream);
-            var root = document.RootElement;
+            JsonElement root = document.RootElement;
 
             CopyJsonScalar(root, entry, "start_time");
             CopyJsonScalar(root, entry, "run_time");
@@ -271,21 +271,21 @@ public static partial class McpMod
             CopyJsonScalar(root, entry, "seed");
             CopyJsonScalar(root, entry, "build_id");
 
-            if (root.TryGetProperty("acts", out var acts) && acts.ValueKind == JsonValueKind.Array)
+            if (root.TryGetProperty("acts", out JsonElement acts) && acts.ValueKind == JsonValueKind.Array)
                 entry["acts"] = acts.EnumerateArray().Select(GetJsonValue).ToList();
 
-            if (root.TryGetProperty("players", out var players) && players.ValueKind == JsonValueKind.Array)
+            if (root.TryGetProperty("players", out JsonElement players) && players.ValueKind == JsonValueKind.Array)
             {
                 entry["players"] = players.EnumerateArray().Select(player =>
                 {
                     var playerEntry = new Dictionary<string, object?>(StringComparer.Ordinal);
                     CopyJsonScalar(player, playerEntry, "id");
                     CopyJsonScalar(player, playerEntry, "character");
-                    if (player.TryGetProperty("deck", out var deck) && deck.ValueKind == JsonValueKind.Array)
+                    if (player.TryGetProperty("deck", out JsonElement deck) && deck.ValueKind == JsonValueKind.Array)
                         playerEntry["deck_count"] = deck.GetArrayLength();
-                    if (player.TryGetProperty("relics", out var relics) && relics.ValueKind == JsonValueKind.Array)
+                    if (player.TryGetProperty("relics", out JsonElement relics) && relics.ValueKind == JsonValueKind.Array)
                         playerEntry["relic_count"] = relics.GetArrayLength();
-                    if (player.TryGetProperty("potions", out var potions) && potions.ValueKind == JsonValueKind.Array)
+                    if (player.TryGetProperty("potions", out JsonElement potions) && potions.ValueKind == JsonValueKind.Array)
                         playerEntry["potion_count"] = potions.GetArrayLength();
                     return playerEntry;
                 }).ToList();
@@ -301,13 +301,13 @@ public static partial class McpMod
 
     private static Dictionary<string, object?>? BuildActiveRunContext()
     {
-        var saveManager = SaveManager.Instance;
+        SaveManager saveManager = SaveManager.Instance;
         if (saveManager == null)
             return null;
 
-        var profileId = saveManager.CurrentProfileId;
-        var progressPath = GetProfileProgressPath(profileId);
-        var profileRoot = GetProfileRootFromProgressPath(progressPath, profileId);
+        int profileId = saveManager.CurrentProfileId;
+        string? progressPath = GetProfileProgressPath(profileId);
+        string profileRoot = GetProfileRootFromProgressPath(progressPath, profileId);
         return BuildCurrentRunContext(
             RunManager.Instance?.IsInProgress == true,
             profileId,
@@ -337,7 +337,7 @@ public static partial class McpMod
             ["id_format"] = "{save_scope}:profile{profile_id}:{start_time}"
         };
 
-        var currentRunPath = ResolveCurrentRunPath(progressPath, profileRoot);
+        string? currentRunPath = ResolveCurrentRunPath(progressPath, profileRoot);
         if (currentRunPath == null || !File.Exists(currentRunPath))
         {
             result["limitation"] = "Run is in progress, but current_run.save was not found yet.";
@@ -347,11 +347,11 @@ public static partial class McpMod
         result["save_path"] = NormalizePathForJson(currentRunPath);
 
         // The context above (paths, ids) is still usable when the save will not parse.
-        var parseFailure = TryAction("compendium.current_run", () =>
+        string? parseFailure = TryAction("compendium.current_run", () =>
         {
-            using var stream = File.OpenRead(currentRunPath);
+            using FileStream stream = File.OpenRead(currentRunPath);
             using var document = JsonDocument.Parse(stream);
-            var root = document.RootElement;
+            JsonElement root = document.RootElement;
 
             CopyJsonScalar(root, result, "start_time");
             CopyJsonScalar(root, result, "save_time");
@@ -362,12 +362,12 @@ public static partial class McpMod
             CopyJsonScalar(root, result, "schema_version");
             CopyJsonScalar(root, result, "platform_type");
 
-            if (root.TryGetProperty("rng", out var rng)
+            if (root.TryGetProperty("rng", out JsonElement rng)
                 && rng.ValueKind == JsonValueKind.Object
-                && rng.TryGetProperty("seed", out var seed))
+                && rng.TryGetProperty("seed", out JsonElement seed))
                 result["seed"] = GetJsonValue(seed);
 
-            if (result.TryGetValue("start_time", out var startTime) && startTime != null)
+            if (result.TryGetValue("start_time", out object? startTime) && startTime != null)
                 result["run_id"] = $"{saveScope}:profile{profileId}:{startTime}";
         });
         if (parseFailure != null)
@@ -439,11 +439,11 @@ public static partial class McpMod
 
     private static int CountMapPoints(JsonElement root)
     {
-        if (!root.TryGetProperty("map_point_history", out var acts) || acts.ValueKind != JsonValueKind.Array)
+        if (!root.TryGetProperty("map_point_history", out JsonElement acts) || acts.ValueKind != JsonValueKind.Array)
             return 0;
 
-        var count = 0;
-        foreach (var act in acts.EnumerateArray())
+        int count = 0;
+        foreach (JsonElement act in acts.EnumerateArray())
         {
             if (act.ValueKind == JsonValueKind.Array)
                 count += act.GetArrayLength();
@@ -453,7 +453,7 @@ public static partial class McpMod
 
     private static void CopyJsonScalar(JsonElement source, Dictionary<string, object?> target, string propertyName)
     {
-        if (source.TryGetProperty(propertyName, out var property))
+        if (source.TryGetProperty(propertyName, out JsonElement property))
             target[propertyName] = GetJsonValue(property);
     }
 
@@ -462,8 +462,8 @@ public static partial class McpMod
         return element.ValueKind switch
         {
             JsonValueKind.String => element.GetString(),
-            JsonValueKind.Number when element.TryGetInt64(out var longValue) => longValue,
-            JsonValueKind.Number when element.TryGetDouble(out var doubleValue) => doubleValue,
+            JsonValueKind.Number when element.TryGetInt64(out long longValue) => longValue,
+            JsonValueKind.Number when element.TryGetDouble(out double doubleValue) => doubleValue,
             JsonValueKind.True => true,
             JsonValueKind.False => false,
             JsonValueKind.Null => null,
@@ -473,17 +473,17 @@ public static partial class McpMod
 
     private static string? FindRunHistoryDirectory(CompendiumSnapshot snapshot)
     {
-        var saveDirectory = GetSaveDirectoryFromProgressPath(snapshot.ProgressPath);
+        string? saveDirectory = GetSaveDirectoryFromProgressPath(snapshot.ProgressPath);
         if (saveDirectory != null)
         {
-            var historyPath = Path.Combine(saveDirectory, "history");
+            string historyPath = Path.Combine(saveDirectory, "history");
             if (Directory.Exists(historyPath))
                 return historyPath;
         }
 
-        foreach (var saveRoot in EnumerateSaveRoots())
+        foreach (string saveRoot in EnumerateSaveRoots())
         {
-            var historyPath = Path.Combine(saveRoot, snapshot.ProfileRoot, "saves", "history");
+            string historyPath = Path.Combine(saveRoot, snapshot.ProfileRoot, "saves", "history");
             if (Directory.Exists(historyPath))
                 return historyPath;
         }
@@ -493,15 +493,15 @@ public static partial class McpMod
 
     private static string GetProfileRootFromProgressPath(string? progressPath, int profileId)
     {
-        var normalized = progressPath?.Replace('\\', '/');
+        string? normalized = progressPath?.Replace('\\', '/');
         if (!string.IsNullOrWhiteSpace(normalized))
         {
-            var moddedProfile = $"modded/profile{profileId}";
+            string moddedProfile = $"modded/profile{profileId}";
             if (normalized.Contains($"{moddedProfile}/", StringComparison.OrdinalIgnoreCase)
                 || normalized.Equals(moddedProfile, StringComparison.OrdinalIgnoreCase))
                 return $"modded/profile{profileId}";
 
-            var profile = $"profile{profileId}";
+            string profile = $"profile{profileId}";
             if (normalized.Contains($"/{profile}/", StringComparison.OrdinalIgnoreCase)
                 || normalized.StartsWith($"{profile}/", StringComparison.OrdinalIgnoreCase)
                 || normalized.Equals(profile, StringComparison.OrdinalIgnoreCase))
@@ -523,12 +523,12 @@ public static partial class McpMod
         var yielded = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var steamRoots = EnumerateSteamDataRoots().ToList();
 
-        var activeSteamId = GetActiveSteamId();
+        string? activeSteamId = GetActiveSteamId();
         if (!string.IsNullOrWhiteSpace(activeSteamId))
         {
-            foreach (var steamRoot in steamRoots)
+            foreach (string? steamRoot in steamRoots)
             {
-                var accountRoot = Path.Combine(steamRoot, activeSteamId);
+                string accountRoot = Path.Combine(steamRoot, activeSteamId);
                 if (Directory.Exists(accountRoot) && yielded.Add(accountRoot))
                     yield return accountRoot;
             }
@@ -539,9 +539,9 @@ public static partial class McpMod
         if (yielded.Count > 0)
             yield break;
 
-        foreach (var steamRoot in steamRoots)
+        foreach (string? steamRoot in steamRoots)
         {
-            foreach (var accountRoot in Directory.GetDirectories(steamRoot)
+            foreach (string? accountRoot in Directory.GetDirectories(steamRoot)
                          .Where(yielded.Add)
                          .OrderBy(path => path, StringComparer.OrdinalIgnoreCase))
                 yield return accountRoot;
@@ -556,17 +556,17 @@ public static partial class McpMod
         candidates.Add(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData));
         candidates.Add(Environment.GetEnvironmentVariable("XDG_DATA_HOME"));
 
-        var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        string home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
         if (!string.IsNullOrWhiteSpace(home))
             candidates.Add(Path.Combine(home, ".local", "share"));
 
         var yielded = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var root in candidates)
+        foreach (string? root in candidates)
         {
             if (string.IsNullOrWhiteSpace(root))
                 continue;
 
-            var steamRoot = Path.Combine(root, "SlayTheSpire2", "steam");
+            string steamRoot = Path.Combine(root, "SlayTheSpire2", "steam");
             if (Directory.Exists(steamRoot) && yielded.Add(steamRoot))
                 yield return steamRoot;
         }
@@ -579,9 +579,9 @@ public static partial class McpMod
             if (!SteamInitializer.Initialized)
                 return null;
 
-            var steamUtil = typeof(SteamInitializer).Assembly.GetType("MegaCrit.Sts2.Core.Platform.Steam.SteamUtil");
-            var getSteamId = steamUtil?.GetMethod("GetSteamID64", BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
-            var steamId = getSteamId?.Invoke(null, null)?.ToString();
+            Type? steamUtil = typeof(SteamInitializer).Assembly.GetType("MegaCrit.Sts2.Core.Platform.Steam.SteamUtil");
+            MethodInfo? getSteamId = steamUtil?.GetMethod("GetSteamID64", BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
+            string? steamId = getSteamId?.Invoke(null, null)?.ToString();
             if (string.IsNullOrWhiteSpace(steamId) || string.Equals(steamId, "0", StringComparison.Ordinal))
                 return null;
 
@@ -603,13 +603,13 @@ public static partial class McpMod
     {
         return TryRead(() =>
         {
-            var method = s_progressPathForProfile ??= typeof(ProgressSaveManager).GetMethod(
+            MethodInfo? method = s_progressPathForProfile ??= typeof(ProgressSaveManager).GetMethod(
                 "GetProgressPathForProfile",
                 BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
             if (method == null)
                 return null;
 
-            var args = method.GetParameters().Length == 1
+            object?[] args = method.GetParameters().Length == 1
                 ? new object?[] { profileId }
                 : new object?[] { profileId, null };
             return method.Invoke(null, args) as string;
@@ -618,15 +618,15 @@ public static partial class McpMod
 
     private static string? ResolveProfileProgressPath(int profileId)
     {
-        var progressPath = GetProfileProgressPath(profileId);
+        string? progressPath = GetProfileProgressPath(profileId);
         if (!string.IsNullOrWhiteSpace(progressPath) && Path.IsPathRooted(progressPath))
             return progressPath;
 
-        var profileRoot = GetProfileRootFromProgressPath(progressPath, profileId);
+        string profileRoot = GetProfileRootFromProgressPath(progressPath, profileId);
 
-        foreach (var saveRoot in EnumerateSaveRoots())
+        foreach (string saveRoot in EnumerateSaveRoots())
         {
-            var absolutePath = Path.Combine(saveRoot, profileRoot, "saves", "progress.save");
+            string absolutePath = Path.Combine(saveRoot, profileRoot, "saves", "progress.save");
             if (File.Exists(absolutePath))
                 return absolutePath;
         }
@@ -636,17 +636,17 @@ public static partial class McpMod
 
     private static string? ResolveCurrentRunPath(string? progressPath, string profileRoot)
     {
-        var saveDirectory = GetSaveDirectoryFromProgressPath(progressPath);
+        string? saveDirectory = GetSaveDirectoryFromProgressPath(progressPath);
         if (saveDirectory != null)
         {
-            var currentRunPath = Path.Combine(saveDirectory, "current_run.save");
+            string currentRunPath = Path.Combine(saveDirectory, "current_run.save");
             if (File.Exists(currentRunPath))
                 return currentRunPath;
         }
 
-        foreach (var saveRoot in EnumerateSaveRoots())
+        foreach (string saveRoot in EnumerateSaveRoots())
         {
-            var absolutePath = Path.Combine(saveRoot, profileRoot, "saves", "current_run.save");
+            string absolutePath = Path.Combine(saveRoot, profileRoot, "saves", "current_run.save");
             if (File.Exists(absolutePath))
                 return absolutePath;
         }
@@ -659,7 +659,7 @@ public static partial class McpMod
         if (string.IsNullOrWhiteSpace(progressPath) || !Path.IsPathRooted(progressPath))
             return null;
 
-        var saveDirectory = Path.GetDirectoryName(progressPath);
+        string? saveDirectory = Path.GetDirectoryName(progressPath);
         return !string.IsNullOrWhiteSpace(saveDirectory) && Directory.Exists(saveDirectory)
             ? saveDirectory
             : null;
@@ -672,15 +672,15 @@ public static partial class McpMod
             return value;
         if (value is Enum) return value.ToString();
 
-        var type = value.GetType();
-        var entryProperty = type.GetProperty("Entry", BindingFlags.Instance | BindingFlags.Public);
+        Type type = value.GetType();
+        PropertyInfo? entryProperty = type.GetProperty("Entry", BindingFlags.Instance | BindingFlags.Public);
         if (entryProperty?.GetValue(value) is string entry)
             return entry;
 
         if (value is IDictionary dictionary)
         {
             var result = new Dictionary<string, object?>(StringComparer.Ordinal);
-            var count = 0;
+            int count = 0;
             foreach (DictionaryEntry item in dictionary)
             {
                 if (count++ >= maxItems) break;
@@ -692,8 +692,8 @@ public static partial class McpMod
         if (value is IEnumerable enumerable && value is not string)
         {
             var result = new List<object?>();
-            var count = 0;
-            foreach (var item in enumerable)
+            int count = 0;
+            foreach (object? item in enumerable)
             {
                 if (count++ >= maxItems) break;
                 result.Add(ToJsonSafe(item, depth + 1, maxItems));
@@ -702,7 +702,7 @@ public static partial class McpMod
         }
 
         var obj = new Dictionary<string, object?>(StringComparer.Ordinal);
-        foreach (var property in type.GetProperties(BindingFlags.Instance | BindingFlags.Public))
+        foreach (PropertyInfo property in type.GetProperties(BindingFlags.Instance | BindingFlags.Public))
         {
             if (property.GetIndexParameters().Length != 0)
                 continue;

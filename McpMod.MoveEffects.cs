@@ -6,7 +6,7 @@ using System.Reflection;
 using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.MonsterMoves.MonsterMoveStateMachine;
 
-namespace STS2_MCP;
+namespace Sts2Mcp;
 
 public static partial class McpMod
 {
@@ -83,14 +83,14 @@ public static partial class McpMod
         // cache is keyed only by type and move id.  Dropping the table when
         // the combat changes serves fresh numbers instead of the previous
         // fight's.
-        var scope = TryReadQuiet<object>(() => monster.CombatState);
+        object? scope = TryReadQuiet<object>(() => monster.CombatState);
         if (!ReferenceEquals(scope, s_moveFxScope))
         {
             _moveFxCache.Clear();
             s_moveFxScope = scope;
         }
-        var key = (monster.GetType(), move.Id);
-        if (_moveFxCache.TryGetValue(key, out var cached))
+        (Type, string Id) key = (monster.GetType(), move.Id);
+        if (_moveFxCache.TryGetValue(key, out Dictionary<string, object?>? cached))
         {
             if (cached == null)
                 return null;
@@ -101,7 +101,7 @@ public static partial class McpMod
             AddStatefulMoveSemantics(monster, move, current);
             return current;
         }
-        var fx = ScanMoveEffects(monster, move);
+        Dictionary<string, object?>? fx = ScanMoveEffects(monster, move);
         _moveFxCache[key] = fx;
         return fx;
     }
@@ -355,7 +355,7 @@ public static partial class McpMod
         /// next effect cannot inherit this one's number.</summary>
         internal int? TakeAmount()
         {
-            var amount = _hasPendingDecimal ? _pendingDecimal : null;
+            int? amount = _hasPendingDecimal ? _pendingDecimal : null;
             _pendingDecimal = null;
             _hasPendingDecimal = false;
             return amount;
@@ -384,21 +384,21 @@ public static partial class McpMod
     {
         if (s_moveOnPerformField?.GetValue(move) is not Delegate onPerform)
             return null;
-        var stub = onPerform.Method;
+        MethodInfo stub = onPerform.Method;
 
         // Async lambdas compile to a stub that spins up a state machine nested
         // in the same type — the real body is its MoveNext.
         var bodies = new List<MethodBase> { stub };
-        var smType = stub.DeclaringType?
+        Type? smType = stub.DeclaringType?
             .GetNestedTypes(BindingFlags.Public | BindingFlags.NonPublic)
             .FirstOrDefault(t => t.Name.StartsWith($"<{stub.Name}>d__", StringComparison.Ordinal));
-        var moveNext = smType?.GetMethod("MoveNext",
+        MethodInfo? moveNext = smType?.GetMethod("MoveNext",
             BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
         if (moveNext != null)
             bodies.Add(moveNext);
 
         var scan = new MoveFxScan();
-        foreach (var body in bodies)
+        foreach (MethodBase body in bodies)
             WalkForEffects(body, monster, scan);
 
         var fx = new Dictionary<string, object?>(StringComparer.Ordinal);
@@ -440,16 +440,16 @@ public static partial class McpMod
         pending.Push(body);
         while (pending.Count > 0)
         {
-            var current = pending.Pop();
+            Delegate current = pending.Pop();
             if (!visited.Add(current))
                 continue;
             if (string.Equals(current.Method.DeclaringType?.Name, ownerType, StringComparison.Ordinal) && string.Equals(current.Method.Name, methodName, StringComparison.Ordinal))
                 return true;
-            foreach (var entry in current.GetInvocationList().Where(entry => !entry.Equals(current)))
+            foreach (Delegate? entry in current.GetInvocationList().Where(entry => !entry.Equals(current)))
                 pending.Push(entry);
             if (current.Target == null)
                 continue;
-            foreach (var field in current.Target.GetType().GetFields(
+            foreach (FieldInfo field in current.Target.GetType().GetFields(
                 BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance))
             {
                 if (typeof(Delegate).IsAssignableFrom(field.FieldType) && field.GetValue(current.Target) is Delegate nested)
@@ -726,8 +726,8 @@ public static partial class McpMod
             case "PRESSURE_GUN_MOVE":
                 fx["repeat_damage_growth"] = 5;
                 fx["repeat_damage_base"] = ReadMonsterInt(monster, "BasePressureGunDamage");
-                var pressureBase = ReadMonsterInt(monster, "BasePressureGunDamage");
-                var pressureCurrent = ReadMonsterInt(monster, "CurrentPressureGunDamage");
+                int? pressureBase = ReadMonsterInt(monster, "BasePressureGunDamage");
+                int? pressureCurrent = ReadMonsterInt(monster, "CurrentPressureGunDamage");
                 fx["repeat_damage_completed"] = pressureBase.HasValue && pressureCurrent.HasValue
                     ? Math.Max(0, (pressureCurrent.Value - pressureBase.Value) / 5) : null;
                 break;
@@ -741,7 +741,7 @@ public static partial class McpMod
 , StringComparison.Ordinal) && fx.TryGetValue("summons", out object? summonsObject)
             && summonsObject is List<Dictionary<string, object?>> summons)
         {
-            foreach (var summon in summons)
+            foreach (Dictionary<string, object?> summon in summons)
             {
                 summon["count"] = 3;
                 summon["slot_order"] = "last";
@@ -778,7 +778,7 @@ public static partial class McpMod
 , StringComparison.Ordinal) && fx.TryGetValue("summons", out object? summonsObject)
             && summonsObject is List<Dictionary<string, object?>> ratSummons)
         {
-            foreach (var summon in ratSummons)
+            foreach (Dictionary<string, object?> summon in ratSummons)
                 summon["slot_order"] = "last";
         }
     }
@@ -793,10 +793,10 @@ public static partial class McpMod
 
     private static void WalkForEffects(MethodBase method, MonsterModel monster, MoveFxScan scan)
     {
-        var il = method.GetMethodBody()?.GetILAsByteArray();
+        byte[]? il = method.GetMethodBody()?.GetILAsByteArray();
         if (il == null)
             return;
-        var module = method.Module;
+        Module module = method.Module;
         int targetsArg = FindTargetsArgument(method);
 
         int i = 0;
@@ -832,7 +832,7 @@ public static partial class McpMod
     private static int FindTargetsArgument(MethodBase method)
     {
         int targetsArg = -1;
-        var parameters = method.GetParameters();
+        ParameterInfo[] parameters = method.GetParameters();
         for (int p = 0; p < parameters.Length; p++)
         {
             if (string.Equals(parameters[p].Name, "targets", StringComparison.Ordinal))
@@ -852,7 +852,7 @@ public static partial class McpMod
         {
             TryDo(() =>
             {
-                var lambda = module.ResolveMethod(BitConverter.ToInt32(il, i + 2));
+                MethodBase? lambda = module.ResolveMethod(BitConverter.ToInt32(il, i + 2));
                 if (lambda != null)
                     scan.PendingRecipient = MonsterTypeTestedBy(lambda) ?? scan.PendingRecipient;
             });
@@ -1044,7 +1044,7 @@ public static partial class McpMod
                 {                            // load with no op_Implicit conversion
                     int tok = BitConverter.ToInt32(il, i + 1);
                     // A token that does not resolve is simply not a decimal constant.
-                    var f = TryReadQuiet(() => module.ResolveField(tok));
+                    FieldInfo? f = TryReadQuiet(() => module.ResolveField(tok));
                     if (f?.DeclaringType == typeof(decimal))
                     {
                         switch (f.Name)
@@ -1106,7 +1106,7 @@ public static partial class McpMod
     private static string? MonsterTypeTestedBy(MethodBase lambda)
     {
         // A body the runtime will not hand over has nothing to scan.
-        var il = TryReadQuiet(() => lambda.GetMethodBody()?.GetILAsByteArray());
+        byte[]? il = TryReadQuiet(() => lambda.GetMethodBody()?.GetILAsByteArray());
         if (il == null)
             return null;
 
@@ -1118,7 +1118,7 @@ public static partial class McpMod
             if ((op == 0x74 || op == 0x75) && i + 5 <= il.Length)   // castclass / isinst
             {
                 // A type token that does not resolve is not a test of anything.
-                var tested = TryReadQuiet(
+                Type? tested = TryReadQuiet(
                     () => lambda.Module.ResolveType(BitConverter.ToInt32(il, i + 1)));
                 if (tested != null && typeof(MonsterModel).IsAssignableFrom(tested))
                 {
@@ -1166,7 +1166,7 @@ public static partial class McpMod
     private static void CollectPowerReads(MethodBase method, List<string> found, int depth)
     {
         // A body the runtime will not hand over has nothing to scan.
-        var il = TryReadQuiet(() => method.GetMethodBody()?.GetILAsByteArray());
+        byte[]? il = TryReadQuiet(() => method.GetMethodBody()?.GetILAsByteArray());
         if (il == null)
             return;
 
@@ -1202,8 +1202,8 @@ public static partial class McpMod
     {
         return TryRead<bool?>(() =>
         {
-            var ctor = module.ResolveMethod(token);
-            var pars = ctor?.GetParameters();
+            MethodBase? ctor = module.ResolveMethod(token);
+            ParameterInfo[]? pars = ctor?.GetParameters();
             return ctor?.DeclaringType == typeof(decimal)
                 && pars?.Length == 1 && pars[0].ParameterType == typeof(int);
         }) ?? false;
@@ -1334,7 +1334,7 @@ public static partial class McpMod
             || mm is not MethodInfo applyMi)
             return false;
 
-        var pars = applyMi.GetParameters();
+        ParameterInfo[] pars = applyMi.GetParameters();
         if (applyMi.IsGenericMethod)
         {
             AppendGenericPowerApply(applyMi, pars, scan);
@@ -1586,10 +1586,10 @@ public static partial class McpMod
             return card;
         // The call's own constants are the tail of the run; anything earlier
         // belongs to a preceding expression.
-        var tail = intArgs.GetRange(intArgs.Count - intLike.Count, intLike.Count);
+        List<int?> tail = intArgs.GetRange(intArgs.Count - intLike.Count, intLike.Count);
         for (int p = 0; p < intLike.Count; p++)
         {
-            var par = intLike[p];
+            ParameterInfo par = intLike[p];
             int? value = tail[p];
             if (value == null)
                 continue;
@@ -1636,7 +1636,7 @@ public static partial class McpMod
     {
         return TryRead(() =>
         {
-            var field = module.ResolveField(token);
+            FieldInfo? field = module.ResolveField(token);
             if (field == null || field.FieldType != typeof(int))
                 return null;
             if (!field.DeclaringType!.IsInstanceOfType(monster))

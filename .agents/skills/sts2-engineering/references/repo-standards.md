@@ -75,7 +75,7 @@ ignoring the rule inside a feature PR.
   that chain gets braces.
 - **Usings** stay at the top of the file, outside the namespace, alphabetically
   sorted with `System.*` first. The mod uses **file-scoped namespaces**
-  (`namespace STS2_MCP;`); a test harness still on block-scoped syntax is
+  (`namespace Sts2Mcp;`); a test harness still on block-scoped syntax is
   converted when the change touches it.
 - **One public type per file**, named after the type; the `McpMod.*.cs` partials
   remain the recorded exception. No `#region` to hide size.
@@ -139,10 +139,10 @@ ignoring the rule inside a feature PR.
   add an alias, or leave a `// old name` comment to avoid touching call sites.
   If the rename is too large for one commit, split it into commits that each
   compile, with the last one removing the old name — the PR finishes the job.
-- **Contract and interop names are not style violations.** `STS2_MCP`,
-  reflection-reached game members, `snake_case` JSON, and `docs/raw-*.md` field
-  names stay exactly as the external contract requires. Renaming one of those is
-  a contract change with its own schema/version decision, not a cleanup.
+- **Contract and interop names are not style violations.** Reflection-reached
+  game members, `snake_case` JSON, and `docs/raw-*.md` field names stay exactly
+  as the external contract requires. Renaming one of those is a contract change
+  with its own schema/version decision, not a cleanup.
 - **No style rule justifies a warning.** The gate is `TreatWarningsAsErrors` plus
   the analyzers in `Directory.Build.targets`; a finding is fixed in code or the
   rule is fixed in `.editorconfig` with its reason written down — never silenced
@@ -210,8 +210,8 @@ Reserved layout, once a test project is justified:
 
 | Project | Covers | Notes |
 | --- | --- | --- |
-| `tests/STS2_MCP.UnitTests` | `Core` contracts and `UseCases` through port fakes | No game types, no Godot |
-| `tests/STS2_MCP.IntegrationTests` | Transport status/response mapping over a fake request | No socket required |
+| `tests/Sts2Mcp.UnitTests` | `Core` contracts and `UseCases` through port fakes | No game types, no Godot |
+| `tests/Sts2Mcp.IntegrationTests` | Transport status/response mapping over a fake request | No socket required |
 
 There is no automated project for `Infrastructure`: it is verified in a running
 game. The framework choice is a separate decision (the upstream templates use

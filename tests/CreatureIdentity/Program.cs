@@ -3,7 +3,7 @@ using System.Reflection;
 using System.Runtime.CompilerServices;
 using MegaCrit.Sts2.Core.Combat;
 using MegaCrit.Sts2.Core.Entities.Creatures;
-using STS2_MCP;
+using Sts2Mcp;
 
 // Exercise the actual game allocator and the mod's compiled exporter without
 // constructing a Godot scene or inventing an allocator from visible creatures.

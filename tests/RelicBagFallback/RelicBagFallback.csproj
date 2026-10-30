@@ -5,7 +5,7 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
   <ItemGroup>
-    <ProjectReference Include="../../STS2_MCP.csproj" />
+    <ProjectReference Include="../../Sts2Mcp.csproj" />
     <Reference Include="sts2"><HintPath>$(STS2GameDataDir)/sts2.dll</HintPath></Reference>
     <Reference Include="GodotSharp"><HintPath>$(STS2GameDataDir)/GodotSharp.dll</HintPath></Reference>
     <Reference Include="0Harmony"><HintPath>$(STS2GameDataDir)/0Harmony.dll</HintPath></Reference>

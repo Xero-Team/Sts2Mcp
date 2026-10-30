@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using MegaCrit.Sts2.Core.Entities.Players;
 using MegaCrit.Sts2.Core.Models.Characters;
 using MegaCrit.Sts2.Core.Runs;
-using STS2_MCP;
+using Sts2Mcp;
 
 var cases = new (bool Expected, Player[] Players)[] {
     (true, [new(new Ironclad(), 0)]),
@@ -19,7 +19,7 @@ foreach (var (expected, players) in cases)
         throw new Exception("Party eligibility must inspect each Ironclad's own run count");
 Console.WriteLine($"{cases.Length} production relic eligibility checks passed.");
 
-namespace STS2_MCP {
+namespace Sts2Mcp {
     public static partial class McpMod {
         public static bool TestFirstRunIronclad(RunState run) => HasFirstRunIronclad(run);
     }

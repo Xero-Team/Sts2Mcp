@@ -2,7 +2,9 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Net;
+using System.Reflection;
 using System.Runtime.CompilerServices;
+using MegaCrit.Sts2.Core.Entities.Players;
 using MegaCrit.Sts2.Core.HoverTips;
 using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Models.CardPools;
@@ -12,9 +14,9 @@ using MegaCrit.Sts2.Core.Models.PotionPools;
 using MegaCrit.Sts2.Core.Models.RelicPools;
 using MegaCrit.Sts2.Core.Runs;
 using MegaCrit.Sts2.Core.Saves;
-using STS2_MCP.Core.Contracts;
+using Sts2Mcp.Core.Contracts;
 
-namespace STS2_MCP;
+namespace Sts2Mcp;
 
 public static partial class McpMod
 {
@@ -31,12 +33,12 @@ public static partial class McpMod
     /// </summary>
     internal static object BuildSettings()
     {
-        var sm = SaveManager.Instance;
+        SaveManager sm = SaveManager.Instance;
         if (sm == null)
             return new ErrorResponse { Error = "Save manager is not available", ErrorCode = "save_manager_unavailable" };
 
-        var settings = sm.SettingsSave;
-        var prefs = sm.PrefsSave;
+        SettingsSave settings = sm.SettingsSave;
+        PrefsSave prefs = sm.PrefsSave;
         if (settings == null || prefs == null)
             return new ErrorResponse { Error = "Settings data is not available", ErrorCode = "settings_data_unavailable" };
 
@@ -110,12 +112,12 @@ public static partial class McpMod
 
     private static GlossaryPayload BuildGlossaryPayload(string kind, Func<object> buildData)
     {
-        var profileId = SaveManager.Instance?.CurrentProfileId ?? 0;
-        var progressPath = GetProfileProgressPath(profileId);
-        var resolvedProgressPath = ResolveProfileProgressPath(profileId);
-        var profileRoot = GetProfileRootFromProgressPath(progressPath, profileId);
+        int profileId = SaveManager.Instance?.CurrentProfileId ?? 0;
+        string? progressPath = GetProfileProgressPath(profileId);
+        string? resolvedProgressPath = ResolveProfileProgressPath(profileId);
+        string profileRoot = GetProfileRootFromProgressPath(progressPath, profileId);
 
-        var data = buildData();
+        object data = buildData();
         if (data is Dictionary<string, object?> error && error.TryGetValue("error_code", out _))
         {
             return new GlossaryPayload
@@ -131,8 +133,8 @@ public static partial class McpMod
             };
         }
 
-        var runState = RunManager.Instance.DebugOnlyGetState();
-        var players = runState?.Players.Select((player, index) => new Dictionary<string, object?>(StringComparer.Ordinal)
+        RunState? runState = RunManager.Instance.DebugOnlyGetState();
+        List<Dictionary<string, object?>> players = runState?.Players.Select((player, index) => new Dictionary<string, object?>(StringComparer.Ordinal)
         {
             ["index"] = index,
             ["character"] = player.Character?.Id.Entry,
@@ -160,9 +162,9 @@ public static partial class McpMod
 
     private static void SendGlossaryJson(HttpListenerResponse response, GlossaryPayload payload)
     {
-        var data = payload.Data;
+        object data = payload.Data;
         if (data is Dictionary<string, object?> error
-            && error.TryGetValue("error_code", out var errorCode))
+            && error.TryGetValue("error_code", out object? errorCode))
         {
             response.StatusCode = (errorCode as string) switch
             {
@@ -227,21 +229,21 @@ public static partial class McpMod
         if (RunManager.Instance?.IsInProgress != true)
             return GlossaryError("No run in progress.", RunNotInProgressErrorCode);
 
-        var runState = RunManager.Instance.DebugOnlyGetState();
+        RunState? runState = RunManager.Instance.DebugOnlyGetState();
         if (runState == null)
             return GlossaryError("Could not read run state.", RunStateUnavailableErrorCode);
 
         var result = new List<Dictionary<string, object?>>();
         var seen = new HashSet<string>(StringComparer.Ordinal);
 
-        foreach (var pool in ModelDb.AllSharedCardPools)
+        foreach (CardPoolModel pool in ModelDb.AllSharedCardPools)
             AddCardsFromPool(pool, SafeGetText(() => pool.Title) ?? pool.Id.Entry, result, seen);
 
-        foreach (var player in runState.Players)
+        foreach (Player player in runState.Players)
         {
-            var pool = player.Character?.CardPool;
+            CardPoolModel? pool = player.Character?.CardPool;
             if (pool == null) continue;
-            var poolName = SafeGetText(() => pool.Title) ?? "Unknown";
+            string poolName = SafeGetText(() => pool.Title) ?? "Unknown";
             AddCardsFromPool(pool, poolName, result, seen);
         }
 
@@ -254,13 +256,13 @@ public static partial class McpMod
         List<Dictionary<string, object?>> result,
         HashSet<string> seen)
     {
-        foreach (var card in pool.AllCards)
+        foreach (CardModel card in pool.AllCards)
         {
-            var id = card.Id.Entry;
+            string id = card.Id.Entry;
             if (seen.Contains(id)) continue;
             seen.Add(id);
 
-            var upgradedPreview = SafeBuildUpgradedCardPreview(card);
+            CardModel? upgradedPreview = SafeBuildUpgradedCardPreview(card);
             result.Add(new Dictionary<string, object?>(StringComparer.Ordinal)
             {
                 ["id"] = id,
@@ -289,21 +291,21 @@ public static partial class McpMod
         if (RunManager.Instance?.IsInProgress != true)
             return GlossaryError("No run in progress.", RunNotInProgressErrorCode);
 
-        var runState = RunManager.Instance.DebugOnlyGetState();
+        RunState? runState = RunManager.Instance.DebugOnlyGetState();
         if (runState == null)
             return GlossaryError("Could not read run state.", RunStateUnavailableErrorCode);
 
         var result = new List<Dictionary<string, object?>>();
         var seen = new HashSet<string>(StringComparer.Ordinal);
 
-        var sharedPool = ModelDb.RelicPool<SharedRelicPool>();
+        SharedRelicPool sharedPool = ModelDb.RelicPool<SharedRelicPool>();
         AddRelicsFromPool(sharedPool, "Shared", result, seen);
 
-        foreach (var character in runState.Players.Select(player => player.Character))
+        foreach (CharacterModel? character in runState.Players.Select(player => player.Character))
         {
             if (character == null || character.RelicPool == null) continue;
-            var pool = character.RelicPool;
-            var poolName = SafeGetText(() => character.Title) ?? "Unknown";
+            RelicPoolModel pool = character.RelicPool;
+            string poolName = SafeGetText(() => character.Title) ?? "Unknown";
             AddRelicsFromPool(pool, poolName, result, seen);
         }
 
@@ -316,9 +318,9 @@ public static partial class McpMod
         List<Dictionary<string, object?>> result,
         HashSet<string> seen)
     {
-        foreach (var relic in pool.AllRelics)
+        foreach (RelicModel relic in pool.AllRelics)
         {
-            var id = relic.Id.Entry;
+            string id = relic.Id.Entry;
             if (seen.Contains(id)) continue;
             seen.Add(id);
 
@@ -339,21 +341,21 @@ public static partial class McpMod
         if (RunManager.Instance?.IsInProgress != true)
             return GlossaryError("No run in progress.", RunNotInProgressErrorCode);
 
-        var runState = RunManager.Instance.DebugOnlyGetState();
+        RunState? runState = RunManager.Instance.DebugOnlyGetState();
         if (runState == null)
             return GlossaryError("Could not read run state.", RunStateUnavailableErrorCode);
 
         var result = new List<Dictionary<string, object?>>();
         var seen = new HashSet<string>(StringComparer.Ordinal);
 
-        var sharedPool = ModelDb.PotionPool<SharedPotionPool>();
+        SharedPotionPool sharedPool = ModelDb.PotionPool<SharedPotionPool>();
         AddPotionsFromPool(sharedPool, "Shared", result, seen);
 
-        foreach (var character in runState.Players.Select(player => player.Character))
+        foreach (CharacterModel? character in runState.Players.Select(player => player.Character))
         {
             if (character == null || character.PotionPool == null) continue;
-            var pool = character.PotionPool;
-            var poolName = SafeGetText(() => character.Title) ?? "Unknown";
+            PotionPoolModel pool = character.PotionPool;
+            string poolName = SafeGetText(() => character.Title) ?? "Unknown";
             AddPotionsFromPool(pool, poolName, result, seen);
         }
 
@@ -366,9 +368,9 @@ public static partial class McpMod
         List<Dictionary<string, object?>> result,
         HashSet<string> seen)
     {
-        foreach (var potion in pool.AllPotions)
+        foreach (PotionModel potion in pool.AllPotions)
         {
-            var id = potion.Id.Entry;
+            string id = potion.Id.Entry;
             if (seen.Contains(id)) continue;
             seen.Add(id);
 
@@ -391,46 +393,46 @@ public static partial class McpMod
         if (RunManager.Instance?.IsInProgress != true)
             return GlossaryError("No run in progress.", RunNotInProgressErrorCode);
 
-        var runState = RunManager.Instance.DebugOnlyGetState();
+        RunState? runState = RunManager.Instance.DebugOnlyGetState();
         if (runState == null)
             return GlossaryError("Could not read run state.", RunStateUnavailableErrorCode);
 
         var keywords = new Dictionary<string, string>(StringComparer.Ordinal);
 
-        foreach (var pool in ModelDb.AllSharedCardPools)
-            foreach (var card in pool.AllCards)
+        foreach (CardPoolModel pool in ModelDb.AllSharedCardPools)
+            foreach (CardModel card in pool.AllCards)
                 AddKeywordTips(card.HoverTips, keywords);
-        foreach (var relic in ModelDb.RelicPool<SharedRelicPool>().AllRelics)
+        foreach (RelicModel relic in ModelDb.RelicPool<SharedRelicPool>().AllRelics)
             AddKeywordTips(relic.HoverTipsExcludingRelic, keywords);
-        foreach (var potion in ModelDb.PotionPool<SharedPotionPool>().AllPotions)
+        foreach (PotionModel potion in ModelDb.PotionPool<SharedPotionPool>().AllPotions)
             AddKeywordTips(potion.ExtraHoverTips, keywords);
 
-        foreach (var character in runState.Players.Select(player => player.Character))
+        foreach (CharacterModel? character in runState.Players.Select(player => player.Character))
         {
-            var cardPool = character?.CardPool;
+            CardPoolModel? cardPool = character?.CardPool;
             if (cardPool != null)
             {
-                foreach (var card in cardPool.AllCards)
+                foreach (CardModel card in cardPool.AllCards)
                     AddKeywordTips(card.HoverTips, keywords);
             }
 
-            var relicPool = character?.RelicPool;
+            RelicPoolModel? relicPool = character?.RelicPool;
             if (relicPool != null)
             {
-                foreach (var relic in relicPool.AllRelics)
+                foreach (RelicModel relic in relicPool.AllRelics)
                     AddKeywordTips(relic.HoverTipsExcludingRelic, keywords);
             }
 
-            var potionPool = character?.PotionPool;
+            PotionPoolModel? potionPool = character?.PotionPool;
             if (potionPool != null)
             {
-                foreach (var potion in potionPool.AllPotions)
+                foreach (PotionModel potion in potionPool.AllPotions)
                     AddKeywordTips(potion.ExtraHoverTips, keywords);
             }
         }
 
         var result = new List<Dictionary<string, object?>>();
-        foreach (var kv in keywords.OrderBy(k => k.Key, StringComparer.Ordinal))
+        foreach (KeyValuePair<string, string> kv in keywords.OrderBy(k => k.Key, StringComparer.Ordinal))
         {
             result.Add(new Dictionary<string, object?>(StringComparer.Ordinal)
             {
@@ -447,14 +449,14 @@ public static partial class McpMod
         if (tips == null)
             return;
 
-        foreach (var tip in IHoverTip.RemoveDupes(tips))
+        foreach (IHoverTip tip in IHoverTip.RemoveDupes(tips))
         {
             if (tip is not HoverTip ht)
                 continue;
 
             // Both reads already treat a throwing hover-tip getter (state transitions) as
             // absent, so an unstable tip is skipped without a second guard.
-            var title = SafeGetText(() => ht.Title);
+            string? title = SafeGetText(() => ht.Title);
             if (!string.IsNullOrEmpty(title))
                 keywords.TryAdd(title, SafeGetText(() => ht.Description) ?? "");
         }
@@ -462,14 +464,14 @@ public static partial class McpMod
 
     internal static object BuildBestiary()
     {
-        var monsters = BuildBestiaryMonsters();
-        var encounters = BuildBestiaryEncounters(monsters);
+        List<Dictionary<string, object?>> monsters = BuildBestiaryMonsters();
+        List<Dictionary<string, object?>> encounters = BuildBestiaryEncounters(monsters);
 
         var orderedMonsters = monsters
-            .OrderBy(entry => entry.TryGetValue("id", out var id) ? id?.ToString() : "", StringComparer.Ordinal)
+            .OrderBy(entry => entry.TryGetValue("id", out object? id) ? id?.ToString() : "", StringComparer.Ordinal)
             .ToList();
         var orderedEncounters = encounters
-            .OrderBy(entry => entry.TryGetValue("id", out var id) ? id?.ToString() : "", StringComparer.Ordinal)
+            .OrderBy(entry => entry.TryGetValue("id", out object? id) ? id?.ToString() : "", StringComparer.Ordinal)
             .ToList();
 
         return BestiaryPayload(orderedMonsters, orderedEncounters);
@@ -490,25 +492,25 @@ public static partial class McpMod
 
     private static List<Dictionary<string, object?>> BuildBestiaryMonsters()
     {
-        var bindFlags = BestiaryBindingFlags();
+        BindingFlags bindFlags = BestiaryBindingFlags();
         var monsters = new List<Dictionary<string, object?>>();
-        foreach (var type in typeof(MonsterModel).Assembly.GetTypes())
+        foreach (Type type in typeof(MonsterModel).Assembly.GetTypes())
         {
             if (type.IsAbstract || !type.IsSubclassOf(typeof(MonsterModel)) || type.FullName!.Contains('+')) continue;
 
-            var entry = BestiaryEntry(type);
+            Dictionary<string, object?> entry = BestiaryEntry(type);
 
             TryDo(() =>
             {
-                var instance = RuntimeHelpers.GetUninitializedObject(type);
-                var minHp = type.GetProperty("MinInitialHp")?.GetValue(instance);
-                var maxHp = type.GetProperty("MaxInitialHp")?.GetValue(instance);
+                object instance = RuntimeHelpers.GetUninitializedObject(type);
+                object? minHp = type.GetProperty("MinInitialHp")?.GetValue(instance);
+                object? maxHp = type.GetProperty("MaxInitialHp")?.GetValue(instance);
                 if (minHp != null) entry["min_hp"] = minHp;
                 if (maxHp != null) entry["max_hp"] = maxHp;
             });
 
             var moves = new List<string>();
-            foreach (var method in type.GetMethods(bindFlags))
+            foreach (MethodInfo method in type.GetMethods(bindFlags))
             {
                 if (method.Name.EndsWith("Move", StringComparison.Ordinal)
                     && method.DeclaringType == type
@@ -530,30 +532,30 @@ public static partial class McpMod
         List<Dictionary<string, object?>> monsters)
     {
         var encounters = new List<Dictionary<string, object?>>();
-        foreach (var type in typeof(EncounterModel).Assembly.GetTypes())
+        foreach (Type type in typeof(EncounterModel).Assembly.GetTypes())
         {
             if (type.IsAbstract || !type.IsSubclassOf(typeof(EncounterModel)) || type.FullName!.Contains('+')) continue;
 
-            var entry = BestiaryEntry(type);
+            Dictionary<string, object?> entry = BestiaryEntry(type);
 
             TryDo(() =>
             {
-                var instance = RuntimeHelpers.GetUninitializedObject(type);
-                var roomType = type.GetProperty("RoomType")?.GetValue(instance);
-                var isWeak = type.GetProperty("IsWeak")?.GetValue(instance);
-                var minGold = type.GetProperty("MinGoldReward")?.GetValue(instance);
-                var maxGold = type.GetProperty("MaxGoldReward")?.GetValue(instance);
+                object instance = RuntimeHelpers.GetUninitializedObject(type);
+                object? roomType = type.GetProperty("RoomType")?.GetValue(instance);
+                object? isWeak = type.GetProperty("IsWeak")?.GetValue(instance);
+                object? minGold = type.GetProperty("MinGoldReward")?.GetValue(instance);
+                object? maxGold = type.GetProperty("MaxGoldReward")?.GetValue(instance);
                 if (roomType != null) entry["room_type"] = roomType.ToString();
                 if (isWeak != null) entry["is_weak"] = isWeak;
                 if (minGold != null) entry["min_gold"] = minGold;
                 if (maxGold != null) entry["max_gold"] = maxGold;
             });
 
-            var baseName = type.Name.Replace("Normal", "").Replace("Weak", "").Replace("Elite", "").Replace("Boss", "");
+            string baseName = type.Name.Replace("Normal", "").Replace("Weak", "").Replace("Elite", "").Replace("Boss", "");
             var matchingMonsters = new List<string>();
-            foreach (var monsterEntry in monsters)
+            foreach (Dictionary<string, object?> monsterEntry in monsters)
             {
-                var monsterClass = monsterEntry["class"] as string ?? "";
+                string monsterClass = monsterEntry["class"] as string ?? "";
                 if (baseName.Contains(monsterClass) || monsterClass.Contains(baseName.TrimEnd('s')))
                     matchingMonsters.Add(monsterClass);
             }

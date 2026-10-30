@@ -1,7 +1,7 @@
 # Conventional Commits: AI Reference
 
 Use this reference when generating, reviewing, or classifying Git commit
-messages for STS2_MCP.
+messages for Sts2Mcp.
 
 `CONTRIBUTING.md` requires no convention — a readable human sentence is enough,
 and `main` is squashed on merge, so branch commits do not need to be polished.
@@ -60,7 +60,7 @@ Classify the change by its primary intent. Apply this decision order:
 | `test`     | Adding or correcting tests that need no live game, such as pure transforms in `mcp/server.py`           | Product code changes are the primary purpose       |
 | `style`    | Formatting, whitespace, lint-only changes, import ordering, with no behavior change                     | Code restructuring or functional changes           |
 | `docs`     | `README.md`, `CONTRIBUTING.md`, `AGENTS.md`, `docs/raw-*.md`, or skill text only                        | Any code or configuration behavior change          |
-| `build`    | `STS2_MCP.csproj`, `STS2_MCP.sln`, `build.ps1`, NuGet references, `mod_manifest.json`, packaging         | Game behavior or API changes                       |
+| `build`    | `Sts2Mcp.csproj`, `Sts2Mcp.sln`, `build.ps1`, NuGet references, `mod_manifest.json`, packaging         | Game behavior or API changes                       |
 | `chore`    | Repository maintenance such as `.gitignore`, tooling config, or skill-file housekeeping                 | A more specific type accurately applies            |
 
 Scopes in this repository: `state`, `actions`, `multiplayer`, `profile`,

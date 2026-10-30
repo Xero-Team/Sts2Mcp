@@ -78,7 +78,7 @@ MOD の印（入れた後に MOD の handler が作った action）が無いプ�
 
 ## 置き場所と設定
 
-`STS2_MCP.conf`:
+`Sts2Mcp.conf`:
 
 | キー | 既定 | 意味 |
 |---|---|---|

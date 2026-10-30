@@ -4,13 +4,13 @@ description: >-
   Security guidance and vulnerability review for codebases, APIs, services,
   CLI tools, libraries, and daemons. Use for security questions, focused
   reviews, vulnerability research, security audits, or pen tests, including
-  the STS2_MCP mod's localhost HTTP API, its MCP bridge, and game-file handling.
+  the Sts2Mcp mod's localhost HTTP API, its MCP bridge, and game-file handling.
   Run the complete workflow only for explicit codebase audit or pen-test
   requests, full or end-to-end reviews, or requested report artifacts.
 license: MIT
 metadata:
   version: "2"
-  adapted-for: STS2MCP
+  adapted-for: Sts2Mcp
   upstream: "Xero-Team/security-audit-skill@c1c8a8c (MIT, Cloudflare); SEE LICENSE"
 ---
 
@@ -49,7 +49,7 @@ Use equivalent platform capabilities while preserving role, write-isolation, pro
 
 ## Target profile in this repository
 
-Read [references/STS2MCP.md](references/STS2MCP.md) before reconnaissance. It records what the mod and bridge are, which companion file covers which surface, which companions to skip, how the code can and cannot be executed here, and where run output may live.
+Read [references/Sts2Mcp.md](references/Sts2Mcp.md) before reconnaissance. It records what the mod and bridge are, which companion file covers which surface, which companions to skip, how the code can and cannot be executed here, and where run output may live.
 
 Three rules from it carry into every run:
 

@@ -11,7 +11,7 @@
       3. build.local.props                      gitignored, per-machine file
 
     Copy build.local.props.example to build.local.props and set STS2GameDir, or
-    export STS2_GAME_DIR. With neither set, STS2_MCP.csproj stops with a message
+    export STS2_GAME_DIR. With neither set, Sts2Mcp.csproj stops with a message
     that names both options. `make config` prints what was resolved.
   -->
 

@@ -3,7 +3,7 @@
 From the repository root:
 
 ```powershell
-dotnet run --project STS2MCP/tests/CardValues/CardValues.csproj
+dotnet run --project Sts2Mcp/tests/CardValues/CardValues.csproj
 ```
 
 The executable compiles the real `McpMod.CardValues.cs` against small game type stand-ins. It injects errors after a variable has been changed, in an enchantment preview, and during description formatting. It also catches an error inside the simulated DTO builder to check that the outer state-build scope still refuses publication.

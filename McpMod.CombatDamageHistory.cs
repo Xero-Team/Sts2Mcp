@@ -5,7 +5,7 @@ using MegaCrit.Sts2.Core.Combat.History;
 using MegaCrit.Sts2.Core.Combat.History.Entries;
 using MegaCrit.Sts2.Core.Entities.Players;
 
-namespace STS2_MCP;
+namespace Sts2Mcp;
 
 public static partial class McpMod
 {
@@ -18,15 +18,15 @@ public static partial class McpMod
     // including damage on the enemy side. HappenedThisTurn would exclude it.
     private static bool DamageNotFullyBlockedThisOwnerTurn(Player player, IEnumerable<DamageReceivedEntry> entries)
     {
-        var turn = player.PlayerCombatState?.TurnNumber
+        int turn = player.PlayerCombatState?.TurnNumber
             ?? throw new InvalidOperationException("Owner-turn damage history requires an active player combat state");
-        foreach (var entry in entries)
+        foreach (DamageReceivedEntry entry in entries)
         {
             if (entry.Receiver != player.Creature || entry.Result.WasFullyBlocked)
                 continue;
-            var turns = s_historyPlayerTurnNumbersField.GetValue(entry) as IReadOnlyDictionary<ulong, int>
+            IReadOnlyDictionary<ulong, int> turns = s_historyPlayerTurnNumbersField.GetValue(entry) as IReadOnlyDictionary<ulong, int>
                 ?? throw new InvalidOperationException("Combat history player turn numbers are unavailable");
-            if (turns.TryGetValue(player.NetId, out var captured) && captured == turn)
+            if (turns.TryGetValue(player.NetId, out int captured) && captured == turn)
                 return true;
         }
         return false;

@@ -1,9 +1,9 @@
 <#
 .SYNOPSIS
-    Builds the STS2_MCP mod DLL.
+    Builds the Sts2Mcp mod DLL.
 
 .DESCRIPTION
-    Compiles STS2_MCP.dll against the game's assemblies. Does NOT install
+    Compiles Sts2Mcp.dll against the game's assemblies. Does NOT install
     the mod — copy the output files to the game's mods/ directory yourself.
 
 .PARAMETER GameDir
@@ -32,7 +32,7 @@ if (-not $GameDir) {
 if (-not $GameDir) {
     # Same resolution order as Directory.Build.props: the gitignored local file.
     if (Get-Command dotnet -ErrorAction SilentlyContinue) {
-        $resolved = & dotnet msbuild (Join-Path $PSScriptRoot "STS2_MCP.csproj") -nologo -getProperty:STS2GameDir 2>$null
+        $resolved = & dotnet msbuild (Join-Path $PSScriptRoot "Sts2Mcp.csproj") -nologo -getProperty:STS2GameDir 2>$null
         if ($LASTEXITCODE -eq 0 -and $resolved) { $GameDir = "$resolved".Trim() }
     }
 }
@@ -71,10 +71,10 @@ Install the .NET 9 SDK from:
 
 # --- Build ---
 $scriptDir = $PSScriptRoot
-$project = Join-Path $scriptDir "STS2_MCP.csproj"
-$outDir = Join-Path (Join-Path $scriptDir "out") "STS2_MCP"
+$project = Join-Path $scriptDir "Sts2Mcp.csproj"
+$outDir = Join-Path (Join-Path $scriptDir "out") "Sts2Mcp"
 
-Write-Host "=== Building STS2_MCP ($Configuration) ===" -ForegroundColor Cyan
+Write-Host "=== Building Sts2Mcp ($Configuration) ===" -ForegroundColor Cyan
 Write-Host "Game directory : $GameDir"
 Write-Host "Output         : $outDir"
 Write-Host ""
@@ -85,5 +85,5 @@ if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 Write-Host ""
 Write-Host "=== Build succeeded ===" -ForegroundColor Green
 Write-Host "The output folder is ready to install. Copy these files to <game_install>/mods/:"
-Write-Host "  $outDir\STS2_MCP.dll"
-Write-Host "  $outDir\STS2_MCP.json"
+Write-Host "  $outDir\Sts2Mcp.dll"
+Write-Host "  $outDir\Sts2Mcp.json"

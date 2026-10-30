@@ -1,7 +1,7 @@
 ---
 name: sts2-engineering
 description: >-
-  Use for any change to STS2_MCP (the Slay the Spire 2 mod and its MCP bridge),
+  Use for any change to Sts2Mcp (the Slay the Spire 2 mod and its MCP bridge),
   for deciding where new code belongs, and for any claim about game behavior
   that has to come from the shipped build. Fuses ub-mode discipline — smallest
   working change, honest checks, root causes, deterministic gates, small commits
@@ -14,7 +14,7 @@ description: >-
   answers the question.
 metadata:
   version: "4"
-  adapted-for: STS2MCP
+  adapted-for: Sts2Mcp
   fuses: "unclebob/ub-mode@9ac940b (principles paraphrased; upstream has no license file), morluto/rea reverse-engineer-anything@9da1eed (MIT), ardalis/CleanArchitecture (MIT; layer and REPR rules extracted, no scaffold copied), jasontaylordev/CleanArchitecture (MIT; build hygiene, naming, endpoint and error standards extracted, no scaffold copied), dotnet/runtime docs/coding-guidelines (MIT; C# style rules paraphrased, no text or file copied)"
 ---
 
@@ -79,7 +79,7 @@ the rules the mod owns), `UseCases` (one handler per action or query),
 outside the assembly. Dependencies point inward only.
 
 The split into separate projects is deferred — the mod ships as one
-`STS2_MCP.dll`, and the split is its own discussed change. The *rules* apply
+`Sts2Mcp.dll`, and the split is its own discussed change. The *rules* apply
 now, to new code, inside the single assembly; the folders and namespaces mark the
 layers. When a change touches a violation, fix that violation in the same change
 or record it in `docs/adr/` and say so. Never introduce a violation because the
@@ -131,7 +131,7 @@ PR.
 - **No inherited violations.** A wrong name, field prefix, visibility, brace
   style, or file layout in the code you touch is repaired here, even when that
   means a breaking rename across call sites; the build proves the rename is
-  complete. Only the external contract (`STS2_MCP`, reflection-reached game
+  complete. Only the external contract (`Sts2Mcp`, reflection-reached game
   members, JSON `snake_case`) is exempt from renaming for style.
 - **Match the repository standards.**
   [references/repo-standards.md](references/repo-standards.md) holds the full
@@ -158,7 +158,7 @@ PR.
     side, `sealed`/`static` helpers, `\uXXXX` for non-ASCII. Wrong names and
     wrong structure in code you touch are fixed in that change: a rename that
     ripples through call sites is the expected cost, never a reason to defer. The
-    only names left alone are the external contract (`STS2_MCP`, reflection
+    only names left alone are the external contract (`Sts2Mcp`, reflection
     strings, `snake_case` JSON). `.editorconfig` is the executable copy and
     changes to it are standalone.
   - **Toolchain targets.** `Directory.Build.props` (configuration: game path, no
@@ -243,7 +243,7 @@ setup again. This skill is instructions only; it registers nothing.
 | Profile, compendium, wiki | `McpMod.Profile.cs`, `McpMod.Compendium.cs`, `McpMod.Wiki.cs` | State the source and its limits |
 | MCP bridge | `mcp/server.py` | Thin pass-through; no game logic |
 | Contract docs | `docs/raw-full.md`, `docs/raw-simplified.md` | Update with any API surface change |
-| Build and install | `STS2_MCP.csproj`, `Directory.Build.props`, `Makefile`, `build.ps1`, `mod_manifest.json` | Zero-warning build; config comes from `STS2_GAME_DIR` / `build.local.props`; manifest copied as `STS2_MCP.json` |
+| Build and install | `Sts2Mcp.csproj`, `Directory.Build.props`, `Makefile`, `build.ps1`, `mod_manifest.json` | Zero-warning build; config comes from `STS2_GAME_DIR` / `build.local.props`; manifest copied as `Sts2Mcp.json` |
 | Layer boundaries | `Core/`, `UseCases/`, `Infrastructure/`, `Transport/` (target; today flat partials) | Arrows point inward; grep checks until the project split |
 | Standard toolchain | `global.json` (absent); `Directory.Build.props`, `Directory.Build.targets`, `.editorconfig` committed | Add `global.json` in a standalone change; zero-warning build until then |
 

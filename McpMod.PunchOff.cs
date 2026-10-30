@@ -6,7 +6,7 @@ using HarmonyLib;
 using MegaCrit.Sts2.Core.Models.Events;
 using MegaCrit.Sts2.Core.Settings;
 
-namespace STS2_MCP;
+namespace Sts2Mcp;
 
 public static partial class McpMod
 {
@@ -52,7 +52,7 @@ public static partial class McpMod
         // throwing out of PatchAll, which would take every other patch in the mod with it.
         private static IEnumerable<MethodBase> TargetMethods()
         {
-            var method = AccessTools.DeclaredMethod(typeof(PunchOff), "PunchEachOther");
+            MethodInfo method = AccessTools.DeclaredMethod(typeof(PunchOff), "PunchEachOther");
             if (method == null)
             {
                 GD.Print("[STS2 MCP] PunchOff.PunchEachOther not found - Instant Mode hang guard inactive");

@@ -1,5 +1,5 @@
 using System.Text.Json;
-using STS2_MCP.Core.Contracts;
+using Sts2Mcp.Core.Contracts;
 
 // Pins the JSON wire format the transport emits, using the shipped contract types and the shipped
 // serializer options. No game, no Godot: this runs anywhere `dotnet run` does.

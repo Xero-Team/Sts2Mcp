@@ -8,7 +8,7 @@ using MegaCrit.Sts2.Core.Entities.Cards;
 using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Saves;
 
-namespace STS2_MCP;
+namespace Sts2Mcp;
 
 public static partial class McpMod
 {
@@ -24,11 +24,11 @@ public static partial class McpMod
 
     private static void HandleGetWiki(HttpListenerRequest request, HttpListenerResponse response)
     {
-        var query = request.QueryString["query"] ?? request.QueryString["q"] ?? "";
-        var itemType = request.QueryString["type"] ?? request.QueryString["item_type"] ?? "all";
-        var scope = request.QueryString["scope"] ?? "discovered";
+        string query = request.QueryString["query"] ?? request.QueryString["q"] ?? "";
+        string itemType = request.QueryString["type"] ?? request.QueryString["item_type"] ?? "all";
+        string scope = request.QueryString["scope"] ?? "discovered";
 
-        var limit = ParseWikiLimit(request.QueryString["limit"], string.IsNullOrWhiteSpace(query));
+        int limit = ParseWikiLimit(request.QueryString["limit"], string.IsNullOrWhiteSpace(query));
         bool pretty = WantsPretty(request);
 
         RunHandler(response,
@@ -39,7 +39,7 @@ public static partial class McpMod
     internal static object SearchWiki(string query = "", string itemType = "all", int? limit = null,
         string scope = "discovered")
     {
-        var listing = string.IsNullOrWhiteSpace(query);
+        bool listing = string.IsNullOrWhiteSpace(query);
         int normalized;
         if (limit.HasValue)
             normalized = NormalizeWikiLimit(limit.Value, listing);
@@ -55,12 +55,12 @@ public static partial class McpMod
     private static Dictionary<string, object?> BuildWikiSearch(string query, string itemType, int limit,
         string scope = "discovered")
     {
-        var progress = SaveManager.Instance?.Progress;
-        var saveManager = SaveManager.Instance;
+        ProgressState? progress = SaveManager.Instance?.Progress;
+        SaveManager? saveManager = SaveManager.Instance;
         if (progress == null || saveManager == null)
             return Error("No profile data available.");
 
-        var normalizedItemType = NormalizeWikiItemType(itemType);
+        string? normalizedItemType = NormalizeWikiItemType(itemType);
         if (normalizedItemType == null)
             return Error("item_type must be one of: all, card, relic.");
 
@@ -68,15 +68,15 @@ public static partial class McpMod
         // scope=all searches the whole catalog, which is what you need when a card
         // reward generates a card you have never held and the alternative is passing
         // on a rare because its effect is unknowable.
-        var normalizedScope = NormalizeWikiScope(scope);
+        string? normalizedScope = NormalizeWikiScope(scope);
         if (normalizedScope == null)
             return Error("scope must be one of: discovered, all.");
-        var everything = string.Equals(normalizedScope, "all", StringComparison.Ordinal);
+        bool everything = string.Equals(normalizedScope, "all", StringComparison.Ordinal);
 
-        var discoveredCards = ToDiscoveredWikiIds(progress.DiscoveredCards);
-        var discoveredRelics = ToDiscoveredWikiIds(progress.DiscoveredRelics);
+        HashSet<string> discoveredCards = ToDiscoveredWikiIds(progress.DiscoveredCards);
+        HashSet<string> discoveredRelics = ToDiscoveredWikiIds(progress.DiscoveredRelics);
 
-        var candidates = BuildWikiCandidatePool(
+        List<WikiCandidate> candidates = BuildWikiCandidatePool(
             normalizedItemType,
             everything ? null : discoveredCards,
             everything ? null : discoveredRelics);
@@ -85,12 +85,12 @@ public static partial class McpMod
         // fuzzy score would only impose an arbitrary order on an enumeration
         // nobody searched, and dropping the `Score > 0` filter with it is the
         // point -- that filter is what a listing must not have.
-        var listing = string.IsNullOrWhiteSpace(query);
+        bool listing = string.IsNullOrWhiteSpace(query);
 
         // Counted before `Take`, so `truncated` says whether the limit actually
         // cut anything.  It has to be the ELIGIBLE count, not `candidates`: a
         // search's non-matching candidates are not results withheld.
-        var eligible = RankWikiCandidates(candidates, query, listing);
+        List<(WikiCandidate Candidate, double Score)> eligible = RankWikiCandidates(candidates, query, listing);
 
         var matches = eligible
             .Take(limit)
@@ -115,7 +115,7 @@ public static partial class McpMod
 
     private static int ParseWikiLimit(string? rawLimit, bool listing = false)
     {
-        if (!int.TryParse(rawLimit, CultureInfo.InvariantCulture, out var limit))
+        if (!int.TryParse(rawLimit, CultureInfo.InvariantCulture, out int limit))
             return listing ? MaxWikiListLimit : DefaultWikiSearchLimit;
         return NormalizeWikiLimit(limit, listing);
     }
@@ -125,7 +125,7 @@ public static partial class McpMod
 
     private static string? NormalizeWikiScope(string? scope)
     {
-        var value = (scope ?? "discovered").Trim().ToLowerInvariant();
+        string value = (scope ?? "discovered").Trim().ToLowerInvariant();
         return value switch
         {
             "" or "discovered" or "active_profile" => "discovered",
@@ -136,7 +136,7 @@ public static partial class McpMod
 
     private static string? NormalizeWikiItemType(string? itemType)
     {
-        var value = (itemType ?? "all").Trim().ToLowerInvariant();
+        string value = (itemType ?? "all").Trim().ToLowerInvariant();
         return value switch
         {
             "" or "all" or "any" => "all",
@@ -218,9 +218,9 @@ public static partial class McpMod
     private static List<WikiCandidate> BuildCardWikiCandidates(HashSet<string>? discoveredIds)
     {
         var byId = new Dictionary<string, WikiCandidate>(StringComparer.OrdinalIgnoreCase);
-        foreach (var card in ModelDb.AllCards)
+        foreach (CardModel card in ModelDb.AllCards)
         {
-            var id = SafeGetText(() => card.Id.Entry);
+            string? id = SafeGetText(() => card.Id.Entry);
             if (string.IsNullOrWhiteSpace(id) || (discoveredIds != null && !discoveredIds.Contains(id)))
                 continue;
             bool discovered = discoveredIds?.Contains(id) ?? true;
@@ -242,9 +242,9 @@ public static partial class McpMod
     private static List<WikiCandidate> BuildRelicWikiCandidates(HashSet<string>? discoveredIds)
     {
         var byId = new Dictionary<string, WikiCandidate>(StringComparer.OrdinalIgnoreCase);
-        foreach (var relic in ModelDb.AllRelics)
+        foreach (RelicModel relic in ModelDb.AllRelics)
         {
-            var id = SafeGetText(() => relic.Id.Entry);
+            string? id = SafeGetText(() => relic.Id.Entry);
             if (string.IsNullOrWhiteSpace(id) || (discoveredIds != null && !discoveredIds.Contains(id)))
                 continue;
             bool discovered = discoveredIds?.Contains(id) ?? true;
@@ -281,8 +281,8 @@ public static partial class McpMod
 
     private static Dictionary<string, object?> BuildWikiCardResult(WikiCandidate candidate, double score)
     {
-        var card = candidate.Card!;
-        var upgraded = SafeBuildUpgradedCardPreview(card);
+        CardModel card = candidate.Card!;
+        CardModel? upgraded = SafeBuildUpgradedCardPreview(card);
         Dictionary<string, object?>? upgradedVariant = null;
         if (upgraded != null)
             upgradedVariant = BuildWikiCardVariant(upgraded, "upgraded");
@@ -335,7 +335,7 @@ public static partial class McpMod
 
     private static Dictionary<string, object?> BuildWikiRelicResult(WikiCandidate candidate, double score)
     {
-        var relic = candidate.Relic!;
+        RelicModel relic = candidate.Relic!;
         return new Dictionary<string, object?>(StringComparer.Ordinal)
         {
             ["item_type"] = "relic",
@@ -354,14 +354,14 @@ public static partial class McpMod
 
     private static double ScoreWikiCandidate(string query, WikiCandidate candidate)
     {
-        var queryNormalized = NormalizeSearchText(query);
-        var candidateNormalized = NormalizeSearchText(candidate.SearchText);
+        string queryNormalized = NormalizeSearchText(query);
+        string candidateNormalized = NormalizeSearchText(candidate.SearchText);
         if (string.IsNullOrWhiteSpace(queryNormalized) || string.IsNullOrWhiteSpace(candidateNormalized))
             return 0;
 
-        var queryCompact = CompactSearchText(queryNormalized);
-        var nameCompact = CompactSearchText(candidate.Name);
-        var idCompact = CompactSearchText(candidate.Id);
+        string queryCompact = CompactSearchText(queryNormalized);
+        string nameCompact = CompactSearchText(candidate.Name);
+        string idCompact = CompactSearchText(candidate.Id);
 
         if (queryCompact.Equals(nameCompact, StringComparison.OrdinalIgnoreCase)
             || queryCompact.Equals(idCompact, StringComparison.OrdinalIgnoreCase))
@@ -371,23 +371,23 @@ public static partial class McpMod
             || idCompact.Contains(queryCompact, StringComparison.OrdinalIgnoreCase))
             return 850;
 
-        var queryTokens = TokenizeSearchText(queryNormalized);
-        var candidateTokens = TokenizeSearchText(candidateNormalized);
+        List<string> queryTokens = TokenizeSearchText(queryNormalized);
+        List<string> candidateTokens = TokenizeSearchText(candidateNormalized);
         if (queryTokens.Count == 0 || candidateTokens.Count == 0)
             return 0;
 
         double total = 0;
-        var strongMatches = 0;
-        foreach (var queryToken in queryTokens)
+        int strongMatches = 0;
+        foreach (string queryToken in queryTokens)
         {
-            var best = candidateTokens.Max(candidateToken => TokenSimilarity(queryToken, candidateToken));
+            double best = candidateTokens.Max(candidateToken => TokenSimilarity(queryToken, candidateToken));
             total += best;
             if (best >= 0.72)
                 strongMatches++;
         }
 
-        var average = total / queryTokens.Count;
-        var score = average * 700;
+        double average = total / queryTokens.Count;
+        double score = average * 700;
         if (strongMatches > 0)
             score += strongMatches * 35;
 
@@ -397,8 +397,8 @@ public static partial class McpMod
     private static string NormalizeSearchText(string value)
     {
         var sb = new StringBuilder(value.Length);
-        var lastWasSpace = true;
-        foreach (var ch in value.ToLowerInvariant())
+        bool lastWasSpace = true;
+        foreach (char ch in value.ToLowerInvariant())
         {
             if (char.IsLetterOrDigit(ch))
             {
@@ -437,8 +437,8 @@ public static partial class McpMod
                 || queryToken.Contains(candidateToken, StringComparison.OrdinalIgnoreCase)))
             return 0.88;
 
-        var distance = LevenshteinDistance(queryToken, candidateToken);
-        var maxLength = Math.Max(queryToken.Length, candidateToken.Length);
+        int distance = LevenshteinDistance(queryToken, candidateToken);
+        int maxLength = Math.Max(queryToken.Length, candidateToken.Length);
         return maxLength == 0 ? 0 : 1.0 - ((double)distance / maxLength);
     }
 
@@ -447,17 +447,17 @@ public static partial class McpMod
         if (left.Length == 0) return right.Length;
         if (right.Length == 0) return left.Length;
 
-        var previous = new int[right.Length + 1];
-        var current = new int[right.Length + 1];
-        for (var j = 0; j <= right.Length; j++)
+        int[] previous = new int[right.Length + 1];
+        int[] current = new int[right.Length + 1];
+        for (int j = 0; j <= right.Length; j++)
             previous[j] = j;
 
-        for (var i = 1; i <= left.Length; i++)
+        for (int i = 1; i <= left.Length; i++)
         {
             current[0] = i;
-            for (var j = 1; j <= right.Length; j++)
+            for (int j = 1; j <= right.Length; j++)
             {
-                var cost = left[i - 1] == right[j - 1] ? 0 : 1;
+                int cost = left[i - 1] == right[j - 1] ? 0 : 1;
                 current[j] = Math.Min(
                     Math.Min(current[j - 1] + 1, previous[j] + 1),
                     previous[j - 1] + cost);

@@ -1,4 +1,4 @@
-namespace STS2_MCP.Core.Contracts;
+namespace Sts2Mcp.Core.Contracts;
 
 /// <summary>
 /// The documented failure body: <c>{"status": "error", "error": "&lt;human message&gt;"}</c>, plus a

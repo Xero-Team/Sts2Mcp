@@ -1,4 +1,4 @@
-# STS2_MCP developer entry points.
+# Sts2Mcp developer entry points.
 #
 # Configuration is never hard-coded. The build resolves the game install from, in
 # order: -p:STS2GameDir on the command line, the STS2_GAME_DIR environment
@@ -19,8 +19,8 @@ DOTNET ?= dotnet
 UV ?= uv
 PYTHON ?= python3
 CONFIGURATION ?= Release
-OUT_DIR ?= out/STS2_MCP
-PROJECT := STS2_MCP.csproj
+OUT_DIR ?= out/Sts2Mcp
+PROJECT := Sts2Mcp.csproj
 TESTS := $(sort $(patsubst %/,%,$(dir $(wildcard tests/*/*.csproj))))
 
 # Test projects target net9.0; run them on a newer shared runtime when that is
@@ -40,7 +40,7 @@ endif
         test-mcp mcp install record-selftest clean
 
 help: ## Show this help.
-	@printf 'STS2_MCP targets\n\n'
+	@printf 'Sts2Mcp targets\n\n'
 	@awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z0-9_-]+:.*?## / {printf "  %-16s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
 	@printf '\nGame path: export STS2_GAME_DIR=<path>, cp build.local.props.example build.local.props,\n'
 	@printf 'or pass it per command: make build STS2_GAME_DIR=<path>. `make config` shows what resolves.\n'
@@ -55,12 +55,12 @@ config: ## Print the resolved game/data directories and check the DLLs exist.
 	if [ -f "$$data/sts2.dll" ]; then printf 'sts2.dll        = found\n'; \
 	else printf 'sts2.dll        = NOT FOUND\n'; fi
 
-build: ## Build Release into out/STS2_MCP/ (installable DLL + manifest).
+build: ## Build Release into out/Sts2Mcp/ (installable DLL + manifest).
 	$(DOTNET) build $(PROJECT) -c $(CONFIGURATION) -o $(OUT_DIR)
 
 debug: CONFIGURATION := Debug
-debug: OUT_DIR := out/STS2_MCP-debug
-debug: build ## Build Debug into out/STS2_MCP-debug/.
+debug: OUT_DIR := out/Sts2Mcp-debug
+debug: build ## Build Debug into out/Sts2Mcp-debug/.
 
 test: ## Run every headless harness under tests/ (no game install needed).
 	@set -e; for project in $(TESTS); do \
@@ -103,8 +103,8 @@ install: build ## Copy the built mod into <game>/mods/ (MODS_DIR overrides the p
 		esac; \
 	fi; \
 	install -d "$$mods"; \
-	install -m 644 "$(OUT_DIR)/STS2_MCP.dll" "$$mods/STS2_MCP.dll"; \
-	install -m 644 "$(OUT_DIR)/STS2_MCP.json" "$$mods/STS2_MCP.json"; \
+	install -m 644 "$(OUT_DIR)/Sts2Mcp.dll" "$$mods/Sts2Mcp.dll"; \
+	install -m 644 "$(OUT_DIR)/Sts2Mcp.json" "$$mods/Sts2Mcp.json"; \
 	printf 'Installed into %s\n' "$$mods"
 
 record-selftest: ## Run the record-check regression cases (no game needed).

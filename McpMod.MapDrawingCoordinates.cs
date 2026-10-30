@@ -1,6 +1,6 @@
 using Godot;
 
-namespace STS2_MCP;
+namespace Sts2Mcp;
 
 public static partial class McpMod
 {
@@ -28,7 +28,7 @@ public static partial class McpMod
         // GetSerializableMapDrawings path nevertheless applies ToNetPosition
         // directly to those stored points. Restore the full-resolution local
         // input before exposing the normalized point through MCP.
-        var halfResolutionLocal = FromMapDrawingPosition(drawingSize, point);
+        Vector2 halfResolutionLocal = FromMapDrawingPosition(drawingSize, point);
         return ToMapDrawingPosition(drawingSize, halfResolutionLocal * 2f);
     }
 }

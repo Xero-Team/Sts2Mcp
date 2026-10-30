@@ -1,6 +1,6 @@
 using System;
 using Godot;
-using STS2_MCP;
+using Sts2Mcp;
 
 static void AssertNear(Vector2 actual, Vector2 expected, string message)
 {
