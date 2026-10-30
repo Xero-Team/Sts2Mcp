@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 
 namespace STS2_MCP;
 
@@ -15,7 +16,7 @@ internal static class McpPortResolver
                 continue;
 
             string value = argument[PortArgumentPrefix.Length..];
-            if (int.TryParse(value, out int overridePort) && IsValid(overridePort))
+            if (int.TryParse(value, CultureInfo.InvariantCulture, out int overridePort) && IsValid(overridePort))
                 return overridePort;
 
             break;

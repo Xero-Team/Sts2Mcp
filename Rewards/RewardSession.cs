@@ -21,7 +21,7 @@ internal sealed class RewardSession
             ["selection_state"] = SelectionState,
             ["claimable"] = claimable,
             ["skipped"] = string.Equals(SelectionState, "skipped", StringComparison.Ordinal),
-            ["reward_consumed"] = string.Equals(SelectionState, "claimed", StringComparison.Ordinal) ? true : string.Equals(SelectionState, "skipped", global::System.StringComparison.Ordinal) ? false : null,
+            ["reward_consumed"] = string.Equals(SelectionState, "claimed", StringComparison.Ordinal) ? true : string.Equals(SelectionState, "skipped", StringComparison.Ordinal) ? false : null,
             ["last_selection"] = LastSelection,
             ["last_option_id"] = LastOptionId
         };

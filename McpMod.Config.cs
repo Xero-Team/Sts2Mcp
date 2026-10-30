@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Text.Json;
 using Godot;
@@ -215,7 +216,7 @@ public static partial class McpMod
 
     private static bool TryParseConfiguredPort(string value, string source, out int port)
     {
-        if (int.TryParse(value.Trim(), out port) && port is > 0 and <= 65535)
+        if (int.TryParse(value.Trim(), CultureInfo.InvariantCulture, out port) && port is > 0 and <= 65535)
             return true;
 
         GD.PrintErr($"[STS2 MCP] Invalid port value from {source}: {value}; using next configured port source");

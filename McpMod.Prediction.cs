@@ -1,6 +1,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using System.Reflection;
 using MegaCrit.Sts2.Core.Entities.Creatures;
@@ -201,7 +202,7 @@ public static partial class McpMod
                 if (id == null || evaluate == null)
                     continue;
                 bool enabled;
-                try { enabled = Convert.ToSingle(evaluate.Invoke(value, null)) > 0f; }
+                try { enabled = Convert.ToSingle(evaluate.Invoke(value, null), CultureInfo.InvariantCulture) > 0f; }
                 catch { enabled = false; }
                 var lambda = valueType
                     .GetField("_conditionalLambda", BindingFlags.NonPublic | BindingFlags.Instance)?

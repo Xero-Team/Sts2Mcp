@@ -161,7 +161,7 @@ public static partial class McpMod
             // not started yet, and the map screen is still visible over it. See
             // the long comment there - reporting "map" here lets a client travel
             // a second time on top of the travel that is still resolving.
-            result["state_type"] = loadingCombat.RoomType.ToString().ToLower();
+            result["state_type"] = loadingCombat.RoomType.ToString().ToLowerInvariant();
             result["combat_starting"] = true;
             result["message"] = "Combat is starting. Wait for the battle state; do not send actions yet.";
         }
@@ -178,7 +178,7 @@ public static partial class McpMod
                 }
                 else
                 {
-                    result["state_type"] = combatRoom.RoomType.ToString().ToLower();
+                    result["state_type"] = combatRoom.RoomType.ToString().ToLowerInvariant();
                     result["battle"] = BuildMultiplayerBattleState(runState, combatRoom);
                 }
             }
@@ -192,7 +192,7 @@ public static partial class McpMod
                 }
                 else
                 {
-                    result["state_type"] = combatRoom.RoomType.ToString().ToLower();
+                    result["state_type"] = combatRoom.RoomType.ToString().ToLowerInvariant();
                     result["message"] = "Combat ended. Waiting for rewards...";
                 }
             }
@@ -341,7 +341,7 @@ public static partial class McpMod
 
         battle["next_creature_id"] = NextCreatureId(combatState);
         battle["round"] = combatState.RoundNumber;
-        battle["turn"] = combatState.CurrentSide.ToString().ToLower();
+        battle["turn"] = combatState.CurrentSide.ToString().ToLowerInvariant();
         // IsCombatPlayPhase() instead of the compiled IsPlayPhase property the fork
         // used: STS2 0.107 removed that accessor (see McpMod.Helpers.cs).
         battle["is_play_phase"] = IsCombatPlayPhase();

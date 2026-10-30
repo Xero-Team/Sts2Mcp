@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Globalization;
 using System.Text;
 using Godot;
 using HarmonyLib;
@@ -125,11 +126,11 @@ public static partial class McpMod
         _loadingStuckReported = true;
 
         var sb = new StringBuilder();
-        sb.Append($"[STS2 MCP] IsGameLoading has been held for {(now - _loadingHeldSinceMs) / 1000.0:F1}s by ");
-        sb.Append($"{_openLoadingHandles.Count} open NetLoadingHandle(s). Every event choice is refused while it is ");
+        sb.Append(CultureInfo.InvariantCulture, $"[STS2 MCP] IsGameLoading has been held for {(now - _loadingHeldSinceMs) / 1000.0:F1}s by ");
+        sb.Append(CultureInfo.InvariantCulture, $"{_openLoadingHandles.Count} open NetLoadingHandle(s). Every event choice is refused while it is ");
         sb.Append("set, and the refcount can no longer reach zero, so this is the leak:");
         foreach (var info in _openLoadingHandles.Values)
-            sb.Append($"\n  #{info.Id} opened {(now - info.OpenedMs) / 1000.0:F1}s ago at {info.Origin}");
+            sb.Append(CultureInfo.InvariantCulture, $"\n  #{info.Id} opened {(now - info.OpenedMs) / 1000.0:F1}s ago at {info.Origin}");
         GD.PrintErr(sb.ToString());
     }
 

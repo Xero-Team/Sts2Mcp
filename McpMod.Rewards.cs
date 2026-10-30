@@ -158,7 +158,7 @@ public static partial class McpMod
         bool observed = entry != null && !entry.Resolving && entry.SelectionState is "claimed" or "skipped";
         result["outcome_observed"] = observed;
         result["selection_state"] = entry?.SelectionState ?? "unknown";
-        result["reward_consumed"] = observed ? string.Equals(entry!.SelectionState, "claimed", global::System.StringComparison.Ordinal) : null;
+        result["reward_consumed"] = observed ? string.Equals(entry!.SelectionState, "claimed", StringComparison.Ordinal) : null;
         if (observed)
         {
             result["action_stage"] = "resolved";

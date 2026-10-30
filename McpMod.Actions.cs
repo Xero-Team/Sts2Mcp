@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using System.Text.Json;
 using Godot;
@@ -168,7 +169,7 @@ public static partial class McpMod
             if (elem.ValueKind == JsonValueKind.Number && elem.TryGetInt32(out value))
                 return true;
             if (elem.ValueKind == JsonValueKind.String
-                && int.TryParse(elem.GetString(), out value))
+                && int.TryParse(elem.GetString(), CultureInfo.InvariantCulture, out value))
                 return true;
         }
         value = 0;
@@ -602,7 +603,7 @@ public static partial class McpMod
         {
             var method = potion.GetType().GetMethods(
                     System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static)
-                .FirstOrDefault(m => m.Name.Contains("MerchantTarget", System.StringComparison.Ordinal));
+                .FirstOrDefault(m => m.Name.Contains("MerchantTarget", StringComparison.Ordinal));
             if (method == null)
                 return false;
 
@@ -774,7 +775,7 @@ public static partial class McpMod
         if (optionId != null)
         {
             int found = options.FindIndex(o =>
-                string.Equals(o.OptionId, optionId, System.StringComparison.OrdinalIgnoreCase));
+                string.Equals(o.OptionId, optionId, StringComparison.OrdinalIgnoreCase));
             if (found < 0)
                 return Error($"No rest option '{optionId}' at this rest site. Available: {DescribeRestOptions(options, uiRoom)}");
             // A caller that sends both is working from a stale read if they disagree;
@@ -1142,7 +1143,7 @@ public static partial class McpMod
         // can add its own alternative (Pael's Wing's SACRIFICE), and clicking the wrong
         // one here silently spends the reward on something else.
         int skipIndex = alternatives.FindIndex(a =>
-            string.Equals(a.GetValueOrDefault("option_id")?.ToString(), "Skip", System.StringComparison.OrdinalIgnoreCase));
+            string.Equals(a.GetValueOrDefault("option_id")?.ToString(), "Skip", StringComparison.OrdinalIgnoreCase));
         if (skipIndex < 0)
             return Error(
                 "No Skip option on this card reward. Available: "
@@ -1176,8 +1177,8 @@ public static partial class McpMod
         if (optionId != null)
         {
             chosen = alternatives.FindIndex(a =>
-                string.Equals(a.GetValueOrDefault("option_id")?.ToString(), optionId, System.StringComparison.OrdinalIgnoreCase)
-                || string.Equals(a.GetValueOrDefault("title")?.ToString(), optionId, System.StringComparison.OrdinalIgnoreCase));
+                string.Equals(a.GetValueOrDefault("option_id")?.ToString(), optionId, StringComparison.OrdinalIgnoreCase)
+                || string.Equals(a.GetValueOrDefault("title")?.ToString(), optionId, StringComparison.OrdinalIgnoreCase));
             if (chosen < 0)
                 return Error($"No alternative '{optionId}' on this card reward. Available: {DescribeAlternatives(alternatives)}");
         }
@@ -1964,7 +1965,7 @@ public static partial class McpMod
 
         const string prefix = "player_";
         if (entityId.StartsWith(prefix)
-            && int.TryParse(entityId.Substring(prefix.Length), out int idx)
+            && int.TryParse(entityId.Substring(prefix.Length), CultureInfo.InvariantCulture, out int idx)
             && idx >= 0 && idx < me.RunState.Players.Count)
             return me.RunState.Players[idx].Creature;
 
@@ -2172,10 +2173,10 @@ public static partial class McpMod
         gameOver ??= FindAll<NGameOverScreen>(tree.Root).FirstOrDefault(IsNodeVisible);
         if (gameOver != null)
         {
-            if (string.Equals(option, "continue", System.StringComparison.OrdinalIgnoreCase))
+            if (string.Equals(option, "continue", StringComparison.OrdinalIgnoreCase))
                 return Error("Game-over option 'continue' is not actionable. Use: main_menu");
 
-            if (!string.Equals(option, "main_menu", System.StringComparison.OrdinalIgnoreCase))
+            if (!string.Equals(option, "main_menu", StringComparison.OrdinalIgnoreCase))
                 return Error($"Unknown game over option: {option}. Use: main_menu");
 
             var result = ClickMenuButtonField(gameOver, "_mainMenuButton", "Returning to main menu");
@@ -2200,8 +2201,8 @@ public static partial class McpMod
         var tutorialFtue = FindVisibleAcceptTutorialsFtue(tree.Root);
         if (tutorialFtue != null && IsFtueNodeActive(tutorialFtue))
         {
-            if (!string.Equals(option, "yes", System.StringComparison.OrdinalIgnoreCase) &&
-                !string.Equals(option, "no", System.StringComparison.OrdinalIgnoreCase))
+            if (!string.Equals(option, "yes", StringComparison.OrdinalIgnoreCase) &&
+                !string.Equals(option, "no", StringComparison.OrdinalIgnoreCase))
             {
                 return Error($"Unknown tutorial prompt option: {option}. Use: yes, no");
             }
@@ -2209,7 +2210,7 @@ public static partial class McpMod
             var popup = tutorialFtue.GetType().GetField("_verticalPopup", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)?.GetValue(tutorialFtue);
             if (popup != null)
             {
-                var isYes = string.Equals(option, "yes", System.StringComparison.OrdinalIgnoreCase);
+                var isYes = string.Equals(option, "yes", StringComparison.OrdinalIgnoreCase);
                 var btnField = isYes ? "<YesButton>k__BackingField" : "<NoButton>k__BackingField";
                 var btn = popup.GetType().GetField(btnField, System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)?.GetValue(popup);
                 if (btn is NClickableControl clickable &&
@@ -2226,8 +2227,8 @@ public static partial class McpMod
         var ftue = FindVisibleGenericFtue(tree.Root);
         if (ftue != null)
         {
-            if (!string.Equals(option, "advance", System.StringComparison.OrdinalIgnoreCase) &&
-                !string.Equals(option, "proceed", System.StringComparison.OrdinalIgnoreCase))
+            if (!string.Equals(option, "advance", StringComparison.OrdinalIgnoreCase) &&
+                !string.Equals(option, "proceed", StringComparison.OrdinalIgnoreCase))
             {
                 return Error($"Unknown tutorial option: {option}. Use: advance, proceed");
             }
@@ -2275,8 +2276,8 @@ public static partial class McpMod
         var timelineScreen = FindFirst<NTimelineScreen>(tree.Root);
         if (timelineScreen != null && IsNodeVisible(timelineScreen))
         {
-            if (string.Equals(option, "advance", System.StringComparison.OrdinalIgnoreCase) ||
-                string.Equals(option, "proceed", System.StringComparison.OrdinalIgnoreCase))
+            if (string.Equals(option, "advance", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(option, "proceed", StringComparison.OrdinalIgnoreCase))
             {
                 // Check for timeline tutorial screen (first-time "Proceed" button).
                 var tutorial = FindFirst<NTimelineTutorial>(tree.Root);
@@ -2342,7 +2343,7 @@ public static partial class McpMod
 
                 return new Dictionary<string, object?>(StringComparer.Ordinal) { ["status"] = "ok", ["message"] = "No more epochs to advance", ["done"] = true };
             }
-            else if (string.Equals(option, "back", System.StringComparison.OrdinalIgnoreCase))
+            else if (string.Equals(option, "back", StringComparison.OrdinalIgnoreCase))
             {
                 // Try NBackButton directly on NTimelineScreen
                 var backBtn = timelineScreen.GetType().GetField("_backButton", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)?.GetValue(timelineScreen);
@@ -2411,7 +2412,7 @@ public static partial class McpMod
             var spSubmenu = FindFirst<NSingleplayerSubmenu>(tree.Root);
             if (spSubmenu != null && IsNodeVisible(spSubmenu))
             {
-                if (string.Equals(option, "back", System.StringComparison.OrdinalIgnoreCase))
+                if (string.Equals(option, "back", StringComparison.OrdinalIgnoreCase))
                 {
                     return ClickMenuButtonField(spSubmenu, "_backButton", "Going back", "Back button is not available");
                 }
@@ -2433,7 +2434,7 @@ public static partial class McpMod
             var mpHostSubmenu = FindFirst<NMultiplayerHostSubmenu>(tree.Root);
             if (mpHostSubmenu != null && IsNodeVisible(mpHostSubmenu))
             {
-                if (string.Equals(option, "back", System.StringComparison.OrdinalIgnoreCase))
+                if (string.Equals(option, "back", StringComparison.OrdinalIgnoreCase))
                 {
                     return ClickMenuButtonField(mpHostSubmenu, "_backButton", "Going back", "Back button is not available");
                 }
@@ -2455,7 +2456,7 @@ public static partial class McpMod
             var mpSubmenu = FindFirst<NMultiplayerSubmenu>(tree.Root);
             if (mpSubmenu != null && IsNodeVisible(mpSubmenu))
             {
-                if (string.Equals(option, "back", System.StringComparison.OrdinalIgnoreCase))
+                if (string.Equals(option, "back", StringComparison.OrdinalIgnoreCase))
                 {
                     return ClickMenuButtonField(mpSubmenu, "_backButton", "Going back", "Back button is not available");
                 }
@@ -2516,7 +2517,7 @@ public static partial class McpMod
     {
         foreach (var candidate in options)
         {
-            if (!string.Equals(candidate.Name, option, System.StringComparison.OrdinalIgnoreCase))
+            if (!string.Equals(candidate.Name, option, StringComparison.OrdinalIgnoreCase))
                 continue;
 
             if (!IsPopupButtonActionable(candidate.Button))
@@ -2537,7 +2538,7 @@ public static partial class McpMod
         NProfileScreen profileScreen,
         string option)
     {
-        if (string.Equals(option, "back", System.StringComparison.OrdinalIgnoreCase))
+        if (string.Equals(option, "back", StringComparison.OrdinalIgnoreCase))
         {
             var backBtn = GetInstanceFieldValue(profileScreen, "_backButton")
                 ?? FindFirst<NBackButton>(profileScreen);
@@ -2552,12 +2553,12 @@ public static partial class McpMod
         }
 
         var normalized = option.ToLowerInvariant();
-        if (normalized.StartsWith("profile_", System.StringComparison.Ordinal))
+        if (normalized.StartsWith("profile_", StringComparison.Ordinal))
             normalized = normalized["profile_".Length..];
-        else if (normalized.StartsWith("slot_", System.StringComparison.Ordinal))
+        else if (normalized.StartsWith("slot_", StringComparison.Ordinal))
             normalized = normalized["slot_".Length..];
 
-        if (int.TryParse(normalized, out var profileId))
+        if (int.TryParse(normalized, CultureInfo.InvariantCulture, out var profileId))
             return ExecuteProfileAction("switch", profileId);
 
         return Error($"Unknown profile select option: {option}. Use: profile_1, profile_2, profile_3, back");
@@ -2797,7 +2798,7 @@ public static partial class McpMod
         }
 
         // join_<index> or join_<player_id>
-        if (normalized.StartsWith("join_", System.StringComparison.Ordinal))
+        if (normalized.StartsWith("join_", StringComparison.Ordinal))
         {
             var key = normalized["join_".Length..];
             var buttonContainer = GetInstanceFieldValue(joinScreen, "_buttonContainer") as Control;
@@ -2816,7 +2817,7 @@ public static partial class McpMod
                 return Error("No friends with open lobbies. Use 'refresh' to retry.");
 
             // Try as index first
-            if (int.TryParse(key, out int idx))
+            if (int.TryParse(key, CultureInfo.InvariantCulture, out int idx))
             {
                 if (idx < 0 || idx >= friendButtons.Count)
                     return Error($"Friend index {idx} out of range (0..{friendButtons.Count - 1})");
@@ -2986,7 +2987,7 @@ public static partial class McpMod
                 return ascensionResult;
         }
 
-        if (string.Equals(option, "back", System.StringComparison.OrdinalIgnoreCase))
+        if (string.Equals(option, "back", StringComparison.OrdinalIgnoreCase))
         {
             // _backButton leaves the lobby (and disconnects in MP). _unreadyButton is a
             // separate control that only becomes enabled after the player has hit
@@ -3008,7 +3009,7 @@ public static partial class McpMod
             return Error("Back button not available");
         }
 
-        if (string.Equals(option, "unready", System.StringComparison.OrdinalIgnoreCase))
+        if (string.Equals(option, "unready", StringComparison.OrdinalIgnoreCase))
         {
             var unreadyBtn = GetInstanceFieldValue(screen, "_unreadyButton") as NClickableControl;
             if (unreadyBtn != null && unreadyBtn.IsEnabled && IsControlVisibleOrActionable(unreadyBtn))
@@ -3019,8 +3020,8 @@ public static partial class McpMod
             return Error("Unready button not available — you have not confirmed yet");
         }
 
-        if (string.Equals(option, "confirm", System.StringComparison.OrdinalIgnoreCase) ||
-            string.Equals(option, "embark", System.StringComparison.OrdinalIgnoreCase))
+        if (string.Equals(option, "confirm", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(option, "embark", StringComparison.OrdinalIgnoreCase))
         {
             if (!string.IsNullOrWhiteSpace(seed))
             {
@@ -3071,9 +3072,9 @@ public static partial class McpMod
         if (IsCharacterSelectionBusy())
             return Error("Character selection is busy (unlock animation in progress); retry in a moment.");
 
-        if (string.Equals(option, "ascension_up", System.StringComparison.OrdinalIgnoreCase))
+        if (string.Equals(option, "ascension_up", StringComparison.OrdinalIgnoreCase))
             return ExecuteAscensionChange(screen, up: true);
-        if (string.Equals(option, "ascension_down", System.StringComparison.OrdinalIgnoreCase))
+        if (string.Equals(option, "ascension_down", StringComparison.OrdinalIgnoreCase))
             return ExecuteAscensionChange(screen, up: false);
 
         // Run-modifier toggle. Accepts both the advertised "modifier_<id>" option name and
@@ -3086,8 +3087,8 @@ public static partial class McpMod
         foreach (var btn in buttons)
         {
             if (btn.Character != null && (
-                string.Equals(btn.Character.Id.Entry, option, System.StringComparison.OrdinalIgnoreCase) ||
-                string.Equals(SafeGetText(() => btn.Character.Title), option, System.StringComparison.OrdinalIgnoreCase)))
+                string.Equals(btn.Character.Id.Entry, option, StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(SafeGetText(() => btn.Character.Title), option, StringComparison.OrdinalIgnoreCase)))
             {
                 if (btn.IsLocked)
                     return Error($"Character '{option}' is locked");
@@ -3222,12 +3223,12 @@ public static partial class McpMod
         if (entries.Count == 0)
             return null;
 
-        bool explicitlyAModifier = option.StartsWith(ModifierOptionPrefix, System.StringComparison.OrdinalIgnoreCase);
+        bool explicitlyAModifier = option.StartsWith(ModifierOptionPrefix, StringComparison.OrdinalIgnoreCase);
         var token = explicitlyAModifier ? option.Substring(ModifierOptionPrefix.Length) : option;
 
-        var matches = entries.Where(e => string.Equals(e.Key, token, System.StringComparison.OrdinalIgnoreCase)).ToList();
+        var matches = entries.Where(e => string.Equals(e.Key, token, StringComparison.OrdinalIgnoreCase)).ToList();
         if (matches.Count == 0)
-            matches = entries.Where(e => string.Equals(e.Id, token, System.StringComparison.OrdinalIgnoreCase)).ToList();
+            matches = entries.Where(e => string.Equals(e.Id, token, StringComparison.OrdinalIgnoreCase)).ToList();
 
         if (matches.Count == 0)
         {
@@ -3256,7 +3257,7 @@ public static partial class McpMod
 
         var message = $"Modifier '{title ?? target.Key}' {(wasTicked ? "disabled" : "enabled")}";
         var alsoUnticked = before
-            .Where(key => !after.Contains(key) && !string.Equals(key, target.Key, System.StringComparison.Ordinal))
+            .Where(key => !after.Contains(key) && !string.Equals(key, target.Key, StringComparison.Ordinal))
             .ToList();
         if (alsoUnticked.Count > 0)
             message += $". Mutually exclusive, so also disabled: {string.Join(", ", alsoUnticked)}";
@@ -3330,7 +3331,7 @@ public static partial class McpMod
         var queuedType = queuedScreen?.GetType().Name ?? "unlock";
         var queuedEpochIds = GetQueuedTimelineEpochIds(queuedScreen);
         var alreadyRevealed = queuedEpochIds
-            .Where(id => string.Equals(GetProgressEpochState(id), "Revealed", System.StringComparison.OrdinalIgnoreCase))
+            .Where(id => string.Equals(GetProgressEpochState(id), "Revealed", StringComparison.OrdinalIgnoreCase))
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
 
@@ -3354,7 +3355,7 @@ public static partial class McpMod
             };
         }
 
-        if (string.Equals(queuedType, "NUnlockTimelineScreen", System.StringComparison.Ordinal) &&
+        if (string.Equals(queuedType, "NUnlockTimelineScreen", StringComparison.Ordinal) &&
             IsTimelineScreenBusy(timelineScreen))
         {
             return new Dictionary<string, object?>(StringComparer.Ordinal)
@@ -3483,7 +3484,7 @@ public static partial class McpMod
         {
             var progress = MegaCrit.Sts2.Core.Saves.SaveManager.Instance?.Progress;
             return progress?.Epochs
-                .FirstOrDefault(epoch => string.Equals(epoch.Id, epochId, System.StringComparison.OrdinalIgnoreCase))
+                .FirstOrDefault(epoch => string.Equals(epoch.Id, epochId, StringComparison.OrdinalIgnoreCase))
                 ?.State
                 .ToString();
         }

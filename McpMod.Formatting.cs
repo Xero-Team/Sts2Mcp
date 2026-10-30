@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using System.Text;
 
@@ -47,7 +48,7 @@ public static partial class McpMod
         if (state.TryGetValue("warnings", out var warningsObj) && warningsObj is List<string> warnings && warnings.Count > 0)
         {
             var head = string.Join(" | ", warnings.GetRange(0, Math.Min(3, warnings.Count)));
-            sb.AppendLine($"> ⚠ **{warnings.Count} state warning(s)** — {head}");
+            sb.AppendLine(CultureInfo.InvariantCulture, $"> ⚠ **{warnings.Count} state warning(s)** — {head}");
             sb.AppendLine();
         }
 
@@ -283,7 +284,7 @@ public static partial class McpMod
         if (state.TryGetValue("ascension", out var ascObj) && ascObj is int ascensionLevel)
         {
             var max = state.GetValueOrDefault("max_ascension")?.ToString();
-            sb.AppendLine($"**Ascension:** {ascensionLevel}{(max != null ? $" / {max}" : "")}");
+            sb.AppendLine(CultureInfo.InvariantCulture, $"**Ascension:** {ascensionLevel}{(max != null ? $" / {max}" : "")}");
             sb.AppendLine();
         }
 
@@ -487,14 +488,14 @@ public static partial class McpMod
             {
                 int slots = player.TryGetValue("orb_slots", out var osVal) && osVal is int sv ? sv : orbs.Count;
                 int empty = player.TryGetValue("orb_empty_slots", out var esVal) && esVal is int ev ? ev : 0;
-                sb.AppendLine($"### Orbs ({orbs.Count}/{slots} slots)");
+                sb.AppendLine(CultureInfo.InvariantCulture, $"### Orbs ({orbs.Count}/{slots} slots)");
                 foreach (var orb in orbs)
                 {
                     string desc = orb.TryGetValue("description", out var d) && d != null ? $" - {d}" : "";
                     sb.AppendLine($"- **{orb["name"]}** (passive: {orb["passive_val"]}, evoke: {orb["evoke_val"]}){desc}");
                 }
                 if (empty > 0)
-                    sb.AppendLine($"- *{empty} empty slot(s)*");
+                    sb.AppendLine(CultureInfo.InvariantCulture, $"- *{empty} empty slot(s)*");
                 sb.AppendLine();
             }
 
@@ -1000,13 +1001,13 @@ public static partial class McpMod
                         ? "*" : "";
                     return $"({n["col"]},{row}) {n["type"]}{marked} -> {children}";
                 });
-            sb.AppendLine($"- row {row}: {string.Join(" | ", parts)}");
+            sb.AppendLine(CultureInfo.InvariantCulture, $"- row {row}: {string.Join(" | ", parts)}");
         }
         sb.AppendLine();
     }
 
     private static int ToInt(object? value)
-        => value is int i ? i : (value == null ? 0 : Convert.ToInt32(value));
+        => value is int i ? i : (value == null ? 0 : Convert.ToInt32(value, CultureInfo.InvariantCulture));
 
     private static void FormatMapBossMarkdown(StringBuilder sb, Dictionary<string, object?> map)
     {
@@ -1058,8 +1059,8 @@ public static partial class McpMod
                 if (nodeLookup.TryGetValue(key, out var node))
                 {
                     string type = node["type"]?.ToString() ?? "Unknown";
-                    int col = node["col"] is int c ? c : Convert.ToInt32(node["col"]);
-                    int row = node["row"] is int r ? r : Convert.ToInt32(node["row"]);
+                    int col = node["col"] is int c ? c : Convert.ToInt32(node["col"], CultureInfo.InvariantCulture);
+                    int row = node["row"] is int r ? r : Convert.ToInt32(node["row"], CultureInfo.InvariantCulture);
                     levelNodes.Add((type, col, row));
 
                     foreach (var childKey in GetChildKeys(node))
@@ -1179,7 +1180,7 @@ public static partial class McpMod
             else if (cardSelect.TryGetValue("min_select", out var minObj) && minObj is int min
                      && cardSelect.TryGetValue("max_select", out var maxObj) && maxObj is int max)
                 wanted = $" ({min}-{max} accepted)";
-            sb.AppendLine($"**Selected: {selCount}{wanted}**");
+            sb.AppendLine(CultureInfo.InvariantCulture, $"**Selected: {selCount}{wanted}**");
         }
         sb.AppendLine();
 
@@ -1370,7 +1371,7 @@ public static partial class McpMod
             || potions.Count == 0)
             return;
         int max = playerDict.TryGetValue("max_potion_slots", out var ms) && ms is int msi ? msi : potions.Count;
-        sb.AppendLine($"### Potions ({potions.Count}/{max})");
+        sb.AppendLine(CultureInfo.InvariantCulture, $"### Potions ({potions.Count}/{max})");
         foreach (var p in potions)
             sb.AppendLine($"- [{p["slot"]}] **{p["name"]}**: {p["description"]}");
         sb.AppendLine();

@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Runtime.CompilerServices;
@@ -1190,7 +1191,7 @@ internal static class CombatRecorder
         int act = pending?.Act ?? run.CurrentActIndex;
         int floor = pending?.Floor ?? run.ActFloor;
 
-        string runDir = Path.Combine(Root, startTime.ToString());
+        string runDir = Path.Combine(Root, startTime.ToString(CultureInfo.InvariantCulture));
         (int number, int attempt) = NextNumbers(runDir, act, floor);
         string name = $"{number:D3}-a{act}f{floor:D2}";
         _rec = new OpenRecord
@@ -1397,7 +1398,7 @@ internal static class CombatRecorder
                 foreach (var n in names)
                 {
                     int dash = n.IndexOf('-');
-                    if (dash > 0 && int.TryParse(n[..dash], out int k))
+                    if (dash > 0 && int.TryParse(n[..dash], CultureInfo.InvariantCulture, out int k))
                         max = Math.Max(max, k);
                     if (n.EndsWith(suffix, StringComparison.Ordinal))
                         same++;

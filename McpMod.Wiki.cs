@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using System.Net;
 using System.Text;
@@ -149,7 +150,7 @@ public static partial class McpMod
 
     private static int ParseWikiLimit(string? rawLimit, bool listing = false)
     {
-        if (!int.TryParse(rawLimit, out var limit))
+        if (!int.TryParse(rawLimit, CultureInfo.InvariantCulture, out var limit))
             return listing ? MaxWikiListLimit : DefaultWikiSearchLimit;
         return NormalizeWikiLimit(limit, listing);
     }

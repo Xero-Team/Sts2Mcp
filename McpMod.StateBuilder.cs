@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using System.Reflection;
 using System.Threading.Tasks;
@@ -695,7 +696,7 @@ public static partial class McpMod
             // map's IsTraveling is set and only the run-transition handle is.
             // It flips to a real battle in about a second, so clients only ever
             // have to wait.
-            result["state_type"] = loadingCombat.RoomType.ToString().ToLower();
+            result["state_type"] = loadingCombat.RoomType.ToString().ToLowerInvariant();
             result["combat_starting"] = true;
             result["message"] = "Combat is starting. Wait for the battle state; do not send actions yet.";
         }
@@ -719,7 +720,7 @@ public static partial class McpMod
                 }
                 else
                 {
-                    result["state_type"] = combatRoom.RoomType.ToString().ToLower(); // monster, elite, boss
+                    result["state_type"] = combatRoom.RoomType.ToString().ToLowerInvariant(); // monster, elite, boss
                     result["battle"] = BuildBattleState(runState, combatRoom);
                 }
             }
@@ -734,7 +735,7 @@ public static partial class McpMod
                 }
                 else
                 {
-                    result["state_type"] = combatRoom.RoomType.ToString().ToLower();
+                    result["state_type"] = combatRoom.RoomType.ToString().ToLowerInvariant();
                     result["message"] = "Combat ended. Waiting for rewards...";
                 }
             }
@@ -1678,7 +1679,7 @@ public static partial class McpMod
             IsReady = SafeGet(() => GetInstanceMemberValue(player, "isReady")) as bool? ?? false,
             SlotId = SafeGet(() => GetInstanceMemberValue(player, "slotId")) as int? ?? -1,
         };
-        try { seat.Id = Convert.ToUInt64(id); }
+        try { seat.Id = Convert.ToUInt64(id, CultureInfo.InvariantCulture); }
         catch { return null; }
         return seat;
     }
@@ -1942,7 +1943,7 @@ public static partial class McpMod
                 var ready = SafeGet(() => GetInstanceMemberValue(player, "isReady"));
                 if (id != null && ready is bool isReady)
                 {
-                    try { result[Convert.ToUInt64(id)] = isReady; }
+                    try { result[Convert.ToUInt64(id, CultureInfo.InvariantCulture)] = isReady; }
                     catch { }
                 }
             }
@@ -1964,7 +1965,7 @@ public static partial class McpMod
         {
             try
             {
-                var id = Convert.ToUInt64(rawId);
+                var id = Convert.ToUInt64(rawId, CultureInfo.InvariantCulture);
                 var ready = SafeGet(() => readyMethod?.Invoke(lobby, new object[] { id })) as bool? ?? false;
                 result[id] = ready;
             }
@@ -1992,7 +1993,7 @@ public static partial class McpMod
         battle["next_creature_id"] = NextCreatureId(combatState);
 
         battle["round"] = combatState.RoundNumber;
-        battle["turn"] = combatState.CurrentSide.ToString().ToLower();
+        battle["turn"] = combatState.CurrentSide.ToString().ToLowerInvariant();
         battle["is_play_phase"] = IsCombatPlayPhase();
         // Scripted combat moments disable player input while turn/is_play_phase still
         // look actionable; clients must wait on this instead of hammering errors.
@@ -2536,7 +2537,7 @@ public static partial class McpMod
                         ["base"] = pair.Value.BaseValue,
                         ["enchanted"] = pair.Value.EnchantedValue,
                         ["preview"] = pair.Value.PreviewValue,
-                        ["rendered"] = pair.Value.ToString()
+                        ["rendered"] = pair.Value.ToString(CultureInfo.InvariantCulture)
                     }, StringComparer.Ordinal),
                 ["runtime"] = BuildRelicRuntimeState(relic),
                 ["rarity"] = relic.Rarity.ToString(),
@@ -2798,7 +2799,7 @@ public static partial class McpMod
     }
 
     private static string GetCostDisplay(CardModel card)
-        => card.EnergyCost.CostsX ? "X" : card.EnergyCost.GetAmountToSpend().ToString();
+        => card.EnergyCost.CostsX ? "X" : card.EnergyCost.GetAmountToSpend().ToString(CultureInfo.InvariantCulture);
 
     // Cost display alone loses ordering, intrinsic upgrades, and independent
     // expiration flags. Reflection is required because this source list is private.
@@ -2853,7 +2854,7 @@ public static partial class McpMod
     private static string? GetStarCostDisplay(CardModel card)
     {
         if (card.HasStarCostX) return "X";
-        if (card.CurrentStarCost >= 0) return card.GetStarCostWithModifiers().ToString();
+        if (card.CurrentStarCost >= 0) return card.GetStarCostWithModifiers().ToString(CultureInfo.InvariantCulture);
         return null;
     }
 
@@ -2976,7 +2977,7 @@ public static partial class McpMod
         // Separate the card's own HP-loss variable from Corrupted's appended text.
         if (card.Enchantment is MegaCrit.Sts2.Core.Models.Enchantments.Corrupted)
             info["hp_loss_var"] = card.DynamicVars.ContainsKey("HpLoss")
-                ? card.DynamicVars.HpLoss.BaseValue.ToString(System.Globalization.CultureInfo.InvariantCulture)
+                ? card.DynamicVars.HpLoss.BaseValue.ToString(CultureInfo.InvariantCulture)
                 : null;
         if (card is MadScience madScience)
         {
@@ -3043,17 +3044,17 @@ public static partial class McpMod
         var multiplier = card.Enchantment?.EnchantDamageMultiplicative(damage + additive, props) ?? 1m;
         var state = new Dictionary<string, object?>(StringComparer.Ordinal)
         {
-            ["base"] = damage.ToString(System.Globalization.CultureInfo.InvariantCulture),
-            ["enchantment_additive"] = additive.ToString(System.Globalization.CultureInfo.InvariantCulture),
-            ["enchantment_multiplier"] = multiplier.ToString(System.Globalization.CultureInfo.InvariantCulture)
+            ["base"] = damage.ToString(CultureInfo.InvariantCulture),
+            ["enchantment_additive"] = additive.ToString(CultureInfo.InvariantCulture),
+            ["enchantment_multiplier"] = multiplier.ToString(CultureInfo.InvariantCulture)
         };
         if (extra.HasValue)
-            state["extra"] = extra.Value.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            state["extra"] = extra.Value.ToString(CultureInfo.InvariantCulture);
         if (card.Enchantment is MegaCrit.Sts2.Core.Models.Enchantments.Momentum momentum)
             state["after_play"] = new Dictionary<string, object?>(StringComparer.Ordinal)
             {
                 ["kind"] = "Momentum",
-                ["amount"] = momentum.Amount.ToString(System.Globalization.CultureInfo.InvariantCulture)
+                ["amount"] = momentum.Amount.ToString(CultureInfo.InvariantCulture)
             };
         else if (card.Enchantment is MegaCrit.Sts2.Core.Models.Enchantments.Vigorous vigorous
                  && vigorous.Status == MegaCrit.Sts2.Core.Entities.Enchantments.EnchantmentStatus.Normal)
@@ -6061,7 +6062,7 @@ public static partial class McpMod
         CardReward => "card",
         SpecialCardReward => "special_card",
         CardRemovalReward => "card_removal",
-        _ => reward.GetType().Name.ToLower()
+        _ => reward.GetType().Name.ToLowerInvariant()
     };
 
     private static List<Dictionary<string, object?>> BuildPowersState(Creature creature)
@@ -6095,7 +6096,7 @@ public static partial class McpMod
                         ["base"] = pair.Value.BaseValue,
                         ["enchanted"] = pair.Value.EnchantedValue,
                         ["preview"] = pair.Value.PreviewValue,
-                        ["rendered"] = pair.Value.ToString()
+                        ["rendered"] = pair.Value.ToString(CultureInfo.InvariantCulture)
                     }, StringComparer.Ordinal),
                 ["runtime"] = BuildPowerRuntimeState(power)
             };

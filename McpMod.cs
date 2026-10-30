@@ -2,6 +2,7 @@
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Globalization;
 using System.IO;
 using System.Net;
 using System.Reflection;
@@ -823,7 +824,7 @@ public static partial class McpMod
             return null;
         if (elem.ValueKind == JsonValueKind.Number && elem.TryGetInt32(out int number))
             return number;
-        if (elem.ValueKind == JsonValueKind.String && int.TryParse(elem.GetString(), out int parsedNumber))
+        if (elem.ValueKind == JsonValueKind.String && int.TryParse(elem.GetString(), CultureInfo.InvariantCulture, out int parsedNumber))
             return parsedNumber;
         return null;
     }
@@ -1124,7 +1125,7 @@ public static partial class McpMod
 
         int timeoutMs = Math.Clamp(
             ReadOptionalInt(parsed, "wait_timeout_ms")
-                ?? (int.TryParse(request.QueryString["wait_timeout_ms"], out int q) ? q : SettleDefaultTimeoutMs),
+                ?? (int.TryParse(request.QueryString["wait_timeout_ms"], CultureInfo.InvariantCulture, out int q) ? q : SettleDefaultTimeoutMs),
             SettleMinTimeoutMs, SettleMaxTimeoutMs);
         bool includeState = ReadFlagParam(parsed, request, "include_state", true);
 
