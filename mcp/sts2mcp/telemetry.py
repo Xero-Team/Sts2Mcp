@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import json
 import math
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Any, Iterable
-
+from typing import Any
 
 UNKNOWN = "unknown"
 
@@ -22,9 +22,7 @@ def ingest_runs(
     history = Path(history_path)
     ledger = Path(ledger_path)
     metadata = metadata or {}
-    existing_ids = {
-        record.get("run_id") for record in _read_records(ledger)
-    }
+    existing_ids = {record.get("run_id") for record in _read_records(ledger)}
 
     records = []
     for run_path in sorted(history.glob("*.run")):
@@ -78,9 +76,7 @@ def aggregate_metrics(
     return metrics
 
 
-def _normalize_run(
-    run: dict[str, Any], run_id: str, metadata: dict[str, Any]
-) -> dict[str, Any]:
+def _normalize_run(run: dict[str, Any], run_id: str, metadata: dict[str, Any]) -> dict[str, Any]:
     players = run.get("players") or []
     player = players[0] if players else {}
     abandoned = bool(run.get("was_abandoned"))
@@ -186,14 +182,8 @@ def _matches_filters(
         or (game_build is not None and record.get("build_id") != game_build)
         or (mod_version is not None and record.get("mod_version") != mod_version)
         or (ascension is not None and record.get("ascension") != ascension)
-        or (
-            start_time_min is not None
-            and record.get("start_time", 0) < start_time_min
-        )
-        or (
-            start_time_max is not None
-            and record.get("start_time", 0) > start_time_max
-        )
+        or (start_time_min is not None and record.get("start_time", 0) < start_time_min)
+        or (start_time_max is not None and record.get("start_time", 0) > start_time_max)
     )
 
 
@@ -224,34 +214,21 @@ def _summarize(records: list[dict[str, Any]]) -> dict[str, Any]:
                 card["skips"] += 1
         for card_id in set(record.get("final_deck") or []):
             card = cards.setdefault(card_id, _empty_card_metrics())
-            key = (
-                "final_deck_eligible_wins"
-                if record.get("win")
-                else "final_deck_eligible_losses"
-            )
+            key = "final_deck_eligible_wins" if record.get("win") else "final_deck_eligible_losses"
             card[key] += 1
 
     for card in cards.values():
         card["pick_rate"] = _rate(card["picks"], card["offers"])
-        presence_total = (
-            card["final_deck_eligible_wins"]
-            + card["final_deck_eligible_losses"]
-        )
-        card["presence_win_rate"] = _rate(
-            card["final_deck_eligible_wins"], presence_total
-        )
+        presence_total = card["final_deck_eligible_wins"] + card["final_deck_eligible_losses"]
+        card["presence_win_rate"] = _rate(card["final_deck_eligible_wins"], presence_total)
 
     return {
         "total_records": len(records),
         "eligible_runs": len(eligible),
         "wins": wins,
         "losses": losses,
-        "abandoned_runs": sum(
-            bool(record.get("was_abandoned")) for record in records
-        ),
-        "development_test_runs": sum(
-            bool(record.get("development_test")) for record in records
-        ),
+        "abandoned_runs": sum(bool(record.get("was_abandoned")) for record in records),
+        "development_test_runs": sum(bool(record.get("development_test")) for record in records),
         "win_rate": _rate(wins, len(eligible)),
         "cards": cards,
     }
@@ -285,10 +262,7 @@ def _wilson_95(successes: int, trials: int) -> dict[str, float] | None:
     center = (proportion + z * z / (2 * trials)) / denominator
     margin = (
         z
-        * math.sqrt(
-            proportion * (1 - proportion) / trials
-            + z * z / (4 * trials * trials)
-        )
+        * math.sqrt(proportion * (1 - proportion) / trials + z * z / (4 * trials * trials))
         / denominator
     )
     return {
@@ -297,13 +271,9 @@ def _wilson_95(successes: int, trials: int) -> dict[str, float] | None:
     }
 
 
-def _build_cohorts(
-    records: list[dict[str, Any]], field: str
-) -> dict[str, dict[str, Any]]:
+def _build_cohorts(records: list[dict[str, Any]], field: str) -> dict[str, dict[str, Any]]:
     values = {record.get(field) or UNKNOWN for record in records}
     return {
-        value: _summarize(
-            [record for record in records if (record.get(field) or UNKNOWN) == value]
-        )
+        value: _summarize([record for record in records if (record.get(field) or UNKNOWN) == value])
         for value in sorted(values)
     }

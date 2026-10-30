@@ -19,6 +19,7 @@ import re
 import sys
 import urllib.error
 import urllib.request
+from collections.abc import Iterator
 from pathlib import Path
 
 
@@ -54,6 +55,42 @@ HEALTH_ENDPOINTS: set[tuple[str, str]] = {("GET", "/")}
 def fail(message: str) -> None:
     print(f"FAIL: {message}", file=sys.stderr)
     raise SystemExit(1)
+
+
+# The MCP bridge is a Python package plus the ``mcp/server.py`` launcher. Text
+# checks read every source, and tool checks walk each module's top level.
+_MCP_SOURCE_GLOBS = ("*.py", "sts2mcp/**/*.py")
+
+
+def mcp_python_files(repo: Path) -> list[Path]:
+    """Return every Python source of the MCP bridge, launcher first."""
+    root = repo / "mcp"
+    files: list[Path] = []
+    for pattern in _MCP_SOURCE_GLOBS:
+        files.extend(sorted(root.glob(pattern)))
+    return files
+
+
+def read_mcp_sources(repo: Path) -> str:
+    """Concatenate the MCP sources for text-level fragment checks."""
+    return "\n".join(path.read_text(encoding="utf-8") for path in mcp_python_files(repo))
+
+
+def iter_mcp_tool_functions(repo: Path) -> Iterator[tuple[Path, ast.AsyncFunctionDef]]:
+    """Yield every top-level function decorated with ``@mcp.tool()``."""
+    for path in mcp_python_files(repo):
+        module = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        for node in module.body:
+            if not isinstance(node, ast.AsyncFunctionDef):
+                continue
+            decorated = any(
+                isinstance(decorator, ast.Call)
+                and isinstance(decorator.func, ast.Attribute)
+                and decorator.func.attr == "tool"
+                for decorator in node.decorator_list
+            )
+            if decorated:
+                yield path, node
 
 
 # Matches the start of the next route in the transport, in either dispatch
@@ -450,7 +487,7 @@ def audit_action_surface(repo: Path) -> None:
     transport = (repo / "McpMod.cs").read_text(encoding="utf-8")
     sp_actions |= extract_equality_values(transport, "action")
     mp_actions = extract_action_switches((repo / "McpMod.MultiplayerActions.cs").read_text(encoding="utf-8"), "ExecuteMultiplayerAction")
-    server = (repo / "mcp" / "server.py").read_text(encoding="utf-8")
+    server = read_mcp_sources(repo)
     docs = "\n".join(
         [
             (repo / "docs" / "raw-simplified.md").read_text(encoding="utf-8"),
@@ -492,7 +529,6 @@ def audit_action_surface(repo: Path) -> None:
     if missing_docs:
         fail(f"implemented actions missing docs: {missing_docs}")
 
-    module = ast.parse(server, filename=str(repo / "mcp" / "server.py"))
     route_helpers = {
         "_get",
         "_post",
@@ -508,18 +544,7 @@ def audit_action_surface(repo: Path) -> None:
         "_glossary_get",
         "_root_get",
     }
-    for node in module.body:
-        if not isinstance(node, ast.AsyncFunctionDef):
-            continue
-        is_tool = any(
-            isinstance(decorator, ast.Call)
-            and isinstance(decorator.func, ast.Attribute)
-            and decorator.func.attr == "tool"
-            for decorator in node.decorator_list
-        )
-        if not is_tool:
-            continue
-
+    for _path, node in iter_mcp_tool_functions(repo):
         calls = {
             call.func.id
             for call in ast.walk(node)
@@ -540,22 +565,10 @@ def audit_action_surface(repo: Path) -> None:
 
 
 def audit_mcp_tool_docs(repo: Path) -> None:
-    server_path = repo / "mcp" / "server.py"
-    server = server_path.read_text(encoding="utf-8")
+    server = read_mcp_sources(repo)
     readme = (repo / "mcp" / "README.md").read_text(encoding="utf-8")
-    module = ast.parse(server, filename=str(server_path))
 
-    tools: list[str] = []
-    for node in module.body:
-        if not isinstance(node, ast.AsyncFunctionDef):
-            continue
-        if any(
-            isinstance(decorator, ast.Call)
-            and isinstance(decorator.func, ast.Attribute)
-            and decorator.func.attr == "tool"
-            for decorator in node.decorator_list
-        ):
-            tools.append(node.name)
+    tools = [node.name for _path, node in iter_mcp_tool_functions(repo)]
 
     missing_readme = [
         tool for tool in tools
@@ -564,7 +577,7 @@ def audit_mcp_tool_docs(repo: Path) -> None:
     if missing_readme:
         fail(f"MCP tools missing mcp/README.md entries: {missing_readme}")
 
-    for doc_name, doc_text in [("mcp/server.py", server), ("mcp/README.md", readme)]:
+    for doc_name, doc_text in [("mcp sources", server), ("mcp/README.md", readme)]:
         normalized_doc_text = doc_text.replace("`", "")
         if "current_run.run_id" in normalized_doc_text and "current_run.save exposes" not in normalized_doc_text:
             fail(f"{doc_name} documents current_run.run_id without save-backed availability wording")
@@ -747,7 +760,7 @@ def audit_static_error_shapes(repo: Path) -> None:
     for required_fragment in ["unknown_multiplayer_action", "not_multiplayer_run", "run_not_in_progress", "local_player_unavailable", "blocking_popup_active"]:
         if required_fragment not in mcp_mod + multiplayer_actions:
             fail(f"multiplayer actions missing structured dispatch error handling: {required_fragment}")
-    mcp_server = (repo / "mcp" / "server.py").read_text(encoding="utf-8")
+    mcp_server = read_mcp_sources(repo)
     for required_fragment in ["_format_structured_http_error", "http_status", 'data.get("status") != "error"']:
         if required_fragment not in mcp_server:
             fail(f"MCP server must preserve structured non-2xx endpoint errors: {required_fragment}")
@@ -798,7 +811,7 @@ def audit_static_glossary_scope(repo: Path) -> None:
             (repo / "docs" / "raw-simplified.md").read_text(encoding="utf-8"),
             (repo / "docs" / "raw-full.md").read_text(encoding="utf-8"),
             (repo / "mcp" / "README.md").read_text(encoding="utf-8"),
-            (repo / "mcp" / "server.py").read_text(encoding="utf-8"),
+            read_mcp_sources(repo),
         ]
     )
     relic_match = re.search(
@@ -1054,7 +1067,7 @@ def audit_static_save_roots(repo: Path) -> None:
     profile = (repo / "McpMod.Profile.cs").read_text(encoding="utf-8")
     fork_endpoints = (repo / "McpMod.ForkEndpoints.cs").read_text(encoding="utf-8")
     helpers = (repo / "McpMod.Helpers.cs").read_text(encoding="utf-8")
-    mcp_server = (repo / "mcp" / "server.py").read_text(encoding="utf-8")
+    mcp_server = read_mcp_sources(repo)
     mcp_readme = (repo / "mcp" / "README.md").read_text(encoding="utf-8")
     raw_full = (repo / "docs" / "raw-full.md").read_text(encoding="utf-8")
 
@@ -1170,7 +1183,7 @@ def audit_static_save_roots(repo: Path) -> None:
         if required_fragment not in profile:
             fail(f"profiles POST missing structured HTTP error handling: {required_fragment}")
 
-    for doc_name, doc_text in [("mcp/server.py", mcp_server), ("mcp/README.md", mcp_readme)]:
+    for doc_name, doc_text in [("mcp sources", mcp_server), ("mcp/README.md", mcp_readme)]:
         for required_fragment in ["progress_path", "resolved_progress_path", "profile_root", "save_scope", "current_run"]:
             if required_fragment not in doc_text:
                 fail(f"{doc_name} missing profile/compendium context documentation: {required_fragment}")
@@ -1575,7 +1588,7 @@ def audit_state_surface(repo: Path) -> None:
         fail("could not locate ExecuteUsePotion for potion audit")
     for doc_name, doc_text in [
         ("docs", docs),
-        ("mcp/server.py", (repo / "mcp" / "server.py").read_text(encoding="utf-8")),
+        ("mcp sources", read_mcp_sources(repo)),
     ]:
         for required_fragment in ["combat_id as a string", "valid_targets"]:
             if required_fragment not in doc_text:

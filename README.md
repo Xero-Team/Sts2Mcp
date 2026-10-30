@@ -123,6 +123,14 @@ multiplayer menu retry behavior:
 uv run --project mcp python scripts/test_mcp_server.py
 ```
 
+To lint and format-check the bridge with [ruff](https://docs.astral.sh/ruff/)
+(configuration lives in `mcp/pyproject.toml`):
+
+```bash
+make lint-mcp    # ruff check + format --check
+make format-mcp  # apply fixes and formatting
+```
+
 ### 2. Give Your AI Instructions to Interact with the Game
 
 **Clone or download the repository**, then:

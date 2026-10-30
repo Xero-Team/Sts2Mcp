@@ -17,6 +17,7 @@ SHELL := /bin/sh
 
 DOTNET ?= dotnet
 UV ?= uv
+RUFF ?= $(UV) run --project mcp ruff
 PYTHON ?= python3
 CONFIGURATION ?= Release
 OUT_DIR ?= out/Sts2Mcp
@@ -37,7 +38,7 @@ export STS2_GAME_DIR := $(GAME_DIR)
 endif
 
 .PHONY: help config build debug test format format-check verify audit audit-live \
-        test-mcp mcp install record-selftest clean
+        test-mcp lint-mcp format-mcp verify-mcp mcp install record-selftest clean
 
 help: ## Show this help.
 	@printf 'Sts2Mcp targets\n\n'
@@ -84,6 +85,16 @@ audit-live: ## Full endpoint audit against a running game.
 
 test-mcp: ## Run the Python MCP bridge tests (needs uv).
 	$(UV) run --project mcp python scripts/test_mcp_server.py
+
+lint-mcp: ## Lint and format-check the Python MCP bridge with ruff (needs uv).
+	$(RUFF) check mcp
+	$(RUFF) format --check mcp
+
+format-mcp: ## Apply ruff fixes and formatting to the Python MCP bridge.
+	$(RUFF) check --fix mcp
+	$(RUFF) format mcp
+
+verify-mcp: lint-mcp test-mcp ## Local gate for the Python MCP bridge.
 
 mcp: ## Run the MCP server against a running game (needs uv).
 	$(UV) run --directory mcp python server.py

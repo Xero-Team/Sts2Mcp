@@ -32,7 +32,7 @@ class _FakeFastMCP:
         raise AssertionError("test import should not run the MCP server")
 
 
-def _load_server_module():
+def _load_bridge() -> types.SimpleNamespace:
     fake_mcp = types.ModuleType("mcp")
     fake_mcp_server = types.ModuleType("mcp.server")
     fake_fastmcp = types.ModuleType("mcp.server.fastmcp")
@@ -41,13 +41,26 @@ def _load_server_module():
     sys.modules.setdefault("mcp.server", fake_mcp_server)
     sys.modules["mcp.server.fastmcp"] = fake_fastmcp
 
-    server_path = Path(__file__).resolve().parents[1] / "mcp" / "server.py"
+    mcp_dir = Path(__file__).resolve().parents[1] / "mcp"
+    if str(mcp_dir) not in sys.path:
+        sys.path.insert(0, str(mcp_dir))
+
+    server_path = mcp_dir / "server.py"
     spec = importlib.util.spec_from_file_location("sts2_mcp_server_under_test", server_path)
     if spec is None or spec.loader is None:
         raise AssertionError(f"could not load {server_path}")
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
+    server = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(server)
+
+    from sts2mcp import client, errors
+    from sts2mcp.tools import profiles
+
+    return types.SimpleNamespace(
+        server=server,
+        client=client,
+        errors=errors,
+        profiles=profiles,
+    )
 
 
 def _json_response(status_code: int, payload: object) -> httpx.Response:
@@ -60,7 +73,7 @@ def _http_status_error(status_code: int, payload: object) -> httpx.HTTPStatusErr
     return httpx.HTTPStatusError("endpoint error", request=response.request, response=response)
 
 
-def test_structured_http_error_is_preserved(server) -> None:
+def test_structured_http_error_is_preserved(bridge: types.SimpleNamespace) -> None:
     error = _http_status_error(
         409,
         {
@@ -70,20 +83,22 @@ def test_structured_http_error_is_preserved(server) -> None:
         },
     )
 
-    rendered = server._handle_error(error)
+    rendered = bridge.errors._handle_error(error)
     payload = json.loads(rendered)
     assert payload["status"] == "error"
     assert payload["error_code"] == "run_not_in_progress"
     assert payload["http_status"] == 409
 
 
-def test_non_endpoint_http_error_stays_text(server) -> None:
+def test_non_endpoint_http_error_stays_text(bridge: types.SimpleNamespace) -> None:
     error = _http_status_error(502, {"status": "ok", "message": "bad gateway"})
-    rendered = server._handle_error(error)
+    rendered = bridge.errors._handle_error(error)
     assert rendered.startswith("Error: HTTP 502")
 
 
-async def test_read_tool_preserves_structured_endpoint_error(server) -> None:
+async def test_read_tool_preserves_structured_endpoint_error(
+    bridge: types.SimpleNamespace,
+) -> None:
     async def fake_glossary_get(kind: str) -> str:
         assert kind == "cards"
         raise _http_status_error(
@@ -96,8 +111,8 @@ async def test_read_tool_preserves_structured_endpoint_error(server) -> None:
             },
         )
 
-    server._glossary_get = fake_glossary_get
-    rendered = await server.get_glossary_cards()
+    bridge.profiles._glossary_get = fake_glossary_get
+    rendered = await bridge.profiles.get_glossary_cards()
     payload = json.loads(rendered)
     assert payload["status"] == "error"
     assert payload["error_code"] == "run_state_unavailable"
@@ -105,7 +120,9 @@ async def test_read_tool_preserves_structured_endpoint_error(server) -> None:
     assert payload["http_status"] == 503
 
 
-async def test_menu_select_retries_multiplayer_conflict(server) -> None:
+async def test_menu_select_retries_multiplayer_conflict(
+    bridge: types.SimpleNamespace,
+) -> None:
     calls: list[tuple[str, dict]] = []
 
     async def fake_post(body: dict) -> str:
@@ -123,9 +140,9 @@ async def test_menu_select_retries_multiplayer_conflict(server) -> None:
         calls.append(("multiplayer", body))
         return '{"status":"ok"}'
 
-    server._post = fake_post
-    server._mp_post = fake_mp_post
-    result = await server._menu_select_post({"action": "menu_select", "option": "continue"})
+    bridge.errors._post = fake_post
+    bridge.errors._mp_post = fake_mp_post
+    result = await bridge.errors._menu_select_post({"action": "menu_select", "option": "continue"})
 
     assert result == '{"status":"ok"}'
     assert calls == [
@@ -134,7 +151,9 @@ async def test_menu_select_retries_multiplayer_conflict(server) -> None:
     ]
 
 
-async def test_menu_select_does_not_retry_other_409(server) -> None:
+async def test_menu_select_does_not_retry_other_409(
+    bridge: types.SimpleNamespace,
+) -> None:
     calls: list[str] = []
 
     async def fake_post(body: dict) -> str:
@@ -152,10 +171,10 @@ async def test_menu_select_does_not_retry_other_409(server) -> None:
         calls.append("multiplayer")
         return '{"status":"ok"}'
 
-    server._post = fake_post
-    server._mp_post = fake_mp_post
+    bridge.errors._post = fake_post
+    bridge.errors._mp_post = fake_mp_post
     try:
-        await server._menu_select_post({"action": "menu_select", "option": "continue"})
+        await bridge.errors._menu_select_post({"action": "menu_select", "option": "continue"})
     except httpx.HTTPStatusError:
         pass
     else:
@@ -164,7 +183,9 @@ async def test_menu_select_does_not_retry_other_409(server) -> None:
     assert calls == ["singleplayer"]
 
 
-async def test_switch_profile_reposts_from_profile_screen_and_waits(server) -> None:
+async def test_switch_profile_reposts_from_profile_screen_and_waits(
+    bridge: types.SimpleNamespace,
+) -> None:
     calls: list[tuple[str, dict | None]] = []
 
     async def fake_sleep(_seconds: float) -> None:
@@ -191,13 +212,13 @@ async def test_switch_profile_reposts_from_profile_screen_and_waits(server) -> N
         )
 
     original_sleep = asyncio.sleep
-    server.asyncio.sleep = fake_sleep
-    server._profiles_post = fake_profiles_post
-    server._get = fake_get
-    server._profiles_get = fake_profiles_get
+    asyncio.sleep = fake_sleep
+    bridge.profiles._profiles_post = fake_profiles_post
+    bridge.profiles._get = fake_get
+    bridge.client._profiles_get = fake_profiles_get
 
     try:
-        rendered = await server.switch_profile(2)
+        rendered = await bridge.profiles.switch_profile(2)
         payload = json.loads(rendered)
 
         assert payload["status"] == "ok"
@@ -209,10 +230,12 @@ async def test_switch_profile_reposts_from_profile_screen_and_waits(server) -> N
             ("profiles_get", None),
         ]
     finally:
-        server.asyncio.sleep = original_sleep
+        asyncio.sleep = original_sleep
 
 
-async def test_wait_for_profile_timeout_keeps_initial_response(server) -> None:
+async def test_wait_for_profile_timeout_keeps_initial_response(
+    bridge: types.SimpleNamespace,
+) -> None:
     async def fake_sleep(_seconds: float) -> None:
         return None
 
@@ -226,11 +249,13 @@ async def test_wait_for_profile_timeout_keeps_initial_response(server) -> None:
         )
 
     original_sleep = asyncio.sleep
-    server.asyncio.sleep = fake_sleep
-    server._profiles_get = fake_profiles_get
+    asyncio.sleep = fake_sleep
+    bridge.client._profiles_get = fake_profiles_get
 
     try:
-        rendered = await server._wait_for_profile(3, '{"status":"ok","message":"Switch requested"}')
+        rendered = await bridge.client._wait_for_profile(
+            3, '{"status":"ok","message":"Switch requested"}'
+        )
         payload = json.loads(rendered)
 
         assert payload["status"] == "error"
@@ -238,10 +263,12 @@ async def test_wait_for_profile_timeout_keeps_initial_response(server) -> None:
         assert payload["profiles"] == [{"profile_id": 1, "is_current": True}]
         assert payload["initial_response"] == '{"status":"ok","message":"Switch requested"}'
     finally:
-        server.asyncio.sleep = original_sleep
+        asyncio.sleep = original_sleep
 
 
-async def test_delete_profile_preserves_structured_endpoint_error(server) -> None:
+async def test_delete_profile_preserves_structured_endpoint_error(
+    bridge: types.SimpleNamespace,
+) -> None:
     async def fake_profiles_post(body: dict) -> str:
         assert body == {"action": "delete", "profile_id": 1}
         raise _http_status_error(
@@ -253,8 +280,8 @@ async def test_delete_profile_preserves_structured_endpoint_error(server) -> Non
             },
         )
 
-    server._profiles_post = fake_profiles_post
-    rendered = await server.delete_profile(1)
+    bridge.profiles._profiles_post = fake_profiles_post
+    rendered = await bridge.profiles.delete_profile(1)
     payload = json.loads(rendered)
 
     assert payload["status"] == "error"
@@ -263,15 +290,15 @@ async def test_delete_profile_preserves_structured_endpoint_error(server) -> Non
 
 
 def main() -> None:
-    server = _load_server_module()
-    test_structured_http_error_is_preserved(server)
-    test_non_endpoint_http_error_stays_text(server)
-    asyncio.run(test_read_tool_preserves_structured_endpoint_error(server))
-    asyncio.run(test_menu_select_retries_multiplayer_conflict(server))
-    asyncio.run(test_menu_select_does_not_retry_other_409(server))
-    asyncio.run(test_switch_profile_reposts_from_profile_screen_and_waits(server))
-    asyncio.run(test_wait_for_profile_timeout_keeps_initial_response(server))
-    asyncio.run(test_delete_profile_preserves_structured_endpoint_error(server))
+    bridge = _load_bridge()
+    test_structured_http_error_is_preserved(bridge)
+    test_non_endpoint_http_error_stays_text(bridge)
+    asyncio.run(test_read_tool_preserves_structured_endpoint_error(bridge))
+    asyncio.run(test_menu_select_retries_multiplayer_conflict(bridge))
+    asyncio.run(test_menu_select_does_not_retry_other_409(bridge))
+    asyncio.run(test_switch_profile_reposts_from_profile_screen_and_waits(bridge))
+    asyncio.run(test_wait_for_profile_timeout_keeps_initial_response(bridge))
+    asyncio.run(test_delete_profile_preserves_structured_endpoint_error(bridge))
     print("mcp server tests passed")
 
 

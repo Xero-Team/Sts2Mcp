@@ -30,7 +30,8 @@ Run through this checklist for any non-trivial change:
 - [ ] **Clean build.** `make verify` (build + format check + headless tests) or `./build.ps1 -GameDir "<your game path>"` returns zero warnings, zero errors. Configure the game path once via `STS2_GAME_DIR` or `build.local.props` — see [README](README.md#build--install).
 - [ ] **Manual in-game smoke test.** Launch the game with the mod installed and exercise the affected feature path. Most of this codebase can't be unit-tested — your manual check is the test.
 - [ ] **Tested against the latest stable game version.** The version we currently target is listed in the README's "Tested against" line. If a new game patch broke something, that's a separate issue worth filing.
-- [ ] **Docs updated.** If you added or changed an API field/action, update `docs/raw-full.md` and `docs/raw-simplified.md` in the same PR. The MCP server docstrings (`mcp/server.py`) often need a touch too.
+- [ ] **Docs updated.** If you added or changed an API field/action, update `docs/raw-full.md` and `docs/raw-simplified.md` in the same PR. The MCP tool docstrings (`mcp/sts2mcp/tools/`) often need a touch too.
+- [ ] **Python checks.** `make verify-mcp` (ruff check + format check + bridge tests) passes for changes under `mcp/`.
 
 ## Workflow
 
@@ -40,9 +41,20 @@ Run through this checklist for any non-trivial change:
 4. **Squash on merge.** Default merge strategy is squash. Your branch's commits don't need to be polished — your PR title and description do.
 5. **Commit messages.** Write them for humans. A clear sentence about what changed and why beats a `type(scope):` prefix every time. No required convention — just make it readable.
 
-## The Python MCP server (`mcp/server.py`)
+## The Python MCP server (`mcp/`)
 
 In scope for contributions. **Architectural rule: the Python layer is a thin pass-through to the C# HTTP API. No game logic lives in Python.**
+
+The executable entry point is `mcp/server.py`; the implementation is the
+`mcp/sts2mcp/` package:
+
+| Module | Contents |
+|---|---|
+| `sts2mcp/app.py` | the shared FastMCP instance |
+| `sts2mcp/client.py` | the localhost HTTP transport and route helpers |
+| `sts2mcp/errors.py` | structured endpoint-error rendering |
+| `sts2mcp/tools/` | one module per screen or action family; each `@mcp.tool()` registers itself |
+| `sts2mcp/telemetry.py` | playtest-ledger aggregation used by `get_playtest_metrics` |
 
 Concretely, that means:
 

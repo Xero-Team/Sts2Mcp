@@ -1,5 +1,34 @@
 # MCP Tools
 
+## Layout
+
+`server.py` at this directory's root is the executable entry point. The
+implementation is the `sts2mcp` package:
+
+| Module | Contents |
+|---|---|
+| `sts2mcp/app.py` | shared FastMCP instance |
+| `sts2mcp/client.py` | HTTP transport for `localhost:15526` and its route helpers |
+| `sts2mcp/errors.py` | structured endpoint-error rendering |
+| `sts2mcp/tools/general.py` | startup, menu, potion, and run-wide actions |
+| `sts2mcp/tools/profiles.py` | profile, compendium, wiki, glossary, settings, telemetry |
+| `sts2mcp/tools/combat.py` | combat and in-combat card selection |
+| `sts2mcp/tools/rewards.py` | post-combat rewards and card rewards |
+| `sts2mcp/tools/map.py` | map travel and map drawings |
+| `sts2mcp/tools/rooms.py` | rest site, shop, and event screens |
+| `sts2mcp/tools/selection.py` | card, bundle, relic, treasure, Crystal Sphere |
+| `sts2mcp/tools/debug.py` | session recorder and debug sandbox |
+| `sts2mcp/tools/multiplayer.py` | every `mp_*` tool |
+| `sts2mcp/telemetry.py` | playtest-ledger aggregation |
+
+Add a tool to the module that matches its screen; `sts2mcp/tools/__init__.py`
+imports every module, so a decorated function is registered automatically.
+
+Lint and format the bridge with ruff (`make lint-mcp`, `make format-mcp`, or
+`uv run --project mcp ruff check mcp`). The configuration lives in
+`pyproject.toml`; `make verify-mcp` runs the lint, format check, and bridge
+tests together.
+
 ## Singleplayer
 
 | Tool | Scope | Description |

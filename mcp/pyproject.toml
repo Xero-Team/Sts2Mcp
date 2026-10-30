@@ -10,3 +10,38 @@ dependencies = [
 
 [project.scripts]
 sts2-mcp = "server:main"
+
+[dependency-groups]
+dev = [
+    "ruff>=0.9",
+]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+src = ["."]
+extend-exclude = [".venv"]
+
+[tool.ruff.lint]
+select = [
+    "E4",  # pycodestyle: imports
+    "E7",  # pycodestyle: statements
+    "E9",  # pycodestyle: runtime errors
+    "F",   # pyflakes
+    "I",   # isort
+    "UP",  # pyupgrade
+    "B",   # bugbear
+    "SIM", # simplify
+    "C4",  # comprehensions
+    "RUF", # Ruff-specific rules
+]
+# The tool docstrings are prose and intentionally contain typographic punctuation
+# (em dashes, multiplication signs) and long unwrapped lines.
+ignore = [
+    "RUF001",
+    "RUF002",
+    "RUF003",
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["sts2mcp"]
