@@ -42,8 +42,7 @@ public static partial class McpMod
     {
         try
         {
-            var dataTask = RunOnMainThread(BuildPotionPools);
-            SendJson(response, dataTask.GetAwaiter().GetResult());
+            SendJson(response, RunOnMainThreadBlocking(BuildPotionPools));
         }
         catch (Exception ex)
         {

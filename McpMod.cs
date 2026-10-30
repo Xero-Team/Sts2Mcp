@@ -324,6 +324,8 @@ public static partial class McpMod
     /// The queue is already backed up, or the main thread did not answer in time. In both cases
     /// the work was NOT performed, so the caller may retry.
     /// </exception>
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("Reliability", "VSTHRD002:Avoid problematic synchronous waits",
+        Justification = "This is the one place that blocks: HTTP worker threads wait for the Godot main thread to pump the queued work, with a timeout and a queue-limit guard. Awaiting instead would leave the worker with no continuation point the game thread controls.")]
     internal static T RunOnMainThreadBlocking<T>(Func<T> func, int timeoutMs = MainThreadTimeoutMs)
     {
         int pending = _mainThreadQueue.Count;

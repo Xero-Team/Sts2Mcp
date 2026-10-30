@@ -24,8 +24,7 @@ public static partial class McpMod
     {
         try
         {
-            var dataTask = RunOnMainThread(BuildSettings);
-            SendReadResultJson(response, dataTask.GetAwaiter().GetResult());
+            SendReadResultJson(response, RunOnMainThreadBlocking(BuildSettings));
         }
         catch (Exception ex)
         {
@@ -88,8 +87,7 @@ public static partial class McpMod
     {
         try
         {
-            var dataTask = RunOnMainThread(BuildBestiary);
-            SendJson(response, dataTask.GetAwaiter().GetResult());
+            SendJson(response, RunOnMainThreadBlocking(BuildBestiary));
         }
         catch (Exception ex)
         {
@@ -101,8 +99,7 @@ public static partial class McpMod
     {
         try
         {
-            var dataTask = RunOnMainThread(() => BuildGlossaryPayload("cards", BuildGlossaryCards));
-            SendGlossaryJson(response, dataTask.GetAwaiter().GetResult());
+            SendGlossaryJson(response, RunOnMainThreadBlocking(() => BuildGlossaryPayload("cards", BuildGlossaryCards)));
         }
         catch (Exception ex)
         {
@@ -114,8 +111,7 @@ public static partial class McpMod
     {
         try
         {
-            var dataTask = RunOnMainThread(() => BuildGlossaryPayload("keywords", BuildGlossaryKeywords));
-            SendGlossaryJson(response, dataTask.GetAwaiter().GetResult());
+            SendGlossaryJson(response, RunOnMainThreadBlocking(() => BuildGlossaryPayload("keywords", BuildGlossaryKeywords)));
         }
         catch (Exception ex)
         {
@@ -127,8 +123,7 @@ public static partial class McpMod
     {
         try
         {
-            var dataTask = RunOnMainThread(() => BuildGlossaryPayload("potions", BuildGlossaryPotions));
-            SendGlossaryJson(response, dataTask.GetAwaiter().GetResult());
+            SendGlossaryJson(response, RunOnMainThreadBlocking(() => BuildGlossaryPayload("potions", BuildGlossaryPotions)));
         }
         catch (Exception ex)
         {
@@ -140,8 +135,7 @@ public static partial class McpMod
     {
         try
         {
-            var dataTask = RunOnMainThread(() => BuildGlossaryPayload("relics", BuildGlossaryRelics));
-            SendGlossaryJson(response, dataTask.GetAwaiter().GetResult());
+            SendGlossaryJson(response, RunOnMainThreadBlocking(() => BuildGlossaryPayload("relics", BuildGlossaryRelics)));
         }
         catch (Exception ex)
         {

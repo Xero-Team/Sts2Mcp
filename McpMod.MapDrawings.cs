@@ -25,8 +25,7 @@ public static partial class McpMod
     {
         try
         {
-            var dataTask = RunOnMainThread(BuildMapDrawingsState);
-            SendJson(response, dataTask.GetAwaiter().GetResult());
+            SendJson(response, RunOnMainThreadBlocking(BuildMapDrawingsState));
         }
         catch (Exception ex)
         {

@@ -398,8 +398,7 @@ public static partial class McpMod
     {
         try
         {
-            var dataTask = RunOnMainThread(BuildRelicBags);
-            SendJson(response, dataTask.GetAwaiter().GetResult());
+            SendJson(response, RunOnMainThreadBlocking(BuildRelicBags));
         }
         catch (Exception ex)
         {
