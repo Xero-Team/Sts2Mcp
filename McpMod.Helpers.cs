@@ -386,11 +386,20 @@ public static partial class McpMod
 
     internal static void SendJson(HttpListenerResponse response, object data, bool pretty = false)
     {
-        string json = JsonSerializer.Serialize(data, pretty ? ContractJson.PrettyOptions : ContractJson.Options);
-        byte[] buffer = Encoding.UTF8.GetBytes(json);
+        JsonSerializerOptions options = pretty ? ContractJson.PrettyOptions : ContractJson.Options;
+        using var buffer = new PooledJsonBuffer();
+        using (var writer = new Utf8JsonWriter(buffer, new JsonWriterOptions
+        {
+            Indented = options.WriteIndented,
+            Encoder = options.Encoder
+        }))
+        {
+            StateJsonWriter.Write(writer, data, options);
+        }
+
         response.ContentType = "application/json; charset=utf-8";
-        response.ContentLength64 = buffer.Length;
-        response.OutputStream.Write(buffer, 0, buffer.Length);
+        response.ContentLength64 = buffer.WrittenCount;
+        response.OutputStream.Write(buffer.WrittenSpan);
         response.Close();
     }
 

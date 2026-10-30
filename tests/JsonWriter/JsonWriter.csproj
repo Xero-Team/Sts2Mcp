@@ -1,0 +1,31 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Byte-for-byte check of the mod's JSON writer against System.Text.Json.
+
+    ../../StateJsonWriter.cs replaces JsonSerializer's reflection path for the untyped
+    response trees, and the only thing that makes the swap safe is that it emits exactly
+    the same bytes. This harness serializes the same values both ways over the shapes the
+    state builders actually produce (nested dictionaries, lists of dictionaries, nulls,
+    unicode, every numeric width) and exits non-zero on the first difference.
+
+    Run with: dotnet run (project tests/JsonWriter). Needs no game DLLs.
+  -->
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net9.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>JsonWriterTests</AssemblyName>
+    <RootNamespace>Sts2Mcp.Tests</RootNamespace>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="..\..\StateJsonWriter.cs" />
+    <Compile Include="..\..\PooledJsonBuffer.cs" />
+    <Compile Include="Program.cs" />
+  </ItemGroup>
+
+</Project>
