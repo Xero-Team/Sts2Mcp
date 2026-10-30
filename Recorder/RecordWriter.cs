@@ -29,7 +29,7 @@ internal sealed class RecordWriter
     private sealed record Close(string Path) : Item;
     private sealed record Barrier(ManualResetEventSlim Done) : Item;
 
-    private static readonly JsonSerializerOptions LineOptions = new()
+    private static readonly JsonSerializerOptions s_lineOptions = new()
     {
         WriteIndented = false,
         Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
@@ -112,7 +112,7 @@ internal sealed class RecordWriter
     {
         _prevHash.TryGetValue(line.Path, out string? prev);
         line.Json["prev"] = prev;
-        byte[] bytes = Encoding.UTF8.GetBytes(line.Json.ToJsonString(LineOptions));
+        byte[] bytes = Encoding.UTF8.GetBytes(line.Json.ToJsonString(s_lineOptions));
         _prevHash[line.Path] = Convert.ToHexString(SHA256.HashData(bytes)).ToLowerInvariant();
 
         if (!_open.TryGetValue(line.Path, out FileStream? fs))

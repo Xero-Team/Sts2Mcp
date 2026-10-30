@@ -78,8 +78,8 @@ internal static class CombatRecorder
 
     private static long s_apiSeq;
     /// <summary>The request whose handler is running on the main thread right now (0 = none).</summary>
-    [ThreadStatic] private static long _handlerRequest;
-    [ThreadStatic] private static Type? _expectType;
+    [ThreadStatic] private static long t_handlerRequest;
+    [ThreadStatic] private static Type? t_expectType;
     /// <summary>The request between receipt and response (HTTP thread). A time window, not a cause.</summary>
     private static long s_windowRequest;
     private static readonly ConditionalWeakTable<GameAction, StrongBox<long>> s_apiActions = new();
@@ -409,10 +409,10 @@ internal static class CombatRecorder
     /// <summary>Wraps a handler that runs on the main thread, so the action it enqueues carries the request.</summary>
     internal static Func<T> InHandler<T>(long id, Func<T> body) => () =>
     {
-        long outer = _handlerRequest;
-        _handlerRequest = id;
+        long outer = t_handlerRequest;
+        t_handlerRequest = id;
         try { return body(); }
-        finally { _handlerRequest = outer; }
+        finally { t_handlerRequest = outer; }
     };
 
     /// <summary>
@@ -428,9 +428,9 @@ internal static class CombatRecorder
     {
         // Tracking layer: tagged whether or not a record is open (a record opened before the game
         // enqueues a held-back action still names the request).
-        if (Installed && _handlerRequest != 0)
+        if (Installed && t_handlerRequest != 0)
         {
-            long request = _handlerRequest;
+            long request = t_handlerRequest;
             Guard("tag_api_action", () => s_apiActions.AddOrUpdate(action, new StrongBox<long>(request)));
         }
         return action;
@@ -443,9 +443,9 @@ internal static class CombatRecorder
     /// </summary>
     internal static IDisposable ExpectApiAction(Type type)
     {
-        Type? outer = _expectType;
-        _expectType = type;
-        return new Scope(() => _expectType = outer);
+        Type? outer = t_expectType;
+        t_expectType = type;
+        return new Scope(() => t_expectType = outer);
     }
 
     private sealed class Scope(Action onDispose) : IDisposable
@@ -459,10 +459,10 @@ internal static class CombatRecorder
         Guard("request_enqueue", () =>
         {
             s_seenRequests.AddOrUpdate(action, true);
-            if (_handlerRequest == 0 || _expectType == null || action.GetType() != _expectType)
+            if (t_handlerRequest == 0 || t_expectType == null || action.GetType() != t_expectType)
                 return;
-            _expectType = null;
-            s_apiActions.AddOrUpdate(action, new StrongBox<long>(_handlerRequest));
+            t_expectType = null;
+            s_apiActions.AddOrUpdate(action, new StrongBox<long>(t_handlerRequest));
         });
     }
 
@@ -1782,14 +1782,14 @@ internal static class CombatRecorder
     // Small readers
     // ========================================================================================
 
-    private static readonly PacketWriter PacketWriterInstance = new() { WarnOnGrow = false };
+    private static readonly PacketWriter s_packetWriterInstance = new() { WarnOnGrow = false };
 
     /// <summary>The game's own serializer (a writer of our own), into a fresh array.</summary>
     private static byte[] Packet<T>(T value) where T : IPacketSerializable
     {
-        lock (PacketWriterInstance)
+        lock (s_packetWriterInstance)
         {
-            PacketWriter w = PacketWriterInstance;
+            PacketWriter w = s_packetWriterInstance;
             w.Reset();
             w.Write(value);
             w.ZeroByteRemainder();

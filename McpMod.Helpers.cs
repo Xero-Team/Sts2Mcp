@@ -690,7 +690,7 @@ public static partial class McpMod
     /// </summary>
     internal static readonly TimeSpan s_regexTimeout = TimeSpan.FromMilliseconds(250);
 
-    private static readonly string[] CardSelectPreviewContainerNames =
+    private static readonly string[] s_cardSelectPreviewContainerNames =
     {
         "%UpgradeSinglePreviewContainer",
         "%UpgradeMultiPreviewContainer",
@@ -703,7 +703,7 @@ public static partial class McpMod
     /// still in its card-picking step.</summary>
     internal static Control? FindVisibleCardSelectPreview(NCardGridSelectionScreen screen)
     {
-        foreach (string name in CardSelectPreviewContainerNames)
+        foreach (string name in s_cardSelectPreviewContainerNames)
         {
             Control? container = TryReadQuiet(() => screen.GetNodeOrNull<Control>(name));
             if (container?.Visible == true)
@@ -716,7 +716,7 @@ public static partial class McpMod
     internal static List<Control> FindCardSelectPreviewContainers(NCardGridSelectionScreen screen)
     {
         var found = new List<Control>();
-        foreach (string name in CardSelectPreviewContainerNames)
+        foreach (string name in s_cardSelectPreviewContainerNames)
         {
             TryDo(() =>
             {

@@ -14,7 +14,7 @@ namespace Sts2Mcp;
 public static partial class McpMod
 {
     // 実際にロードした本体の版。固定の出典ラベルで別版を信頼させない。
-    private static readonly Lazy<string> GenerationAssemblySha256 = new(() =>
+    private static readonly Lazy<string> s_generationAssemblySha256 = new(() =>
     {
         using FileStream stream = File.OpenRead(typeof(CardModel).Assembly.Location);
         return Convert.ToHexString(SHA256.HashData(stream)).ToLowerInvariant();
@@ -36,7 +36,7 @@ public static partial class McpMod
             result["player_id"] = player.NetId.ToString();
             result["players"] = run.Players.Count;
             result["multiplayer_constraint"] = run.CardMultiplayerConstraint.ToString();
-            result["game_assembly_sha256"] = GenerationAssemblySha256.Value;
+            result["game_assembly_sha256"] = s_generationAssemblySha256.Value;
             if (run.Players.Count < 1 || !run.Players.Contains(player))
                 throw new InvalidOperationException("\u5BFE\u8C61player\u304Crun.Players\u306B\u5B58\u5728\u3057\u306A\u3044");
 

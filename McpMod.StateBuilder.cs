@@ -1055,7 +1055,7 @@ public static partial class McpMod
     /// them, not working - reporting "still resolving" here deadlocks any caller that
     /// waits for it to clear, because only the caller can clear it.
     /// </summary>
-    private static readonly HashSet<string> _playerInputStates = new(StringComparer.Ordinal)
+    private static readonly HashSet<string> s_playerInputStates = new(StringComparer.Ordinal)
     {
         "card_select", "hand_select", "bundle_select", "relic_select", "card_reward",
         "rewards", "event", "rest_site", "shop", "fake_merchant", "treasure",
@@ -1096,7 +1096,7 @@ public static partial class McpMod
         // A screen that is waiting for the player is not "resolving", whatever the
         // queue says: the action sitting in the queue is the one paused on this very
         // screen, and it cannot progress until the caller answers it.
-        if (stateType != null && _playerInputStates.Contains(stateType))
+        if (stateType != null && s_playerInputStates.Contains(stateType))
             reasons.Clear();
 
         // A submitted reward choice is resolving until the public completion signal or the
@@ -3397,16 +3397,16 @@ public static partial class McpMod
     /// whole hand). Cards that create upgraded copies (Begone, Primal Force...) are not
     /// here: the copies arrive already upgraded and read correctly without a preview.
     /// </summary>
-    private static readonly HashSet<string> HandUpgradeCardIds = new(StringComparer.Ordinal) { "ARMAMENTS", "APOTHEOSIS" };
-    private static readonly HashSet<string> HandUpgradePotionIds = new(StringComparer.Ordinal) { "BLESSING_OF_THE_FORGE" };
+    private static readonly HashSet<string> s_handUpgradeCardIds = new(StringComparer.Ordinal) { "ARMAMENTS", "APOTHEOSIS" };
+    private static readonly HashSet<string> s_handUpgradePotionIds = new(StringComparer.Ordinal) { "BLESSING_OF_THE_FORGE" };
 
     private static bool CanUpgradeHandThisTurn(Player player, IEnumerable<CardModel> hand)
     {
         return TryRead<bool?>("hand.upgrade_preview", () =>
         {
-            if (player.PotionSlots.Any(potion => potion != null && HandUpgradePotionIds.Contains(potion.Id.Entry)))
+            if (player.PotionSlots.Any(potion => potion != null && s_handUpgradePotionIds.Contains(potion.Id.Entry)))
                 return true;
-            return hand.Any(card => HandUpgradeCardIds.Contains(card.Id.Entry));
+            return hand.Any(card => s_handUpgradeCardIds.Contains(card.Id.Entry));
         }) ?? false;
     }
 
@@ -3510,7 +3510,7 @@ public static partial class McpMod
     /// Slippery takes the enemy down by 1, and reporting 18 sends the caller into a
     /// fight it cannot win. Keyed by power type because that survives an id rename.
     /// </summary>
-    private static readonly Dictionary<string, string> _perHitDamageCaps = new(StringComparer.Ordinal)
+    private static readonly Dictionary<string, string> s_perHitDamageCaps = new(StringComparer.Ordinal)
     {
         ["SlipperyPower"] = "next hit reduced to 1",
         ["IntangiblePower"] = "all damage reduced to 1",
@@ -3531,7 +3531,7 @@ public static partial class McpMod
             {
                 string typeName = power.GetType().Name;
 
-                if (_perHitDamageCaps.TryGetValue(typeName, out string? note))
+                if (s_perHitDamageCaps.TryGetValue(typeName, out string? note))
                 {
                     int perHit = string.Equals(typeName, "HardToKillPower", StringComparison.Ordinal) ? System.Math.Max(power.Amount, 0) : 1;
                     int capped = System.Math.Min(damage, perHit);
