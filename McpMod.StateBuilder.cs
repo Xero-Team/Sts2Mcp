@@ -286,60 +286,8 @@ public static partial class McpMod
                             };
 
                                 // Read epochs from ProgressState (stable, not hover-dependent)
-                                try
-                                {
-                                    var progress = SaveManager.Instance?.Progress;
-                                    if (progress != null)
-                                    {
-                                        var epochList = new List<Dictionary<string, object?>>();
-                                        var revealedCount = 0;
-                                        var obtainedCount = 0;
-                                        var lockedCount = 0;
-                                        var noSlotCount = 0;
-                                        foreach (var epoch in progress.Epochs)
-                                        {
-                                            var eraName = epoch.Id;
-                                            var state = epoch.State.ToString();
-                                            // Clean up ID to readable name
-                                            var name = System.Text.RegularExpressions.Regex.Replace(eraName, @"(\d+)$", "", System.Text.RegularExpressions.RegexOptions.None, RegexTimeout);
-                                            name = System.Text.RegularExpressions.Regex.Replace(name, @"(?<=[a-z])(?=[A-Z])", " ", System.Text.RegularExpressions.RegexOptions.None, RegexTimeout);
-
-                                            switch (epoch.State)
-                                            {
-                                                case EpochState.Revealed:
-                                                    revealedCount++;
-                                                    break;
-                                                case EpochState.Obtained:
-                                                case EpochState.ObtainedNoSlot:
-                                                    obtainedCount++;
-                                                    break;
-                                                case EpochState.NotObtained:
-                                                    lockedCount++;
-                                                    break;
-                                                case EpochState.NoSlot:
-                                                    noSlotCount++;
-                                                    break;
-                                            }
-
-                                            epochList.Add(new Dictionary<string, object?>(StringComparer.Ordinal)
-                                            {
-                                                ["id"] = eraName,
-                                                ["name"] = name,
-                                                ["state"] = state,
-                                                ["obtained"] = epoch.ObtainDate
-                                            });
-                                        }
-
-                                        result["epochs"] = epochList;
-                                        result["total_slots"] = epochList.Count;
-                                        result["completed_count"] = revealedCount;
-                                        result["revealed_count"] = revealedCount;
-                                        result["obtained_unrevealed_count"] = obtainedCount;
-                                        result["locked_count"] = lockedCount;
-                                        result["no_slot_count"] = noSlotCount;
-                                    }
-                                }
-                                catch (Exception ex) { Warn("menu.timeline.epochs", ex); }
+                                foreach (var entry in BuildTimelineEpochState())
+                                    result[entry.Key] = entry.Value;
                             }
                             else if (compendiumSubmenu != null && IsNodeVisible(compendiumSubmenu))
                             {
@@ -816,7 +764,8 @@ public static partial class McpMod
             else
             {
                 result["state_type"] = "unknown";
-                result["room_type"] = currentRoom?.GetType().Name;
+                // This branch only runs when currentRoom is null.
+                result["room_type"] = null;
             }
         }
         else
@@ -965,22 +914,82 @@ public static partial class McpMod
     }
 
     /// <summary>
+    /// Epoch reveal counts and one row per epoch for the timeline screen.
+    /// Reads the save's progress, which is stable rather than hover-dependent, and
+    /// returns an empty payload when that save is not loaded.
+    /// </summary>
+    private static Dictionary<string, object?> BuildTimelineEpochState()
+    {
+        return TryRead<Dictionary<string, object?>>("menu.timeline.epochs", () =>
+        {
+            var epochState = new Dictionary<string, object?>(StringComparer.Ordinal);
+            var progress = SaveManager.Instance?.Progress;
+            if (progress == null)
+                return epochState;
+
+            var epochList = new List<Dictionary<string, object?>>();
+            var revealedCount = 0;
+            var obtainedCount = 0;
+            var lockedCount = 0;
+            var noSlotCount = 0;
+            foreach (var epoch in progress.Epochs)
+            {
+                var eraName = epoch.Id;
+                var state = epoch.State.ToString();
+                // Clean up ID to readable name.
+                var name = System.Text.RegularExpressions.Regex.Replace(eraName, @"\d+$", "", System.Text.RegularExpressions.RegexOptions.None, RegexTimeout);
+                name = System.Text.RegularExpressions.Regex.Replace(name, @"(?<=[a-z])(?=[A-Z])", " ", System.Text.RegularExpressions.RegexOptions.None, RegexTimeout);
+
+                switch (epoch.State)
+                {
+                    case EpochState.Revealed:
+                        revealedCount++;
+                        break;
+                    case EpochState.Obtained:
+                    case EpochState.ObtainedNoSlot:
+                        obtainedCount++;
+                        break;
+                    case EpochState.NotObtained:
+                        lockedCount++;
+                        break;
+                    case EpochState.NoSlot:
+                        noSlotCount++;
+                        break;
+                }
+
+                epochList.Add(new Dictionary<string, object?>(StringComparer.Ordinal)
+                {
+                    ["id"] = eraName,
+                    ["name"] = name,
+                    ["state"] = state,
+                    ["obtained"] = epoch.ObtainDate
+                });
+            }
+
+            epochState["epochs"] = epochList;
+            epochState["total_slots"] = epochList.Count;
+            epochState["completed_count"] = revealedCount;
+            epochState["revealed_count"] = revealedCount;
+            epochState["obtained_unrevealed_count"] = obtainedCount;
+            epochState["locked_count"] = lockedCount;
+            epochState["no_slot_count"] = noSlotCount;
+            return epochState;
+        }) ?? new Dictionary<string, object?>(StringComparer.Ordinal);
+    }
+
+    /// <summary>
     /// True when the action queue is non-empty only because an action is parked
     /// waiting for a player choice (a card selection, a bundle pick, ...).
     /// </summary>
     private static bool IsActionQueueWaitingForPlayer(object queueSet)
     {
-        try
+        return TryRead<bool?>("is_resolving.actions_waiting_for_player", () =>
         {
-            if (GetInstanceFieldValue(queueSet, "_actionsWaitingForResumption") is System.Collections.IEnumerable waiting)
-            {
-                foreach (var _ in waiting)
-                    return true;
-            }
-        }
-        catch (Exception ex) { Warn("is_resolving.actions_waiting_for_player", ex); }
+            if (GetInstanceFieldValue(queueSet, "_actionsWaitingForResumption") is not System.Collections.IEnumerable waiting)
+                return false;
 
-        return false;
+            return waiting.GetEnumerator().MoveNext();
+        }) ?? false;
     }
 
     /// <summary>
@@ -1036,14 +1045,10 @@ public static partial class McpMod
     /// </summary>
     private static NClickableControl? GetSubmenuBackButton(NSubmenu submenu)
     {
-        try
-        {
-            if (GetInstanceFieldValue(submenu, "_backButton") is NClickableControl clickable)
-                return clickable;
-        }
-        catch (Exception ex) { Warn("menu.settings.back_button", ex); }
+        var clickable = TryRead<NClickableControl?>("menu.settings.back_button",
+            () => GetInstanceFieldValue(submenu, "_backButton") as NClickableControl);
 
-        return FindFirst<NBackButton>(submenu);
+        return clickable ?? FindFirst<NBackButton>(submenu);
     }
 
     /// <summary>
@@ -1056,16 +1061,18 @@ public static partial class McpMod
     /// </summary>
     internal static NSubmenu? GetOpenRunSubmenu(Node? root)
     {
-        try
+        // No capstone container outside a run is the normal case, so this read is quiet.
+        var capstone = TryReadQuiet(() =>
         {
-            if (NCapstoneContainer.Instance?.CurrentCapstoneScreen is NCapstoneSubmenuStack submenuStack)
-            {
-                var top = submenuStack.Stack?.Peek();
-                if (top != null && IsLiveNode(top))
-                    return top;
-            }
-        }
-        catch { /* no capstone container outside a run; fall through */ }
+            if (NCapstoneContainer.Instance?.CurrentCapstoneScreen is not NCapstoneSubmenuStack submenuStack)
+                return null;
+
+            var top = submenuStack.Stack?.Peek();
+            return top != null && IsLiveNode(top) ? top : null;
+        });
+
+        if (capstone != null)
+            return capstone;
 
         if (root == null)
             return null;
@@ -1116,24 +1123,23 @@ public static partial class McpMod
         var options = new List<Dictionary<string, object?>>();
         foreach (var (field, name) in _pauseMenuButtons)
         {
-            try
+            // Only the button's own Visible flag is read. NPauseMenu._Ready and
+            // Initialize set it per game mode (give_up / save_and_quit are hidden
+            // for multiplayer clients, disconnect only for them, compendium until
+            // it is unlocked), while IsVisibleInTree is still false on the frame
+            // the menu is being reparented into the capstone container - which
+            // would report a pause menu with no options at all.
+            TryDo($"menu.pause.{field}", () =>
             {
-                // Only the button's own Visible flag is read. NPauseMenu._Ready and
-                // Initialize set it per game mode (give_up / save_and_quit are hidden
-                // for multiplayer clients, disconnect only for them, compendium until
-                // it is unlocked), while IsVisibleInTree is still false on the frame
-                // the menu is being reparented into the capstone container - which
-                // would report a pause menu with no options at all.
                 if (GetInstanceFieldValue(pauseMenu, field) is not Control button || !button.Visible)
-                    continue;
+                    return;
 
                 options.Add(new Dictionary<string, object?>(StringComparer.Ordinal)
                 {
                     ["name"] = name,
                     ["enabled"] = (button as NClickableControl)?.IsEnabled ?? true
                 });
-            }
-            catch { /* a missing field means the game moved it; skip the option */ }
+            });
         }
         return options;
     }
@@ -1497,12 +1503,11 @@ public static partial class McpMod
     {
         foreach (var btn in buttons)
         {
-            try
-            {
-                if (btn.IsSelected && btn.Character is { } cm)
-                    return cm.Id.Entry;
-            }
-            catch { }
+            // A button whose character model is not up yet is skipped, not reported.
+            var selectedId = TryReadQuiet(() =>
+                btn.IsSelected && btn.Character is { } cm ? cm.Id.Entry : null);
+            if (selectedId != null)
+                return selectedId;
         }
         return null;
     }
@@ -1511,15 +1516,14 @@ public static partial class McpMod
     // backing field (set from the ctor's maxPlayers arg). Falls back to current count.
     private static int GetStartRunLobbyMaxPlayers(StartRunLobby lobby)
     {
-        try
+        var maxPlayers = TryRead<int?>("lobby.max_players", () =>
         {
             var f = typeof(StartRunLobby).GetField("_maxPlayers",
                 System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
-            if (f != null && f.GetValue(lobby) is int n)
-                return n;
-        }
-        catch (Exception ex) { Warn("lobby.max_players", ex); }
-        return lobby.Players.Count;
+            return f?.GetValue(lobby) as int?;
+        });
+
+        return maxPlayers ?? lobby.Players.Count;
     }
 
     private static Dictionary<string, object?> BuildStartRunLobbyState(StartRunLobby lobby)
@@ -1643,10 +1647,11 @@ public static partial class McpMod
                 return seat;
         }
 
-        ulong netId;
-        try { netId = lobby.NetService.NetId; }
-        catch { return null; }
-        return roster.Find(p => p.Id == netId);
+        var netId = TryReadQuiet<ulong?>(() => lobby.NetService.NetId);
+        if (netId == null)
+            return null;
+
+        return roster.Find(p => p.Id == netId.Value);
     }
 
     private static StartRunLobbySeat? ReadStartRunLobbySeat(object player)
@@ -1661,22 +1666,20 @@ public static partial class McpMod
             IsReady = SafeGet(() => GetInstanceMemberValue(player, "isReady")) as bool? ?? false,
             SlotId = SafeGet(() => GetInstanceMemberValue(player, "slotId")) as int? ?? -1,
         };
-        try { seat.Id = Convert.ToUInt64(id, CultureInfo.InvariantCulture); }
-        catch { return null; }
+        var seatId = TryReadQuiet<ulong?>(() => Convert.ToUInt64(id, CultureInfo.InvariantCulture));
+        if (seatId == null)
+            return null;
+
+        seat.Id = seatId.Value;
         return seat;
     }
 
     private static bool SafeIsAboutToBeginGame(StartRunLobby lobby)
-    {
-        try { return lobby.IsAboutToBeginGame(); }
-        catch (Exception ex) { Warn("lobby.is_about_to_begin", ex); return false; }
-    }
+        => TryRead<bool?>("lobby.is_about_to_begin", () => lobby.IsAboutToBeginGame()) ?? false;
 
     private static string? SafeGetPlayerName(PlatformType platform, ulong playerId)
-    {
-        try { return PlatformUtil.GetPlayerName(platform, playerId); }
-        catch (Exception ex) { Warn("lobby.players.platform_name", ex); return null; }
-    }
+        => TryRead("lobby.players.platform_name",
+            () => PlatformUtil.GetPlayerName(platform, playerId));
 
     private static void AddMultiplayerJoinMenuState(
         Dictionary<string, object?> result,
@@ -1802,9 +1805,8 @@ public static partial class McpMod
                 }
             });
 
-            HashSet<ulong> connectedPlayerIds;
-            try { connectedPlayerIds = lobby.PlayerIds.ToHashSet(); }
-            catch { connectedPlayerIds = new HashSet<ulong>(); }
+            var connectedPlayerIds = TryReadQuiet(() => lobby.PlayerIds.ToHashSet())
+                ?? new HashSet<ulong>();
 
             info["expected_player_count"] = lobby.Run?.Players?.Count ?? 0;
             info["connected_player_count"] = connectedPlayerIds.Count;
@@ -1838,9 +1840,8 @@ public static partial class McpMod
                     foreach (var sp in lobby.Run.Players)
                     {
                         bool isConnected = connectedPlayerIds.Contains(sp.NetId);
-                        bool isReady = false;
-                        try { isReady = lobby.IsPlayerReady(sp.NetId); }
-                        catch (Exception ex) { Warn("menu.multiplayer_load_lobby.players.is_ready", ex); }
+                        bool isReady = TryRead<bool?>("menu.multiplayer_load_lobby.players.is_ready",
+                            () => lobby.IsPlayerReady(sp.NetId)) ?? false;
                         players.Add(new Dictionary<string, object?>(StringComparer.Ordinal)
                         {
                             ["id"] = sp.NetId.ToString(),
@@ -2306,88 +2307,85 @@ public static partial class McpMod
     /// client-side instead.
     /// </remarks>
     private static Dictionary<string, object?>? BuildActState(RunState runState)
+        // A run that has not finished act setup has no rooms yet - a normal state,
+        // not a break, so the read is quiet.
+        => TryReadQuiet(() => BuildActStateCore(runState));
+
+    private static Dictionary<string, object?>? BuildActStateCore(RunState runState)
     {
-        try
-        {
-            var act = runState.Act;
-            _actRoomsField ??= typeof(ActModel).GetField(
-                "_rooms", BindingFlags.Instance | BindingFlags.NonPublic);
-            var rooms = _actRoomsField?.GetValue(act);
-            if (rooms == null)
-                return null;
-
-            List<string>? Ids(string field)
-            {
-                if (!_roomSetFields.TryGetValue(field, out var info))
-                {
-                    info = rooms.GetType().GetField(
-                        field, BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public);
-                    _roomSetFields[field] = info;
-                }
-                if (info?.GetValue(rooms) is not System.Collections.IEnumerable list)
-                    return null;
-                var ids = new List<string>();
-                foreach (var item in list)
-                {
-                    var id = item?.GetType().GetProperty("Id")?.GetValue(item);
-                    var entry = id?.GetType().GetProperty("Entry")?.GetValue(id) as string;
-                    if (entry != null)
-                        ids.Add(entry);
-                }
-                return ids;
-            }
-
-            int Visited(string field)
-            {
-                if (!_roomSetFields.TryGetValue(field, out var info))
-                {
-                    info = rooms.GetType().GetField(
-                        field, BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public);
-                    _roomSetFields[field] = info;
-                }
-                return info?.GetValue(rooms) is int value ? value : 0;
-            }
-
-            var normal = Ids("normalEncounters");
-            var elite = Ids("eliteEncounters");
-            var events = Ids("events");
-            if (normal == null || elite == null || events == null)
-                return null;
-
-            EncounterModel? bossEncounter = null;
-            try { bossEncounter = act.BossEncounter; } catch { }
-            var secondBossEncounter = act.SecondBossEncounter;
-            var encounters = new Dictionary<string, object?>(StringComparer.Ordinal)
-            {
-                ["normal"] = normal,
-                ["normal_visited"] = Visited("normalEncountersVisited"),
-                ["elite"] = elite,
-                ["elite_visited"] = Visited("eliteEncountersVisited"),
-                ["events"] = events,
-                ["events_visited"] = Visited("eventsVisited"),
-                ["boss_visited"] = Visited("bossEncountersVisited")
-            };
-            var bossId = bossEncounter?.Id?.Entry;
-            var secondBossId = secondBossEncounter?.Id?.Entry;
-            if (!string.IsNullOrWhiteSpace(bossId))
-                encounters["boss"] = bossId;
-            if (!string.IsNullOrWhiteSpace(secondBossId))
-                encounters["second_boss"] = secondBossId;
-
-            bool isMultiplayer = runState.Players.Count > 1;
-            return new Dictionary<string, object?>(StringComparer.Ordinal)
-            {
-                ["index"] = runState.CurrentActIndex,
-                ["id"] = act.Id.Entry,
-                ["rooms_total"] = act.GetNumberOfRooms(isMultiplayer),
-                ["floors_total"] = act.GetNumberOfFloors(isMultiplayer),
-                ["encounters"] = encounters
-            };
-        }
-        catch
-        {
+        var act = runState.Act;
+        _actRoomsField ??= typeof(ActModel).GetField(
+            "_rooms", BindingFlags.Instance | BindingFlags.NonPublic);
+        var rooms = _actRoomsField?.GetValue(act);
+        if (rooms == null)
             return null;
+
+        List<string>? Ids(string field)
+        {
+            if (!_roomSetFields.TryGetValue(field, out var info))
+            {
+                info = rooms.GetType().GetField(
+                    field, BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public);
+                _roomSetFields[field] = info;
+            }
+            if (info?.GetValue(rooms) is not System.Collections.IEnumerable list)
+                return null;
+            var ids = new List<string>();
+            foreach (var item in list)
+            {
+                var id = item?.GetType().GetProperty("Id")?.GetValue(item);
+                var entry = id?.GetType().GetProperty("Entry")?.GetValue(id) as string;
+                if (entry != null)
+                    ids.Add(entry);
+            }
+            return ids;
         }
+
+        int Visited(string field)
+        {
+            if (!_roomSetFields.TryGetValue(field, out var info))
+            {
+                info = rooms.GetType().GetField(
+                    field, BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public);
+                _roomSetFields[field] = info;
+            }
+            return info?.GetValue(rooms) is int value ? value : 0;
+        }
+
+        var normal = Ids("normalEncounters");
+        var elite = Ids("eliteEncounters");
+        var events = Ids("events");
+        if (normal == null || elite == null || events == null)
+            return null;
+
+        var bossEncounter = TryReadQuiet(() => act.BossEncounter);
+        var secondBossEncounter = act.SecondBossEncounter;
+        var encounters = new Dictionary<string, object?>(StringComparer.Ordinal)
+        {
+            ["normal"] = normal,
+            ["normal_visited"] = Visited("normalEncountersVisited"),
+            ["elite"] = elite,
+            ["elite_visited"] = Visited("eliteEncountersVisited"),
+            ["events"] = events,
+            ["events_visited"] = Visited("eventsVisited"),
+            ["boss_visited"] = Visited("bossEncountersVisited")
+        };
+        var bossId = bossEncounter?.Id?.Entry;
+        var secondBossId = secondBossEncounter?.Id?.Entry;
+        if (!string.IsNullOrWhiteSpace(bossId))
+            encounters["boss"] = bossId;
+        if (!string.IsNullOrWhiteSpace(secondBossId))
+            encounters["second_boss"] = secondBossId;
+
+        bool isMultiplayer = runState.Players.Count > 1;
+        return new Dictionary<string, object?>(StringComparer.Ordinal)
+        {
+            ["index"] = runState.CurrentActIndex,
+            ["id"] = act.Id.Entry,
+            ["rooms_total"] = act.GetNumberOfRooms(isMultiplayer),
+            ["floors_total"] = act.GetNumberOfFloors(isMultiplayer),
+            ["encounters"] = encounters
+        };
     }
 
     /// <summary>Per map point visited this act: what it was, and which rooms and
@@ -3054,18 +3052,12 @@ public static partial class McpMod
 
     private static bool CanUpgradeHandThisTurn(Player player, IEnumerable<CardModel> hand)
     {
-        try
+        return TryRead<bool?>("hand.upgrade_preview", () =>
         {
             if (player.PotionSlots.Any(potion => potion != null && HandUpgradePotionIds.Contains(potion.Id.Entry)))
                 return true;
-            if (hand.Any(card => HandUpgradeCardIds.Contains(card.Id.Entry)))
-                return true;
-        }
-        catch (Exception ex)
-        {
-            Warn("hand.upgrade_preview", ex);
-        }
-        return false;
+            return hand.Any(card => HandUpgradeCardIds.Contains(card.Id.Entry));
+        }) ?? false;
     }
 
     private static Dictionary<string, object?> BuildCardState(CardModel card, int index, Player? player = null)
@@ -3111,9 +3103,8 @@ public static partial class McpMod
         if (card.TargetType is not (TargetType.AnyEnemy or TargetType.AllEnemies or TargetType.RandomEnemy))
             return previews;
 
-        ICombatState? combatState;
-        try { combatState = card.Owner?.Creature?.CombatState; }
-        catch (Exception ex) { Warn("card.vs_targets.combat_state", ex); return previews; }
+        var combatState = TryRead<ICombatState?>("card.vs_targets.combat_state",
+            () => card.Owner?.Creature?.CombatState);
         if (combatState == null)
             return previews;
 
@@ -3226,7 +3217,7 @@ public static partial class McpMod
     /// </summary>
     private static Dictionary<string, object?>? BuildDamageCap(Creature target, int damage, int hits)
     {
-        try
+        return TryRead<Dictionary<string, object?>?>("card.damage_cap", () =>
         {
             foreach (var power in target.Powers)
             {
@@ -3260,10 +3251,9 @@ public static partial class McpMod
                     };
                 }
             }
-        }
-        catch (Exception ex) { Warn("card.damage_cap", ex); }
 
-        return null;
+            return null;
+        });
     }
 
     private static int? PickDynamicVar(Dictionary<string, object?> values, params string[] names)
@@ -3277,10 +3267,8 @@ public static partial class McpMod
     }
 
     private static string? SafeGetTargetedCardDescription(CardModel card, Creature target)
-    {
-        try { return StripRichTextTags(card.GetDescriptionForPile(PileType.Hand, target)).Replace("\n", " "); }
-        catch (Exception ex) { Warn("card.vs_targets.description", ex); return null; }
-    }
+        => TryRead("card.vs_targets.description",
+            () => StripRichTextTags(card.GetDescriptionForPile(PileType.Hand, target)).Replace("\n", " "));
 
     private static void AddPreviewCardsFromContainer(
         Godot.Control? container,
@@ -3483,10 +3471,8 @@ public static partial class McpMod
     /// corpses that are on their way out.
     /// </summary>
     private static bool StaysInCombatWhileDead(ICombatState combatState, Creature creature)
-    {
-        try { return !Hook.ShouldCreatureBeRemovedFromCombatAfterDeath(combatState, creature); }
-        catch (Exception ex) { Warn("enemy.stays_in_combat_while_dead", ex); return false; }
-    }
+        => TryRead<bool?>("enemy.stays_in_combat_while_dead",
+            () => !Hook.ShouldCreatureBeRemovedFromCombatAfterDeath(combatState, creature)) ?? false;
 
     private static List<Dictionary<string, object?>> BuildDeckCardList(Player player)
     {
@@ -3526,23 +3512,12 @@ public static partial class McpMod
             System.Reflection.BindingFlags.NonPublic;
 
         var type = source.GetType();
-        try
-        {
-            var property = type.GetProperty(memberName, Flags);
-            if (property != null)
-                return property.GetValue(source);
-        }
-        catch { }
+        var property = TryReadQuiet(() => type.GetProperty(memberName, Flags));
+        if (property != null)
+            return TryReadQuiet(() => property.GetValue(source));
 
-        try
-        {
-            var field = type.GetField(memberName, Flags);
-            if (field != null)
-                return field.GetValue(source);
-        }
-        catch { }
-
-        return null;
+        var field = TryReadQuiet(() => type.GetField(memberName, Flags));
+        return field != null ? TryReadQuiet(() => field.GetValue(source)) : null;
     }
 
     private static bool? GetBoolMemberValue(object source, string memberName)
@@ -3602,7 +3577,6 @@ public static partial class McpMod
             // enemy loop in BuildBattleState). Every other exported creature is
             // alive, so a client that ignores this reads exactly what it read
             // before.
-            ["is_alive"] = creature.IsAlive,
             ["is_performing_move"] = monster?.IsPerformingMove ?? false,
             ["block"] = creature.Block,
             ["is_alive"] = creature.IsAlive,
@@ -3741,7 +3715,7 @@ public static partial class McpMod
     /// </summary>
     private static bool HasLivingPeerWithPower(Creature creature, PowerModel power)
     {
-        try
+        return TryRead<bool?>("enemy.revive.peers", () =>
         {
             var combatState = creature.CombatState;
             if (combatState == null)
@@ -3755,8 +3729,7 @@ public static partial class McpMod
                     return true;
             }
             return false;
-        }
-        catch (Exception ex) { Warn("enemy.revive.peers", ex); return true; }
+        }) ?? true;
     }
 
     /// <summary>
@@ -3777,7 +3750,7 @@ public static partial class McpMod
     private static int? TurnsUntilRevive(Creature creature)
     {
         const int maxLookahead = 4;
-        try
+        return TryRead<int?>("enemy.revive.in_turns", () =>
         {
             MonsterState? state = creature.Monster?.NextMove;
             for (int turns = 1; turns <= maxLookahead; turns++)
@@ -3788,9 +3761,8 @@ public static partial class McpMod
                     return turns;
                 state = move.FollowUpState;
             }
-        }
-        catch (Exception ex) { Warn("enemy.revive.in_turns", ex); }
-        return null;
+            return null;
+        });
     }
 
     /// <summary>
@@ -3802,12 +3774,10 @@ public static partial class McpMod
     {
         foreach (var power in creature.Powers)
         {
-            try
-            {
-                if (!power.ShouldCreatureBeRemovedFromCombatAfterDeath(creature))
-                    return power;
-            }
-            catch (Exception ex) { Warn("enemy.revive.power", ex); }
+            var keepsCorpse = TryRead<bool?>("enemy.revive.power",
+                () => !power.ShouldCreatureBeRemovedFromCombatAfterDeath(creature));
+            if (keepsCorpse == true)
+                return power;
         }
         return null;
     }
@@ -3816,7 +3786,9 @@ public static partial class McpMod
 
     private static Dictionary<string, object?>? BuildMonsterStats(MonsterModel monster)
     {
-        try
+        // No readable stats is a normal shape for a move-less or state-dependent
+        // monster, so this whole read is quiet.
+        return TryReadQuiet<Dictionary<string, object?>?>(() =>
         {
             var t = monster.GetType();
             if (!_monsterStatProps.TryGetValue(t, out var props))
@@ -3836,15 +3808,13 @@ public static partial class McpMod
             var stats = new Dictionary<string, object?>(StringComparer.Ordinal);
             foreach (var p in props)
             {
-                try { stats[p.Name] = (int)p.GetValue(monster)!; }
-                catch { /* a getter may depend on combat state */ }
+                // A getter may depend on combat state that is not up during this read.
+                var value = TryReadQuiet<int?>(() => (int)p.GetValue(monster)!);
+                if (value != null)
+                    stats[p.Name] = value.Value;
             }
             return stats.Count > 0 ? stats : null;
-        }
-        catch
-        {
-            return null;
-        }
+        });
     }
 
     // AbstractIntent.IntentLabelFormat is protected, so reach it once by reflection
@@ -4615,83 +4585,83 @@ public static partial class McpMod
     private static Dictionary<string, object?> BuildEncountersSeen(RunState runState)
     {
         var result = new Dictionary<string, object?>(StringComparer.Ordinal);
-        try
+        TryDo("map.encounters_seen", () => BuildEncountersSeenCore(runState, result));
+        return result;
+    }
+
+    private static void BuildEncountersSeenCore(RunState runState, Dictionary<string, object?> result)
+    {
+        var history = runState.MapPointHistory;
+        int act = runState.CurrentActIndex;
+        if (history == null || act < 0 || act >= history.Count)
+            return;
+
+        var monsters = new List<Dictionary<string, object?>>();
+        var elites = new List<Dictionary<string, object?>>();
+        var events = new List<Dictionary<string, object?>>();
+
+        var entries = history[act];
+        for (int i = 0; i < entries.Count; i++)
         {
-            var history = runState.MapPointHistory;
-            int act = runState.CurrentActIndex;
-            if (history == null || act < 0 || act >= history.Count)
-                return result;
+            var entry = entries[i];
+            if (entry?.Rooms == null)
+                continue;
 
-            var monsters = new List<Dictionary<string, object?>>();
-            var elites = new List<Dictionary<string, object?>>();
-            var events = new List<Dictionary<string, object?>>();
-
-            var entries = history[act];
-            for (int i = 0; i < entries.Count; i++)
+            // One map point can hold several rooms (an event that turns into a fight), so
+            // walk them all and classify by RoomType - the map point's own type would lose
+            // what a `?` resolved into.
+            bool viaEvent = entry.Rooms.Count > 1;
+            foreach (var room in entry.Rooms)
             {
-                var entry = entries[i];
-                if (entry?.Rooms == null)
+                var target = room.RoomType switch
+                {
+                    RoomType.Monster => monsters,
+                    RoomType.Elite => elites,
+                    RoomType.Event => events,
+                    _ => null            // Boss is already in map.boss; Shop/Treasure/RestSite carry nothing
+                };
+                if (target == null)
                     continue;
 
-                // One map point can hold several rooms (an event that turns into a fight), so
-                // walk them all and classify by RoomType - the map point's own type would lose
-                // what a `?` resolved into.
-                bool viaEvent = entry.Rooms.Count > 1;
-                foreach (var room in entry.Rooms)
+                var info = new Dictionary<string, object?>(StringComparer.Ordinal)
                 {
-                    var target = room.RoomType switch
-                    {
-                        RoomType.Monster => monsters,
-                        RoomType.Elite => elites,
-                        RoomType.Event => events,
-                        _ => null            // Boss is already in map.boss; Shop/Treasure/RestSite carry nothing
-                    };
-                    if (target == null)
-                        continue;
+                    ["floor"] = i + 1,           // 1-based within the act
+                    ["id"] = SafeGetText(() => room.ModelId?.Entry)
+                };
 
-                    var info = new Dictionary<string, object?>(StringComparer.Ordinal)
-                    {
-                        ["floor"] = i + 1,           // 1-based within the act
-                        ["id"] = SafeGetText(() => room.ModelId?.Entry)
-                    };
-
-                    if (room.ModelId != null)
-                    {
-                        info["name"] = room.RoomType == RoomType.Event
-                            ? SafeGetText(() => SaveUtil.EventOrDeprecated(room.ModelId).Title)
-                            : SafeGetText(() => SaveUtil.EncounterOrDeprecated(room.ModelId).Title);
-                    }
-
-                    // The monsters the encounter actually resolved to - random line-ups differ
-                    // between two rooms with the same encounter id.
-                    if (room.MonsterIds != null && room.MonsterIds.Count > 0)
-                    {
-                        info["monsters"] = room.MonsterIds
-                            .Select(id => SafeGetText(() => SaveUtil.MonsterOrDeprecated(id).Title)
-                                          ?? SafeGetText(() => id.Entry) ?? "?")
-                            .ToList();
-                    }
-
-                    if (viaEvent && room.RoomType != RoomType.Event)
-                        info["via_event"] = true;
-
-                    target.Add(info);
+                if (room.ModelId != null)
+                {
+                    info["name"] = room.RoomType == RoomType.Event
+                        ? SafeGetText(() => SaveUtil.EventOrDeprecated(room.ModelId).Title)
+                        : SafeGetText(() => SaveUtil.EncounterOrDeprecated(room.ModelId).Title);
                 }
+
+                // The monsters the encounter actually resolved to - random line-ups differ
+                // between two rooms with the same encounter id.
+                if (room.MonsterIds != null && room.MonsterIds.Count > 0)
+                {
+                    info["monsters"] = room.MonsterIds
+                        .Select(id => SafeGetText(() => SaveUtil.MonsterOrDeprecated(id).Title)
+                                      ?? SafeGetText(() => id.Entry) ?? "?")
+                        .ToList();
+                }
+
+                if (viaEvent && room.RoomType != RoomType.Event)
+                    info["via_event"] = true;
+
+                target.Add(info);
             }
-
-            if (monsters.Count > 0) result["monster"] = monsters;
-            if (elites.Count > 0) result["elite"] = elites;
-            if (events.Count > 0) result["event"] = events;
-            if (result.Count > 0)
-                result["act"] = act + 1;
-
-            var cycle = EliteCycle(runState, elites.Count);
-            if (cycle > 0)
-                result["elite_cycle"] = cycle;
         }
-        catch (Exception ex) { Warn("map.encounters_seen", ex); }
 
-        return result;
+        if (monsters.Count > 0) result["monster"] = monsters;
+        if (elites.Count > 0) result["elite"] = elites;
+        if (events.Count > 0) result["event"] = events;
+        if (result.Count > 0)
+            result["act"] = act + 1;
+
+        var cycle = EliteCycle(runState, elites.Count);
+        if (cycle > 0)
+            result["elite_cycle"] = cycle;
     }
 
     /// <summary>
@@ -4704,19 +4674,13 @@ public static partial class McpMod
     /// Only the count is reported - never the pool's contents.
     /// </summary>
     private static object? GetPropertyValue(object target, string propertyName)
-    {
-        try { return target.GetType().GetProperty(propertyName)?.GetValue(target); }
-        catch (Exception ex) { Warn($"{target.GetType().Name}.{propertyName}", ex); return null; }
-    }
+        => TryRead($"{target.GetType().Name}.{propertyName}",
+            () => target.GetType().GetProperty(propertyName)?.GetValue(target));
 
     private static int EliteCycle(RunState runState, int elitesFoughtThisAct)
     {
-        int poolSize;
-        try
-        {
-            poolSize = runState.Act.AllEliteEncounters?.Count() ?? 0;
-        }
-        catch (Exception ex) { Warn("map.encounters_seen.elite_cycle", ex); return 0; }
+        var poolSize = TryRead<int?>("map.encounters_seen.elite_cycle",
+            () => runState.Act.AllEliteEncounters?.Count()) ?? 0;
         if (poolSize <= 0)
             return 0;
 
@@ -4734,8 +4698,7 @@ public static partial class McpMod
     private static bool? SafeGetBool(Func<bool> getter,
         [System.Runtime.CompilerServices.CallerMemberName] string caller = "")
     {
-        try { return getter(); }
-        catch (Exception ex) { Warn($"bool in {caller}", ex); return null; }
+        return TryRead<bool?>($"bool in {caller}", () => getter());
     }
 
     private static Dictionary<string, object?> BuildBossInfo(MapPoint pt, string? bossId, string? bossName)
@@ -4819,44 +4782,46 @@ public static partial class McpMod
     private static Dictionary<(int, int), List<string>> CollectMapMarks(RunState runState)
     {
         var marks = new Dictionary<(int, int), List<string>>();
-        try
+        TryDo("map.nodes.marked_by", () => CollectMapMarksCore(runState, marks));
+        return marks;
+    }
+
+    private static void CollectMapMarksCore(
+        RunState runState,
+        Dictionary<(int, int), List<string>> marks)
+    {
+        var player = LocalContext.GetMe(runState);
+        if (player == null)
+            return;
+
+        int actIndex = runState.CurrentActIndex;
+        foreach (var relic in player.Relics)
         {
-            var player = LocalContext.GetMe(runState);
-            if (player == null)
-                return marks;
+            var method = relic.GetType().GetMethod("GetMarkedCoords", System.Type.EmptyTypes);
+            if (method == null)
+                continue;
 
-            int actIndex = runState.CurrentActIndex;
-            foreach (var relic in player.Relics)
+            // A relic that marked rooms in an earlier act must not paint this act's map.
+            var actProperty = relic.GetType().GetProperty("FurCoatActIndex")
+                ?? relic.GetType().GetProperty("MarkedActIndex");
+            if (actProperty?.GetValue(relic) is int markedAct && markedAct != actIndex)
+                continue;
+
+            if (method.Invoke(relic, null) is not System.Collections.IEnumerable coords)
+                continue;
+
+            string relicId = SafeGetText(() => relic.Id.Entry) ?? relic.GetType().Name;
+            foreach (var coordObj in coords)
             {
-                var method = relic.GetType().GetMethod("GetMarkedCoords", System.Type.EmptyTypes);
-                if (method == null)
+                if (coordObj is not MapCoord coord)
                     continue;
-
-                // A relic that marked rooms in an earlier act must not paint this act's map.
-                var actProperty = relic.GetType().GetProperty("FurCoatActIndex")
-                    ?? relic.GetType().GetProperty("MarkedActIndex");
-                if (actProperty?.GetValue(relic) is int markedAct && markedAct != actIndex)
-                    continue;
-
-                if (method.Invoke(relic, null) is not System.Collections.IEnumerable coords)
-                    continue;
-
-                string relicId = SafeGetText(() => relic.Id.Entry) ?? relic.GetType().Name;
-                foreach (var coordObj in coords)
-                {
-                    if (coordObj is not MapCoord coord)
-                        continue;
-                    var key = (coord.col, coord.row);
-                    if (!marks.TryGetValue(key, out var list))
-                        marks[key] = list = new List<string>();
-                    if (!list.Contains(relicId))
-                        list.Add(relicId);
-                }
+                var key = (coord.col, coord.row);
+                if (!marks.TryGetValue(key, out var list))
+                    marks[key] = list = new List<string>();
+                if (!list.Contains(relicId))
+                    list.Add(relicId);
             }
         }
-        catch (Exception ex) { Warn("map.nodes.marked_by", ex); }
-
-        return marks;
     }
 
     private static FieldInfo? _rewardsSetField;
@@ -4935,7 +4900,8 @@ public static partial class McpMod
         AbstractRoom? currentRoom,
         object? topOverlay)
     {
-        try
+        // Diagnostics must never be able to break a state read.
+        TryDo("map.blocked_diagnostics", () =>
         {
             if (result["map"] is not Dictionary<string, object?> map)
                 return;
@@ -4951,11 +4917,7 @@ public static partial class McpMod
                 "The map is not travelable and nothing is in flight, so the current room has not "
                 + "finished. Some screen it is awaiting is not being reported; `blocked_overlay` "
                 + "names the overlay on top, if any.";
-        }
-        catch
-        {
-            // Diagnostics must never be able to break a state read.
-        }
+        });
     }
 
     /// <summary>
@@ -5103,16 +5065,23 @@ public static partial class McpMod
         {
             if (!typeof(RelicModel).IsAssignableFrom(property.PropertyType))
                 continue;
-            try { return property.GetValue(reward) as RelicModel; }
-            catch { }
+
+            // A member that throws is skipped; only a successful read answers.
+            RelicModel? relic = null;
+            if (TryDo("rewards.relic_reward.property",
+                    () => relic = property.GetValue(reward) as RelicModel))
+                return relic;
         }
 
         foreach (var field in type.GetFields(Flags))
         {
             if (!typeof(RelicModel).IsAssignableFrom(field.FieldType))
                 continue;
-            try { return field.GetValue(reward) as RelicModel; }
-            catch { }
+
+            RelicModel? relic = null;
+            if (TryDo("rewards.relic_reward.field",
+                    () => relic = field.GetValue(reward) as RelicModel))
+                return relic;
         }
 
         return null;
@@ -5955,9 +5924,7 @@ public static partial class McpMod
             // powers. Identity, lifecycle state, and instance links are read
             // without touching localization so a broken hover tip cannot erase
             // mechanically relevant state.
-            bool isVisible;
-            try { isVisible = power.IsVisible; }
-            catch (Exception ex) { Warn("status.is_visible", ex); isVisible = true; }
+            var isVisible = TryRead<bool?>("status.is_visible", () => power.IsVisible) ?? true;
             var entry = new Dictionary<string, object?>(StringComparer.Ordinal)
             {
                 ["id"] = power.Id.Entry,
