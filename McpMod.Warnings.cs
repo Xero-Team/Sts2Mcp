@@ -136,4 +136,25 @@ public static partial class McpMod
         EndStateWarnings(result);
         return result;
     }
+
+    /// <summary>
+    /// Builds the state with rendered text stripped, for change detection only.
+    ///
+    /// Never sent to a caller: the settle wait uses it to tell "still resolving" from "settled",
+    /// and <see cref="StatePollCache"/> digests it to decide whether the previous full state can
+    /// be reused. It is the same builder as a full read with the text helpers short-circuited, so
+    /// a state that throws here throws for a full read too; the callers already handle that.
+    /// </summary>
+    private static Dictionary<string, object?> BuildLeanState()
+    {
+        s_leanRead = true;
+        try
+        {
+            return BuildGameState();
+        }
+        finally
+        {
+            s_leanRead = false;
+        }
+    }
 }

@@ -541,7 +541,7 @@
     },
     {
       "file": "McpMod.Helpers.cs",
-      "line": 538,
+      "line": 557,
       "api": "GetProperty",
       "member": "IsPlayPhase",
       "kind": "property",
@@ -552,7 +552,7 @@
     },
     {
       "file": "McpMod.Helpers.cs",
-      "line": 690,
+      "line": 709,
       "api": "GetProperty",
       "member": "IsEnabled",
       "kind": "property",
@@ -562,7 +562,7 @@
     },
     {
       "file": "McpMod.Helpers.cs",
-      "line": 768,
+      "line": 787,
       "api": "GetInstanceFieldValue",
       "member": "_selectedCards",
       "kind": "field",
@@ -572,7 +572,7 @@
     },
     {
       "file": "McpMod.Helpers.cs",
-      "line": 777,
+      "line": 796,
       "api": "GetInstanceFieldValue",
       "member": "_prefs",
       "kind": "field",
@@ -612,7 +612,7 @@
     },
     {
       "file": "McpMod.Helpers.cs",
-      "line": 1177,
+      "line": 1196,
       "api": "GetInstanceFieldValue",
       "member": "_confirmButton",
       "kind": "field",
@@ -636,16 +636,6 @@
       "api": "GetVerticalPopupText",
       "member": "BodyLabel",
       "kind": "property",
-      "scope": "assembly",
-      "type": null,
-      "required": true
-    },
-    {
-      "file": "McpMod.Helpers.cs",
-      "line": 1373,
-      "api": "GetInstanceFieldValue",
-      "member": "_label",
-      "kind": "field",
       "scope": "assembly",
       "type": null,
       "required": true
@@ -719,6 +709,16 @@
       "api": "candidate-name",
       "member": "Title",
       "kind": "property",
+      "scope": "assembly",
+      "type": null,
+      "required": true
+    },
+    {
+      "file": "McpMod.Helpers.cs",
+      "line": 1392,
+      "api": "GetInstanceFieldValue",
+      "member": "_label",
+      "kind": "field",
       "scope": "assembly",
       "type": null,
       "required": true

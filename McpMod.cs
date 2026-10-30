@@ -786,13 +786,7 @@ public static partial class McpMod
                 s_passiveRead = passive;
                 try
                 {
-                    return WithCardValues(unpowered, () =>
-                    {
-                        Dictionary<string, object?> s = BuildGameState();
-                        s["game_version"] = GameVersion();
-                        s["values"] = values;
-                        return s;
-                    });
+                    return WithCardValues(unpowered, () => ReadSingleplayerState(values, passive));
                 }
                 finally
                 {
@@ -812,6 +806,36 @@ public static partial class McpMod
                 SendJson(response, state, pretty);
             }
         }, "Failed to read game state", "singleplayer_state_read_failed", pretty);
+    }
+
+    /// <summary>
+    /// Reads the singleplayer state for a client, reusing the previous tree when nothing moved.
+    ///
+    /// Must run on the game's main thread (the caller's <c>RunOnMainThreadBlocking</c> does that).
+    /// The probe is a lean read: cheap enough to take on every poll and complete enough that a
+    /// changed digest means some structural value changed — see <c>s_leanRead</c> for why a lean
+    /// tree can stand in for a full one here. On a hit the caller gets the tree from the previous
+    /// request, so an idle poll costs one lean build instead of a full rebuild and a serialization
+    /// pass.
+    ///
+    /// `values` and `passive` are both part of the key: the first changes every rendered number,
+    /// and the second changes what a read is allowed to touch (a non-passive read auto-opens the
+    /// merchant inventory, which is exactly what <c>inventory_open</c> then reports).
+    /// </summary>
+    private static Dictionary<string, object?> ReadSingleplayerState(string values, bool passive)
+    {
+        string key = passive ? values + "|passive" : values;
+        ulong digest = StateJsonWriter.Digest(BuildLeanState());
+        if (StatePollCache.TryGet(key, digest, out Dictionary<string, object?>? cached) && cached != null)
+        {
+            return cached;
+        }
+
+        Dictionary<string, object?> state = BuildGameState();
+        state["game_version"] = GameVersion();
+        state["values"] = values;
+        StatePollCache.Remember(key, digest, state);
+        return state;
     }
 
     /// <summary>
@@ -952,13 +976,22 @@ public static partial class McpMod
         result["changed"] = outcome.Changed;
         if (outcome.WaitError != null)
             result["wait_error"] = outcome.WaitError;
-        if (includeState && outcome.LastState != null)
-            result["state"] = outcome.LastState;
+        if (includeState)
+        {
+            // The polls above only needed change detection, so they read the lean tree. The
+            // caller gets the full one, built exactly once now that the game has settled.
+            Dictionary<string, object?>? state = TryReadUnless<Dictionary<string, object?>?, MainThreadUnavailableException>(
+                "settle.state", () => RunOnMainThreadBlocking(() => BuildGameState()));
+            if (state != null)
+            {
+                result["state"] = state;
+            }
+        }
     }
 
     private sealed record SettleOutcome(
         int WaitedMs, int Polls, bool Settled, bool Changed,
-        string? WaitError, Dictionary<string, object?>? LastState);
+        string? WaitError);
 
     [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1031:Do not catch general exception types",
         Justification = "The two failures mean opposite things here: a stalled main thread must stop the poll (503 semantics), while a scene-swap throw is transient and means keep polling.")]
@@ -972,14 +1005,17 @@ public static partial class McpMod
         bool changed = false;
         bool settled = false;
         string? waitError = null;
-        Dictionary<string, object?>? last = null;
 
         while (true)
         {
             Dictionary<string, object?>? state = null;
             try
             {
-                state = RunOnMainThreadBlocking(() => BuildGameState());
+                // A lean read: the loop only needs state_type, the round/turn flags, hp/block,
+                // hand ids and the option count, and it takes this read three to ten times per
+                // action. Rendering every description on each of those polls was the most
+                // expensive thing the settle wait did — see s_leanRead.
+                state = RunOnMainThreadBlocking(BuildLeanState);
             }
             catch (MainThreadUnavailableException ex)
             {
@@ -997,15 +1033,10 @@ public static partial class McpMod
             }
             polls++;
 
-            if (state != null)
+            if (ApplyPoll(state, before, ref consecutiveSettled, ref changed, ref waitError))
             {
-                last = state;
-                waitError = null;
-                if (UpdateSettleProgress(ref consecutiveSettled, ref changed, state, before))
-                {
-                    settled = true;
-                    break;
-                }
+                settled = true;
+                break;
             }
 
             // Nothing moved at all: the action was a no-op as far as the game is concerned, and
@@ -1024,7 +1055,28 @@ public static partial class McpMod
 
         elapsed.Stop();
         return new SettleOutcome(
-            (int)elapsed.ElapsedMilliseconds, polls, settled, changed, waitError, last);
+            (int)elapsed.ElapsedMilliseconds, polls, settled, changed, waitError);
+    }
+
+    /// <summary>
+    /// Folds one poll into the settle counters; true when the state has stayed settled long
+    /// enough to stop waiting. A null poll (an exception already recorded in
+    /// <paramref name="waitError"/>) never does.
+    /// </summary>
+    private static bool ApplyPoll(
+        Dictionary<string, object?>? state,
+        string? before,
+        ref int consecutiveSettled,
+        ref bool changed,
+        ref string? waitError)
+    {
+        if (state == null)
+        {
+            return false;
+        }
+
+        waitError = null;
+        return UpdateSettleProgress(ref consecutiveSettled, ref changed, state, before);
     }
 
     /// <summary>
@@ -1070,7 +1122,7 @@ public static partial class McpMod
         // being waited out. A MainThreadUnavailableException here is a genuine 503: nothing ran yet.
         string? before = TryReadUnless<string, MainThreadUnavailableException>(
             "request.pre_state",
-            () => StateFingerprint(RunOnMainThreadBlocking(() => BuildGameState())));
+            () => StateFingerprint(RunOnMainThreadBlocking(BuildLeanState)));
 
         Dictionary<string, object?> result = EnsureStatus(RunOnMainThreadBlocking(action));
 

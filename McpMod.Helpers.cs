@@ -105,6 +105,13 @@ public static partial class McpMod
 
     private static string? SafeGetCardUpgradePreviewDescription(CardModel card, PileType pile = PileType.Hand)
     {
+        // The preview is built by cloning and upgrading the card, which is the single most
+        // expensive thing a card read does; a lean read has no use for its text.
+        if (s_leanRead)
+        {
+            return null;
+        }
+
         CardModel? preview = SafeBuildUpgradedCardPreview(card);
         if (preview != null)
             return SafeGetCardDescription(preview, pile);
@@ -129,7 +136,10 @@ public static partial class McpMod
                 return null;
             // If it's a LocString, call GetFormattedText
             if (result is MegaCrit.Sts2.Core.Localization.LocString locString)
-                return StripRichTextTags(locString.GetFormattedText());
+            {
+                // Rendering is the expensive half of a lean read; identifiers stay in the tree.
+                return s_leanRead ? null : StripRichTextTags(locString.GetFormattedText());
+            }
             return result.ToString();
         }
         catch (Exception ex)

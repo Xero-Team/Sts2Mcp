@@ -23,6 +23,22 @@ public static partial class McpMod
     // concurrent HTTP requests serialize onto the one Godot main thread.
     private static bool s_unpoweredValues;
 
+    /// <summary>
+    /// True while the state is being built only to answer "did anything move?" — the settle
+    /// wait between an action and its response, and the poll cache's change probe.
+    ///
+    /// A lean read keeps every structural field and skips only rendered text (card, relic,
+    /// potion, orb and intent descriptions, hover tips). Text is the expensive part: each
+    /// description is a SmartFormat render, and some cards render once per enemy. Nothing that
+    /// text is derived from is skipped — powers, relics, counters, enchantments and upgrade
+    /// levels all stay in the tree — so a lean build and a full build of the same game state
+    /// differ in the text values alone, which is what makes a lean digest safe to key a cache on.
+    ///
+    /// A plain static is safe for the same reason <see cref="s_unpoweredValues"/> is: every build
+    /// runs on the Godot main thread, through RunOnMainThread.
+    /// </summary>
+    private static bool s_leanRead;
+
     // Each state build owns its value mode on the serialized Godot main thread.
     // A best-effort DTO catch cannot hide a failed unpowered card preview.
     private static T WithCardValues<T>(bool unpowered, Func<T> build)
@@ -54,6 +70,12 @@ public static partial class McpMod
 
     private static string? SafeGetCardDescription(CardModel card, PileType pile = PileType.Hand)
     {
+        // A lean read has no use for rendered text; see s_leanRead in McpMod.CardValues.cs.
+        if (s_leanRead)
+        {
+            return null;
+        }
+
         if (s_unpoweredValues)
         {
             try
