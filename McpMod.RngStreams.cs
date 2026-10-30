@@ -382,16 +382,8 @@ public static partial class McpMod
     /// when a shop opens.
     /// </remarks>
     private static void HandleGetRelicBag(HttpListenerResponse response)
-    {
-        try
-        {
-            SendJson(response, RunOnMainThreadBlocking(BuildRelicBags));
-        }
-        catch (Exception ex)
-        {
-            SendError(response, 500, $"Failed to build relic bags: {ex.Message}", "relicbag_build_failed");
-        }
-    }
+        => RunHandler(response, () => SendJson(response, RunOnMainThreadBlocking(BuildRelicBags)),
+            "Failed to build relic bags", "relicbag_build_failed");
 
     /// <summary>
     /// Every player's bag, keyed by slot so a multiplayer consumer can tell

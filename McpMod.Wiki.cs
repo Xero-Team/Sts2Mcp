@@ -31,18 +31,9 @@ public static partial class McpMod
         var limit = ParseWikiLimit(request.QueryString["limit"], string.IsNullOrWhiteSpace(query));
         bool pretty = WantsPretty(request);
 
-        try
-        {
-            SendJson(response, RunOnMainThreadBlocking(() => BuildWikiSearch(query, itemType, limit, scope)), pretty);
-        }
-        catch (MainThreadUnavailableException ex)
-        {
-            SendUnavailable(response, ex.Message, pretty);
-        }
-        catch (Exception ex)
-        {
-            SendError(response, 500, $"Failed to search wiki: {ex.Message}", pretty);
-        }
+        RunHandler(response,
+            () => SendJson(response, RunOnMainThreadBlocking(() => BuildWikiSearch(query, itemType, limit, scope)), pretty),
+            "Failed to search wiki", null, pretty);
     }
 
     internal static object SearchWiki(string query = "", string itemType = "all", int? limit = null,

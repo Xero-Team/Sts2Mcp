@@ -33,22 +33,14 @@ public static partial class McpMod
             SendError(response, 400, "Pass ?file=<path to a .mcr>", pretty);
             return;
         }
-        try
+        RunHandler(response, () =>
         {
             var result = RunOnMainThreadBlocking(() => InspectReplay(file));
             if (result["error"] is JsonNode err)
                 SendError(response, 400, err.GetValue<string>(), pretty);
             else
                 SendJson(response, result, pretty);
-        }
-        catch (MainThreadUnavailableException ex)
-        {
-            SendUnavailable(response, ex.Message, pretty);
-        }
-        catch (Exception ex)
-        {
-            SendError(response, 500, $"Inspect failed: {ex.GetType().Name}: {ex.Message}", pretty);
-        }
+        }, "Inspect failed", null, pretty);
     }
 
     /// <summary>

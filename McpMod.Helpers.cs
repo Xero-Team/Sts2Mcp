@@ -287,6 +287,37 @@ public static partial class McpMod
         }, pretty);
     }
 
+    /// <summary>
+    /// Runs one request handler and maps its two failure modes onto the wire contract:
+    /// a main thread that never picked the work up becomes a retryable 503, anything
+    /// else a 500 carrying the handler's own error code.
+    /// </summary>
+    /// <remarks>
+    /// Read endpoints all fail the same way, so the two catch clauses live here instead
+    /// of being repeated at each of them. A handler that needs a different status (an
+    /// action that returns 400/409 for a rejected payload, say) should keep its own
+    /// try/catch - this wrapper is for the "build and send" shape only.
+    /// </remarks>
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1031:Do not catch general exception types",
+        Justification = "This is the HTTP boundary: no exception from a builder may escape and kill the listener loop.")]
+    internal static void RunHandler(
+        HttpListenerResponse response, Action handler, string failurePrefix,
+        string? failureCode = null, bool pretty = false)
+    {
+        try
+        {
+            handler();
+        }
+        catch (MainThreadUnavailableException ex)
+        {
+            TryDo(() => SendUnavailable(response, ex.Message, pretty));
+        }
+        catch (Exception ex)
+        {
+            TryDo(() => SendError(response, 500, $"{failurePrefix}: {ex.Message}", pretty, failureCode));
+        }
+    }
+
     internal static void SendReadResultJson(HttpListenerResponse response, object result, bool pretty = false)
     {
         if (result is Dictionary<string, object?> data

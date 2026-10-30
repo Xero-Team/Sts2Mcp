@@ -39,16 +39,8 @@ public static partial class McpMod
     /// GET /api/v1/potionpools — every unlocked potion pool, in draw order.
     /// </summary>
     private static void HandleGetPotionPools(HttpListenerResponse response)
-    {
-        try
-        {
-            SendJson(response, RunOnMainThreadBlocking(BuildPotionPools));
-        }
-        catch (Exception ex)
-        {
-            SendError(response, 500, $"Failed to build potion pools: {ex.Message}", "potionpools_build_failed");
-        }
-    }
+        => RunHandler(response, () => SendJson(response, RunOnMainThreadBlocking(BuildPotionPools)),
+            "Failed to build potion pools", "potionpools_build_failed");
 
     internal static object GetPotionPools()
     {

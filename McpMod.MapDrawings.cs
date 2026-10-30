@@ -22,16 +22,8 @@ public static partial class McpMod
     private sealed record ParsedMapDrawingStroke(DrawingMode Mode, List<Vector2> Points);
 
     private static void HandleGetMapDrawings(HttpListenerResponse response)
-    {
-        try
-        {
-            SendJson(response, RunOnMainThreadBlocking(BuildMapDrawingsState));
-        }
-        catch (Exception ex)
-        {
-            SendError(response, 500, $"Failed to read map drawings: {ex.Message}", "mapdrawings_read_failed");
-        }
-    }
+        => RunHandler(response, () => SendJson(response, RunOnMainThreadBlocking(BuildMapDrawingsState)),
+            "Failed to read map drawings", "mapdrawings_read_failed");
 
     private static Dictionary<string, object?> BuildMapDrawingsState()
     {

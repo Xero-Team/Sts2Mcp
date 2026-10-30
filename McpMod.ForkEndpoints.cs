@@ -21,16 +21,8 @@ public static partial class McpMod
     private const string RunStateUnavailableErrorCode = "run_state_unavailable";
 
     private static void HandleGetSettings(HttpListenerResponse response)
-    {
-        try
-        {
-            SendReadResultJson(response, RunOnMainThreadBlocking(BuildSettings));
-        }
-        catch (Exception ex)
-        {
-            SendError(response, 500, $"Failed to read settings: {ex.Message}", "settings_read_failed");
-        }
-    }
+        => RunHandler(response, () => SendReadResultJson(response, RunOnMainThreadBlocking(BuildSettings)),
+            "Failed to read settings", "settings_read_failed");
 
     internal static object BuildSettings()
     {
@@ -84,64 +76,24 @@ public static partial class McpMod
     }
 
     private static void HandleGetBestiary(HttpListenerResponse response)
-    {
-        try
-        {
-            SendJson(response, RunOnMainThreadBlocking(BuildBestiary));
-        }
-        catch (Exception ex)
-        {
-            SendError(response, 500, $"Failed to build bestiary: {ex.Message}", "bestiary_build_failed");
-        }
-    }
+        => RunHandler(response, () => SendJson(response, RunOnMainThreadBlocking(BuildBestiary)),
+            "Failed to build bestiary", "bestiary_build_failed");
 
     private static void HandleGetGlossaryCards(HttpListenerResponse response)
-    {
-        try
-        {
-            SendGlossaryJson(response, RunOnMainThreadBlocking(() => BuildGlossaryPayload("cards", BuildGlossaryCards)));
-        }
-        catch (Exception ex)
-        {
-            SendError(response, 500, $"Failed to build glossary: {ex.Message}", "glossary_build_failed");
-        }
-    }
+        => RunHandler(response, () => SendGlossaryJson(response, RunOnMainThreadBlocking(() => BuildGlossaryPayload("cards", BuildGlossaryCards))),
+            "Failed to build glossary", "glossary_build_failed");
 
     private static void HandleGetGlossaryKeywords(HttpListenerResponse response)
-    {
-        try
-        {
-            SendGlossaryJson(response, RunOnMainThreadBlocking(() => BuildGlossaryPayload("keywords", BuildGlossaryKeywords)));
-        }
-        catch (Exception ex)
-        {
-            SendError(response, 500, $"Failed to build glossary: {ex.Message}", "glossary_build_failed");
-        }
-    }
+        => RunHandler(response, () => SendGlossaryJson(response, RunOnMainThreadBlocking(() => BuildGlossaryPayload("keywords", BuildGlossaryKeywords))),
+            "Failed to build glossary", "glossary_build_failed");
 
     private static void HandleGetGlossaryPotions(HttpListenerResponse response)
-    {
-        try
-        {
-            SendGlossaryJson(response, RunOnMainThreadBlocking(() => BuildGlossaryPayload("potions", BuildGlossaryPotions)));
-        }
-        catch (Exception ex)
-        {
-            SendError(response, 500, $"Failed to build glossary: {ex.Message}", "glossary_build_failed");
-        }
-    }
+        => RunHandler(response, () => SendGlossaryJson(response, RunOnMainThreadBlocking(() => BuildGlossaryPayload("potions", BuildGlossaryPotions))),
+            "Failed to build glossary", "glossary_build_failed");
 
     private static void HandleGetGlossaryRelics(HttpListenerResponse response)
-    {
-        try
-        {
-            SendGlossaryJson(response, RunOnMainThreadBlocking(() => BuildGlossaryPayload("relics", BuildGlossaryRelics)));
-        }
-        catch (Exception ex)
-        {
-            SendError(response, 500, $"Failed to build glossary: {ex.Message}", "glossary_build_failed");
-        }
-    }
+        => RunHandler(response, () => SendGlossaryJson(response, RunOnMainThreadBlocking(() => BuildGlossaryPayload("relics", BuildGlossaryRelics))),
+            "Failed to build glossary", "glossary_build_failed");
 
     private sealed class GlossaryPayload
     {

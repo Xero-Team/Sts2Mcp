@@ -31,21 +31,9 @@ public static partial class McpMod
     private static CardMultiplayerConstraint _cardPoolsCacheConstraint;
     private static Dictionary<string, object?>? _cardPoolsCache;
 
-    [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1031:Do not catch general exception types",
-        Justification = "Transport boundary: every failure becomes the documented 500 body.")]
-    [System.Diagnostics.CodeAnalysis.SuppressMessage("Major Code Smell", "EPC12:Suspicious exception handling",
-        Justification = "The message is the documented error body; the status code carries the category.")]
     private static void HandleGetCardPools(HttpListenerResponse response)
-    {
-        try
-        {
-            SendJson(response, RunOnMainThreadBlocking(BuildCardPools));
-        }
-        catch (Exception ex)
-        {
-            SendError(response, 500, $"Failed to build card pools: {ex.Message}", "cardpools_build_failed");
-        }
-    }
+        => RunHandler(response, () => SendJson(response, RunOnMainThreadBlocking(BuildCardPools)),
+            "Failed to build card pools", "cardpools_build_failed");
 
     internal static object GetCardPools()
     {

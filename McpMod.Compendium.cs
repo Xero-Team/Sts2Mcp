@@ -25,19 +25,11 @@ public static partial class McpMod
         // pretty printing is a transport concern, so it stays here rather than in
         // the snapshot builder the fork shared with other callers.
         bool pretty = WantsPretty(request);
-        try
+        RunHandler(response, () =>
         {
             var snapshot = RunOnMainThreadBlocking(BuildCompendiumSnapshot);
             SendReadResultJson(response, BuildCompendiumResponse(snapshot), pretty);
-        }
-        catch (MainThreadUnavailableException ex)
-        {
-            SendUnavailable(response, ex.Message, pretty);
-        }
-        catch (Exception ex)
-        {
-            SendError(response, 500, $"Failed to build compendium: {ex.Message}", pretty, "compendium_build_failed");
-        }
+        }, "Failed to build compendium", "compendium_build_failed", pretty);
     }
 
     internal static object BuildCompendium()

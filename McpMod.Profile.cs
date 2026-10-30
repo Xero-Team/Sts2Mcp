@@ -18,35 +18,15 @@ public static partial class McpMod
     private static void HandleGetProfile(HttpListenerRequest request, HttpListenerResponse response)
     {
         bool pretty = WantsPretty(request);
-        try
-        {
-            SendReadResultJson(response, RunOnMainThreadBlocking(BuildProfile), pretty);
-        }
-        catch (MainThreadUnavailableException ex)
-        {
-            SendUnavailable(response, ex.Message, pretty);
-        }
-        catch (Exception ex)
-        {
-            SendError(response, 500, $"Failed to build profile: {ex.Message}", pretty, "profile_build_failed");
-        }
+        RunHandler(response, () => SendReadResultJson(response, RunOnMainThreadBlocking(BuildProfile), pretty),
+            "Failed to build profile", "profile_build_failed", pretty);
     }
 
     private static void HandleGetProfiles(HttpListenerRequest request, HttpListenerResponse response)
     {
         bool pretty = WantsPretty(request);
-        try
-        {
-            SendReadResultJson(response, RunOnMainThreadBlocking(BuildProfilesSummary), pretty);
-        }
-        catch (MainThreadUnavailableException ex)
-        {
-            SendUnavailable(response, ex.Message, pretty);
-        }
-        catch (Exception ex)
-        {
-            SendError(response, 500, $"Failed to get profiles: {ex.Message}", pretty, "profiles_read_failed");
-        }
+        RunHandler(response, () => SendReadResultJson(response, RunOnMainThreadBlocking(BuildProfilesSummary), pretty),
+            "Failed to get profiles", "profiles_read_failed", pretty);
     }
 
     private static void HandlePostProfiles(HttpListenerRequest request, HttpListenerResponse response)
@@ -96,19 +76,9 @@ public static partial class McpMod
             return;
         }
 
-        try
-        {
-            SendProfileActionJson(response,
-                EnsureStatus(RunOnMainThreadBlocking(() => ExecuteProfileAction(action, profileId))), pretty);
-        }
-        catch (MainThreadUnavailableException ex)
-        {
-            SendUnavailable(response, ex.Message, pretty);
-        }
-        catch (Exception ex)
-        {
-            SendError(response, 500, $"Profile action failed: {ex.Message}", pretty, "profile_action_failed");
-        }
+        RunHandler(response, () => SendProfileActionJson(response,
+            EnsureStatus(RunOnMainThreadBlocking(() => ExecuteProfileAction(action, profileId))), pretty),
+            "Profile action failed", "profile_action_failed", pretty);
     }
 
     private static void SendProfileActionJson(
