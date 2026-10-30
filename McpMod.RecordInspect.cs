@@ -90,9 +90,11 @@ public static partial class McpMod
         {
             if (p.GetIndexParameters().Length != 0 || p.GetMethod == null)
                 continue;
-            object? v;
-            try { v = p.GetValue(run); }
-            catch { continue; }
+            // A property that throws is skipped; an actual null value is still reported.
+            var (readable, v) = TryReadQuiet<(bool Readable, object? Value)>(
+                () => (true, p.GetValue(run)));
+            if (!readable)
+                continue;
             string d = v switch
             {
                 null => "null",
@@ -123,8 +125,10 @@ public static partial class McpMod
                     {
                         if (sp.GetIndexParameters().Length != 0 || sp.GetMethod == null)
                             continue;
-                        object? sv;
-                        try { sv = sp.GetValue(stat); } catch { continue; }
+                        var (statReadable, sv) = TryReadQuiet<(bool Readable, object? Value)>(
+                            () => (true, sp.GetValue(stat)));
+                        if (!statReadable)
+                            continue;
                         o[sp.Name] = sv switch
                         {
                             null => null,

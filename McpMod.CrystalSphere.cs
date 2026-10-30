@@ -89,11 +89,12 @@ public static partial class McpMod
 
         private static void Prefix(object __instance, object clickedCell, out CrystalSphereTrace? __state)
         {
-            __state = null;
-            try
+            // Tracing is best-effort: a click that cannot be read leaves the postfix with
+            // no state, which is the same as an untraced click.
+            __state = TryReadQuiet<CrystalSphereTrace?>(() =>
             {
                 if (!CrystalSphereTraces.TryGetValue(__instance, out var trace))
-                    return;
+                    return null;
                 var tool = GetInstanceMemberValue(__instance, "CrystalSphereTool")?.ToString();
                 trace.Clicks.Add(new Dictionary<string, object?>(StringComparer.Ordinal)
                 {
@@ -102,12 +103,8 @@ public static partial class McpMod
                     ["y"] = GetInstanceMemberValue(clickedCell, "Y"),
                 });
                 Interlocked.Increment(ref trace.InFlight);
-                __state = trace;
-            }
-            catch
-            {
-                __state = null;
-            }
+                return trace;
+            });
         }
 
         private static void Postfix(ref Task __result, CrystalSphereTrace? __state)
@@ -134,30 +131,26 @@ public static partial class McpMod
     /// The trace block for a screen's minigame, or null when it cannot be read.
     /// </summary>
     private static Dictionary<string, object?>? BuildCrystalSphereTrace(NCrystalSphereScreen screen)
+        => TryRead("crystal_sphere.trace", () => BuildCrystalSphereTraceCore(screen));
+
+    private static Dictionary<string, object?>? BuildCrystalSphereTraceCore(NCrystalSphereScreen screen)
     {
-        try
-        {
-            _crystalSphereEntityField ??= typeof(NCrystalSphereScreen)
-                .GetField("_entity", BindingFlags.NonPublic | BindingFlags.Instance);
-            var minigame = _crystalSphereEntityField?.GetValue(screen);
-            if (minigame == null)
-                return null;
-            var divinations = GetInstanceMemberValue(minigame, "DivinationCount");
-            if (divinations == null)
-                return null;
-            var traced = CrystalSphereTraces.TryGetValue(minigame, out var trace) && trace.RngAtStart != null;
-            return new Dictionary<string, object?>(StringComparer.Ordinal)
-            {
-                ["rng_at_start"] = traced ? trace!.RngAtStart : null,
-                ["divinations_left"] = divinations,
-                ["clicks"] = traced ? new List<Dictionary<string, object?>>(trace!.Clicks) : new List<Dictionary<string, object?>>(),
-                ["click_in_flight"] = traced && Volatile.Read(ref trace!.InFlight) > 0,
-                ["trace_complete"] = traced,
-            };
-        }
-        catch
-        {
+        _crystalSphereEntityField ??= typeof(NCrystalSphereScreen)
+            .GetField("_entity", BindingFlags.NonPublic | BindingFlags.Instance);
+        var minigame = _crystalSphereEntityField?.GetValue(screen);
+        if (minigame == null)
             return null;
-        }
+        var divinations = GetInstanceMemberValue(minigame, "DivinationCount");
+        if (divinations == null)
+            return null;
+        var traced = CrystalSphereTraces.TryGetValue(minigame, out var trace) && trace.RngAtStart != null;
+        return new Dictionary<string, object?>(StringComparer.Ordinal)
+        {
+            ["rng_at_start"] = traced ? trace!.RngAtStart : null,
+            ["divinations_left"] = divinations,
+            ["clicks"] = traced ? new List<Dictionary<string, object?>>(trace!.Clicks) : new List<Dictionary<string, object?>>(),
+            ["click_in_flight"] = traced && Volatile.Read(ref trace!.InFlight) > 0,
+            ["trace_complete"] = traced,
+        };
     }
 }

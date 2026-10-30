@@ -143,8 +143,8 @@ public static partial class McpMod
     {
         static void Postfix(NetLoadingHandle __instance)
         {
-            try { NoteLoadingHandleOpened(__instance); }
-            catch (Exception ex) { GD.PrintErr($"[STS2 MCP] loading-handle diagnostics (open) failed: {ex.Message}"); }
+            // Diagnostics must never be able to break the transition they observe.
+            TryDo("loading_handle.diagnostics.open", () => NoteLoadingHandleOpened(__instance));
         }
     }
 
@@ -155,8 +155,8 @@ public static partial class McpMod
     {
         static void Postfix(NetLoadingHandle __instance)
         {
-            try { NoteLoadingHandleClosed(__instance); }
-            catch (Exception ex) { GD.PrintErr($"[STS2 MCP] loading-handle diagnostics (close) failed: {ex.Message}"); }
+            // Diagnostics must never be able to break the transition they observe.
+            TryDo("loading_handle.diagnostics.close", () => NoteLoadingHandleClosed(__instance));
         }
     }
 }

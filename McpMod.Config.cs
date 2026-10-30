@@ -42,53 +42,57 @@ public static partial class McpMod
     /// </summary>
     private static ModConfig LoadConfig()
     {
+        // A config the mod cannot read (bad JSON, unreadable file) falls back to defaults;
+        // the read helper records what failed.
+        var loaded = TryRead<ModConfig?>("config.load", LoadConfigCore);
+        if (loaded != null)
+            return loaded;
+
+        GD.PrintErr("[STS2 MCP] Failed to load config, using defaults");
+        return WithResolvedPort(new ModConfig());
+    }
+
+    private static ModConfig LoadConfigCore()
+    {
         var config = new ModConfig();
-        try
+        string? modDir = Path.GetDirectoryName(
+            System.Reflection.Assembly.GetExecutingAssembly().Location);
+        if (modDir == null) return WithResolvedPort(config);
+
+        string configPath = Path.Combine(modDir, ConfigFileName);
+        if (!File.Exists(configPath))
         {
-            string? modDir = Path.GetDirectoryName(
-                System.Reflection.Assembly.GetExecutingAssembly().Location);
-            if (modDir == null) return WithResolvedPort(config);
-
-            string configPath = Path.Combine(modDir, ConfigFileName);
-            if (!File.Exists(configPath))
-            {
-                TryWriteDefaultConfig(configPath, config);
-                return WithResolvedPort(config);
-            }
-
-            string content = File.ReadAllText(configPath);
-            using var doc = JsonDocument.Parse(content);
-            var root = doc.RootElement;
-
-            // The combat recorder reads its keys ("record", "record_dir") from the same
-            // file; keep feeding it the whole document so its options stay where the
-            // user wrote them.
-            Recorder.CombatRecorder.Configure(root);
-
-            if (root.TryGetProperty("port", out var portElem)
-                && portElem.TryGetInt32(out int port)
-                && port is > 0 and <= 65535)
-            {
-                config.Port = port;
-            }
-            else
-            {
-                GD.PrintErr($"[STS2 MCP] Invalid or missing 'port' in {configPath}, using default {DefaultPort}");
-            }
-
-            if (root.TryGetProperty("instant_mode", out var instantElem)
-                && instantElem.ValueKind is JsonValueKind.True or JsonValueKind.False)
-            {
-                config.InstantMode = instantElem.GetBoolean();
-            }
-
+            TryWriteDefaultConfig(configPath, config);
             return WithResolvedPort(config);
         }
-        catch (Exception ex)
+
+        string content = File.ReadAllText(configPath);
+        using var doc = JsonDocument.Parse(content);
+        var root = doc.RootElement;
+
+        // The combat recorder reads its keys ("record", "record_dir") from the same
+        // file; keep feeding it the whole document so its options stay where the
+        // user wrote them.
+        Recorder.CombatRecorder.Configure(root);
+
+        if (root.TryGetProperty("port", out var portElem)
+            && portElem.TryGetInt32(out int port)
+            && port is > 0 and <= 65535)
         {
-            GD.PrintErr($"[STS2 MCP] Failed to load config: {ex.Message}, using defaults");
-            return WithResolvedPort(new ModConfig());
+            config.Port = port;
         }
+        else
+        {
+            GD.PrintErr($"[STS2 MCP] Invalid or missing 'port' in {configPath}, using default {DefaultPort}");
+        }
+
+        if (root.TryGetProperty("instant_mode", out var instantElem)
+            && instantElem.ValueKind is JsonValueKind.True or JsonValueKind.False)
+        {
+            config.InstantMode = instantElem.GetBoolean();
+        }
+
+        return WithResolvedPort(config);
     }
 
     /// <summary>
@@ -262,7 +266,7 @@ public static partial class McpMod
     /// </summary>
     private static void SaveConfig()
     {
-        try
+        var failure = TryAction("config.save", () =>
         {
             string? modDir = Path.GetDirectoryName(
                 System.Reflection.Assembly.GetExecutingAssembly().Location);
@@ -273,35 +277,31 @@ public static partial class McpMod
             // Merge into the file instead of rewriting it: the recorder's "record" and
             // "record_dir" keys are hand-edited and must survive an instant_mode toggle.
             var data = new Dictionary<string, object?>(StringComparer.Ordinal);
-            try
+            // An unreadable config is rewritten from defaults, so the unknown keys simply
+            // start out empty; the read helper records why.
+            TryDo("config.merge", () =>
             {
-                if (File.Exists(configPath))
+                if (!File.Exists(configPath))
+                    return;
+
+                using var existing = JsonDocument.Parse(File.ReadAllText(configPath));
+                if (existing.RootElement.ValueKind != JsonValueKind.Object)
+                    return;
+
+                foreach (var prop in existing.RootElement.EnumerateObject())
                 {
-                    using var existing = JsonDocument.Parse(File.ReadAllText(configPath));
-                    if (existing.RootElement.ValueKind == JsonValueKind.Object)
-                    {
-                        foreach (var prop in existing.RootElement.EnumerateObject())
-                        {
-                            if (prop.Name is "port" or "instant_mode")
-                                continue;
-                            data[prop.Name] = JsonSerializer.Deserialize<object>(prop.Value.GetRawText());
-                        }
-                    }
+                    if (prop.Name is "port" or "instant_mode")
+                        continue;
+                    data[prop.Name] = JsonSerializer.Deserialize<object>(prop.Value.GetRawText());
                 }
-            }
-            catch (Exception ex)
-            {
-                GD.PrintErr($"[STS2 MCP] Config not readable, rewriting from defaults: {ex.Message}");
-            }
+            });
 
             data["port"] = _config.Port;
             data["instant_mode"] = _config.InstantMode;
             File.WriteAllText(configPath, JsonSerializer.Serialize(data, _jsonOptions));
             GD.Print($"[STS2 MCP] Config saved (instant_mode={_config.InstantMode})");
-        }
-        catch (Exception ex)
-        {
-            GD.PrintErr($"[STS2 MCP] Failed to save config: {ex.Message}");
-        }
+        });
+        if (failure != null)
+            GD.PrintErr($"[STS2 MCP] Failed to save config: {failure}");
     }
 }

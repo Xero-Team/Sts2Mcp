@@ -179,14 +179,16 @@ public static partial class McpMod
     {
         // Wrap the UI's existing task so observation happens BEFORE CardReward.OnSelect resumes.
         // No choice, task result, exception or game reward is changed by this observer.
+        var entry = TryRead<RewardSession.Entry?>("reward.choice.observation",
+            () => GetCardRewardParent(__instance));
+        if (entry == null)
+            return;
+
         // The current task is copied out first: a ref parameter cannot be used in a lambda,
         // and the observer only ever derives a new task from it.
         var current = __result;
         var observed = TryRead<Task<int?>?>("reward.choice.observation", () =>
         {
-            var entry = GetCardRewardParent(__instance);
-            if (entry == null)
-                return null;
             _rewardSession.AwaitChoice(entry);
             var options = GetInstanceFieldValue(__instance, "_options") as System.Collections.ICollection;
             var alternatives = (GetInstanceFieldValue(__instance, "_extraOptions") as IEnumerable<CardRewardAlternative>)?.ToArray();

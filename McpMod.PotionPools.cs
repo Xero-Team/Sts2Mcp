@@ -70,16 +70,11 @@ public static partial class McpMod
             if (string.IsNullOrWhiteSpace(title) || pools.ContainsKey(title))
                 continue;
 
-            List<PotionModel> potions;
-            try
-            {
-                potions = pool.GetUnlockedPotions(unlockState).ToList();
-            }
-            catch
-            {
-                // A modded or malformed pool must not take down the response.
+            // A modded or malformed pool must not take down the response.
+            var potions = TryReadQuiet<List<PotionModel>?>(
+                () => pool.GetUnlockedPotions(unlockState).ToList());
+            if (potions == null)
                 continue;
-            }
 
             pools[title] = new Dictionary<string, object?>(StringComparer.Ordinal)
             {

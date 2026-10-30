@@ -28,7 +28,7 @@ public static partial class McpMod
             ["filter_version"] = 1,
             ["filter_source"] = "CardPoolModel.GetUnlockedCards(Player.UnlockState,IRunState.CardMultiplayerConstraint);CardFactory.FilterForPlayerCount;CardFactory.FilterForCombat;OrobicAcid.OnUse:Attack,Skill,Power"
         };
-        try
+        var failure = TryAction("player.generation_pool", () =>
         {
             var run = player.RunState;
             result["character_id"] = player.Character.Id.Entry;
@@ -51,12 +51,9 @@ public static partial class McpMod
             // 抽選・CreateCard・RNGには触らない。列挙完了後だけknownを立てる。
             result["cards"] = cards;
             result["known"] = true;
-        }
-        catch (Exception ex)
-        {
-            result["reason"] = $"{ex.GetType().Name}: {ex.Message}";
-            Warn("player.generation_pool", ex);
-        }
+        });
+        if (failure != null)
+            result["reason"] = failure;
         return result;
     }
 }

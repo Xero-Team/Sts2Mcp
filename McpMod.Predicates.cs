@@ -131,7 +131,8 @@ public static partial class McpMod
         if (tokenOffset + 4 > il.Length)
             return;
         int token = BitConverter.ToInt32(il, tokenOffset);
-        try
+        // A token that does not resolve names nothing the scan can report.
+        TryDoQuiet(() =>
         {
             if (isField)
             {
@@ -150,8 +151,7 @@ public static partial class McpMod
                 foreach (var arg in method.GetGenericArguments())
                     scan.GenericArgs.Add(arg.Name);
             }
-        }
-        catch { }
+        });
     }
 
     /// <summary>Resolves an `ldstr` token into the literal it pushes.</summary>

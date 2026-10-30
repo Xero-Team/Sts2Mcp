@@ -449,19 +449,14 @@ public static partial class McpMod
 
         foreach (var tip in IHoverTip.RemoveDupes(tips))
         {
-            try
-            {
-                if (tip is not HoverTip ht)
-                    continue;
+            if (tip is not HoverTip ht)
+                continue;
 
-                var title = SafeGetText(() => ht.Title);
-                if (!string.IsNullOrEmpty(title))
-                    keywords.TryAdd(title, SafeGetText(() => ht.Description) ?? "");
-            }
-            catch
-            {
-                // Hover-tip getters can throw during state transitions; skip unstable tips.
-            }
+            // Both reads already treat a throwing hover-tip getter (state transitions) as
+            // absent, so an unstable tip is skipped without a second guard.
+            var title = SafeGetText(() => ht.Title);
+            if (!string.IsNullOrEmpty(title))
+                keywords.TryAdd(title, SafeGetText(() => ht.Description) ?? "");
         }
     }
 
@@ -535,20 +530,6 @@ public static partial class McpMod
                 if (minGold != null) entry["min_gold"] = minGold;
                 if (maxGold != null) entry["max_gold"] = maxGold;
             });
-
-            try
-            {
-                var allMonstersMethod = type.GetProperty("AllPossibleMonsters");
-                if (allMonstersMethod != null)
-                {
-                    foreach (var method in type.GetMethods(bindFlags))
-                    {
-                        if (string.Equals(method.Name, "GenerateMonsters", StringComparison.Ordinal) && method.DeclaringType == type)
-                            break;
-                    }
-                }
-            }
-            catch { }
 
             var baseName = type.Name.Replace("Normal", "").Replace("Weak", "").Replace("Elite", "").Replace("Boss", "");
             var matchingMonsters = new List<string>();

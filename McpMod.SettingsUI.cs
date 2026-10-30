@@ -82,7 +82,7 @@ public static partial class McpMod
         if (!_instantModeEnabled && !_instantModeApplied) return;
         if (!PrefsAreLoaded()) return;
 
-        try
+        var failure = TryAction("settings.instant_mode.reconcile", () =>
         {
             var prefs = SaveManager.Instance.PrefsSave;
             if (prefs == null) return;
@@ -97,15 +97,12 @@ public static partial class McpMod
                 if (prefs.FastMode == FastModeType.Instant) prefs.FastMode = FastModeType.Fast;
                 _instantModeApplied = false;
             }
-        }
-        catch (Exception ex)
+        });
+        // Runs every frame — only ever report the first failure.
+        if (failure != null && !_instantModeErrorLogged)
         {
-            // Runs every frame — only ever report the first failure.
-            if (!_instantModeErrorLogged)
-            {
-                _instantModeErrorLogged = true;
-                GD.PrintErr($"[STS2 MCP] Instant Mode reconcile failed: {ex}");
-            }
+            _instantModeErrorLogged = true;
+            GD.PrintErr($"[STS2 MCP] Instant Mode reconcile failed: {failure}");
         }
     }
 
@@ -193,8 +190,9 @@ public static partial class McpMod
     {
         static void Postfix(NSettingsScreen __instance)
         {
-            try { InjectInstantModeCheckbox(__instance); }
-            catch (Exception ex) { GD.PrintErr($"[STS2 MCP] Settings UI injection failed: {ex}"); }
+            // Optional UI injection: a game that moved the settings layout must not make
+            // opening the settings screen throw.
+            TryDo("settings.ui.inject", () => InjectInstantModeCheckbox(__instance));
         }
     }
 

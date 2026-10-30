@@ -63,12 +63,10 @@ public static partial class McpMod
             }
             catch (Exception error) { throw RefuseUnpoweredCardValues(card, error); }
         }
-        try { return CleanCardDescription(card.GetDescriptionForPile(pile)); }
-        catch (Exception error)
-        {
-            Warn("card.description", error);
-            return SafeGetText(() => card.Description)?.Replace(NEWLINE, ' ');
-        }
+        // A rendered description that cannot be produced falls back to the model's own text.
+        return TryRead("card.description",
+                   () => CleanCardDescription(card.GetDescriptionForPile(pile)))
+               ?? SafeGetText(() => card.Description)?.Replace(NEWLINE, ' ');
     }
 
     private static string CleanCardDescription(string description)

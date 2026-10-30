@@ -339,7 +339,8 @@ public static partial class McpMod
             ["last_write_time_utc"] = file.LastWriteTimeUtc
         };
 
-        try
+        // A run file that will not parse still reports its name, size and timestamp.
+        var parseFailure = TryAction("compendium.run_history_entry", () =>
         {
             using var stream = file.OpenRead();
             using var document = JsonDocument.Parse(stream);
@@ -377,11 +378,9 @@ public static partial class McpMod
             }
 
             entry["map_point_count"] = CountMapPoints(root);
-        }
-        catch (Exception ex)
-        {
-            entry["parse_error"] = ex.Message;
-        }
+        });
+        if (parseFailure != null)
+            entry["parse_error"] = parseFailure;
 
         return entry;
     }
@@ -433,7 +432,8 @@ public static partial class McpMod
 
         result["save_path"] = NormalizePathForJson(currentRunPath);
 
-        try
+        // The context above (paths, ids) is still usable when the save will not parse.
+        var parseFailure = TryAction("compendium.current_run", () =>
         {
             using var stream = File.OpenRead(currentRunPath);
             using var document = JsonDocument.Parse(stream);
@@ -455,11 +455,9 @@ public static partial class McpMod
 
             if (result.TryGetValue("start_time", out var startTime) && startTime != null)
                 result["run_id"] = $"{saveScope}:profile{profileId}:{startTime}";
-        }
-        catch (Exception ex)
-        {
-            result["parse_error"] = ex.Message;
-        }
+        });
+        if (parseFailure != null)
+            result["parse_error"] = parseFailure;
 
         return result;
     }
