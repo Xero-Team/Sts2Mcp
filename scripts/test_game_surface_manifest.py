@@ -90,11 +90,6 @@ EXTRAS = [
     ("McpMod.StateBuilder.cs", 1139, "candidate-name", "_quitButton", "field", None),
 ]
 
-# Members reached through a string type name rather than typeof.
-TYPE_NAME_EXTRAS = [
-    ("McpMod.Compendium.cs", 584, "Assembly.GetType", "MegaCrit.Sts2.Core.Platform.Steam.SteamUtil"),
-]
-
 # Members the mod deliberately does not require: a version-gated read with a fallback,
 # or one name in a candidate list that the loop tries in turn.
 OPTIONAL = {
@@ -113,15 +108,6 @@ EXTERNAL = {
     ("McpMod.Actions.cs", "GetProperty", "Count"): "bcl",
     ("McpMod.Actions.cs", "GetMethod", "Peek"): "bcl",
     ("McpMod.Actions.cs", "GetMethod", "Pop"): "bcl",
-}
-
-# Confirmed absent in v0.111.0 (sha256 2b40d2df538d). Recorded so the gap is visible
-# instead of silently passing; the fix belongs in its own change.
-BROKEN = {
-    ("McpMod.Compendium.cs", "Assembly.GetType", "MegaCrit.Sts2.Core.Platform.Steam.SteamUtil"):
-        "Steam changed type or namespace (v0.111.0: Multiplayer.Transport.Steam.SteamUtil has no GetSteamID64)",
-    ("McpMod.Compendium.cs", "GetMethod", "GetSteamID64"):
-        "owner lookup targets a type that is not in this build (see the Assembly.GetType entry)",
 }
 
 
@@ -201,9 +187,6 @@ def extract():
     for file, line, api, member, kind, owner in EXTRAS:
         add(file, line, api, member, kind, owner)
 
-    for file, line, api, member in TYPE_NAME_EXTRAS:
-        add(file, line, api, member, "type", None)
-
     # One entry per binding, not per call site: `_backButton` read on nine screens is
     # one game member. The recorded line is the first place the source names it.
     unique = {}
@@ -225,8 +208,6 @@ def classify(entries):
             entry["optional_reason"] = "version-gated or candidate-name read with a fallback"
         if key in EXTERNAL:
             entry["external"] = EXTERNAL[key]
-        if key in BROKEN:
-            entry["broken"] = BROKEN[key]
     return entries
 
 

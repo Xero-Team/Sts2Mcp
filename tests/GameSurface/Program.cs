@@ -25,8 +25,7 @@ internal sealed record Binding(
     string? Type,
     int Arity,
     bool Required,
-    string? External,
-    string? Broken)
+    string? External)
 {
     public string Describe() => Type is null ? Member : $"{Type}.{Member}";
 }
@@ -98,7 +97,6 @@ internal static class Program
 
         int failures = 0;
         int optionalAbsent = 0;
-        int knownMismatches = 0;
         foreach (Binding binding in bindings)
         {
             string location = $"{binding.File}:{binding.Line} {binding.Api} {binding.Describe()} ({binding.Kind})";
@@ -116,13 +114,6 @@ internal static class Program
                 continue;
             }
 
-            if (binding.Broken is not null)
-            {
-                Console.WriteLine($"BROKEN {location} - {binding.Broken}");
-                knownMismatches++;
-                continue;
-            }
-
             if (!binding.Required)
             {
                 Console.WriteLine($"ok   {location} - absent, optional read with a fallback");
@@ -135,13 +126,6 @@ internal static class Program
             failures++;
         }
 
-        if (knownMismatches > 0)
-        {
-            Console.WriteLine(
-                $"KNOWN MISMATCH: {knownMismatches} binding(s) recorded as absent from this build. " +
-                "Reported separately; not fixed on this branch (see tests/README.md).");
-        }
-
         if (failures > 0)
         {
             Console.WriteLine($"{failures} of {bindings.Count} required game bindings missing from {dllPath}");
@@ -150,7 +134,7 @@ internal static class Program
 
         Console.WriteLine(
             $"ALL OK ({bindings.Count} game bindings checked against {AssemblyName} sha256 {sha256}; " +
-            $"{optionalAbsent} optional absent, {knownMismatches} known mismatch)");
+            $"{optionalAbsent} optional absent)");
         return 0;
     }
 
@@ -217,8 +201,7 @@ internal static class Program
                     : null,
                 entry.TryGetProperty("arity", out JsonElement arity) ? arity.GetInt32() : 0,
                 !entry.TryGetProperty("required", out JsonElement required) || required.GetBoolean(),
-                entry.TryGetProperty("external", out JsonElement external) ? external.GetString() : null,
-                entry.TryGetProperty("broken", out JsonElement broken) ? broken.GetString() : null));
+                entry.TryGetProperty("external", out JsonElement external) ? external.GetString() : null));
         }
 
         return bindings;

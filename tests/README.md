@@ -53,7 +53,7 @@ type or member fails the build. That is not repeated in every row.
 | `McpMod.MultiplayerState.cs` | metadata + manual-only | `make test` | 2 bindings used to read lobby/queue state. | Co-op state needs a second peer. |
 | `McpMod.MultiplayerActions.cs` | manual-only | in-game co-op | Compiles against `RunManager`/`NetService`; no literal member names. | Host/client actions need two processes. |
 | `McpMod.SettingsUI.cs` | metadata + manual-only | `make test` | 8 bindings and the `NFastModeTickbox` Harmony targets. | The injected settings row is only visible in the game menu. |
-| `McpMod.Compendium.cs` | metadata + manual-only | `make test` | 4 bindings; records the **known Steam mismatch** below. | Compendium screens need a live run history. |
+| `McpMod.Compendium.cs` | metadata + manual-only | `make test` | 2 reflection bindings; the Steam id lookup is a direct `PlatformUtil` call, so it is compile-checked. | Compendium screens need a live run history; the resolved account id is only visible against real save roots. |
 | `McpMod.Wiki.cs` | manual-only | in-game `GET /wiki` | Compiles against the model catalog; limits are plain constants. | Search/listing walks live model data. |
 | `McpMod.RecordInspect.cs` | manual-only | in-game `GET /record/inspect` | Compiles against the game's `PacketReader`. | Reading a real `.mcr` needs a recorded run; `tools/record_check.py` checks the file format separately. |
 | `McpMod.Debug.cs` | manual-only | in-game debug actions | Compiles against `CombatRoom`/`RunManager`. | Encounter jump/play-phase forcing is destructive and live-only. |
@@ -120,13 +120,12 @@ type or member fails the build. That is not repeated in every row.
 | `tools/record_check.py` | python | `make record-selftest` | Every way a record can be truncated or damaged is reported; a whole record passes. | Synthetic records, not a real capture. |
 | `tools/record_check_selftest.py` | python | `make record-selftest` | The cases themselves. | — |
 
-## Known mismatch in v0.111.0
+## Resolved on this branch
 
-`McpMod.Compendium.cs:584` looks up `MegaCrit.Sts2.Core.Platform.Steam.SteamUtil`; this build ships
-`MegaCrit.Sts2.Core.Multiplayer.Transport.Steam.SteamUtil`, which has no `GetSteamID64`. Both
-manifest entries are marked `broken`, `tests/GameSurface` prints `BROKEN …` for them and still
-exits 0, and `tests/GameSurface/README.md` records the detail. The fix changes what
-`GetActiveSteamId` returns, so it is its own change, not part of this test branch.
+`McpMod.Compendium.cs` used to reflect into `Platform.Steam.SteamUtil.GetSteamID64`, which v0.111
+removed, so the mod silently reported no active Steam account. It now calls
+`PlatformUtil.GetLocalPlayerId(PlatformUtil.PrimaryPlatform)` directly. `tests/GameSurface` no
+longer needs a "known mismatch" bucket: anything not marked `required: false` fails the check.
 
 ## Manual checks owed
 
@@ -143,5 +142,5 @@ Each is a specific action, not "test the mod":
    `.mcr` and `GET /record/inspect`.
 6. Enter the Punch Off event under Instant fast mode: the event must open and the HTTP endpoint
    must keep answering.
-7. If `GetActiveSteamId` is ever fixed: `GET /compendium` (or whichever caller) must still report
-   the same profile identity in singleplayer.
+7. On a Steam install with two accounts that have saves, confirm `GET /compendium` reads only the
+   signed-in account's save root (the pre-v0.111 behaviour was to fall back to every account).
