@@ -790,75 +790,106 @@ public static partial class McpMod
 
     private static void FormatShopMarkdown(StringBuilder sb, Dictionary<string, object?> shop)
     {
-        if (shop.TryGetValue("error", out var err) && err != null)
-        {
-            sb.AppendLine("## Shop");
-            sb.AppendLine($"**Note:** {err}");
-            sb.AppendLine();
-        }
-
-        if (shop.TryGetValue("sellable_potions", out var spObj)
-            && spObj is List<Dictionary<string, object?>> sellable && sellable.Count > 0)
-        {
-            sb.AppendLine("### Potions this merchant will buy");
-            foreach (var p in sellable)
-                sb.AppendLine($"- [slot {p["slot"]}] **{p["potion_name"]}** — `sell_potion slot {p["slot"]}`");
-            sb.AppendLine();
-        }
-
-        if (shop.TryGetValue("items", out var itemsObj) && itemsObj is List<Dictionary<string, object?>> items)
-        {
-            sb.AppendLine("## Shop Inventory");
-            string? lastCategory = null;
-            foreach (var item in items)
-            {
-                string category = item["category"]?.ToString() ?? "";
-                if (!string.Equals(category, lastCategory, StringComparison.Ordinal))
-                {
-                    string header = category switch { "card" => "Cards", "relic" => "Relics", "potion" => "Potions", "card_removal" => "Services", _ => category };
-                    sb.AppendLine($"### {header}");
-                    lastCategory = category;
-                }
-
-                bool stocked = item["is_stocked"] is true;
-                bool afford = item["can_afford"] is true;
-                string priceTag = stocked ? $"{item["price"]}g" : "SOLD";
-                string affordTag = stocked && !afford ? " (can't afford)" : "";
-                string saleTag = item.TryGetValue("on_sale", out var os) && os is true ? " **SALE**" : "";
-
-                string cardCost = item.TryGetValue("card_cost", out var cc) && cc != null ? cc.ToString()! : "";
-                string cardStarCost = item.TryGetValue("card_star_cost", out var csc) && csc != null ? $" + {csc} star" : "";
-                string cardEnergy = !string.IsNullOrEmpty(cardCost) ? $" ({cardCost} energy{cardStarCost})" : "";
-                string cardUpgrade = "";
-                if (string.Equals(category, "card"
-, StringComparison.Ordinal) && item.TryGetValue("card_upgrade_preview_description", out var upgradeDesc)
-                    && upgradeDesc != null
-                    && !Equals(upgradeDesc, item.GetValueOrDefault("card_description")))
-                {
-                    string upgradeCost = item.TryGetValue("card_upgrade_preview_cost", out var uc) && uc != null ? uc.ToString()! : "";
-                    string upgradeStar = item.TryGetValue("card_upgrade_preview_star_cost", out var usc) && usc != null ? $" + {usc} star" : "";
-                    string upgradeEnergy = !string.IsNullOrEmpty(upgradeCost) ? $"({upgradeCost} energy{upgradeStar})" : "";
-                    cardUpgrade = !string.IsNullOrEmpty(upgradeEnergy)
-                        ? $" | Upgrade: {upgradeEnergy} {upgradeDesc}"
-                        : $" | Upgrade: {upgradeDesc}";
-                }
-                string itemKeywords = FormatKeywordNames(item);
-                string desc = category switch
-                {
-                    "card" => $"**{item.GetValueOrDefault("card_name")}**{(item.GetValueOrDefault("card_is_upgraded") is true ? "+" : "")}{cardEnergy} [{item.GetValueOrDefault("card_type")}] {item.GetValueOrDefault("card_rarity")}{itemKeywords} - {item.GetValueOrDefault("card_description")}{cardUpgrade}",
-                    "relic" => $"**{item.GetValueOrDefault("relic_name")}** {item.GetValueOrDefault("relic_rarity")}{itemKeywords} - {item.GetValueOrDefault("relic_description")}",
-                    "potion" => $"**{item.GetValueOrDefault("potion_name")}** {item.GetValueOrDefault("potion_rarity")} ({item.GetValueOrDefault("potion_usage")}, target: {item.GetValueOrDefault("potion_target_type")}){itemKeywords} - {item.GetValueOrDefault("potion_description")}",
-                    "card_removal" => "**Remove a card** from your deck",
-                    _ => "Unknown item"
-                };
-                sb.AppendLine($"- [{item["index"]}] {desc} - {priceTag}{saleTag}{affordTag}");
-            }
-            sb.AppendLine();
-        }
+        AppendShopErrorNote(sb, shop);
+        AppendSellablePotionsMarkdown(sb, shop);
+        AppendShopItemsMarkdown(sb, shop);
 
         bool canProceed = shop.TryGetValue("can_proceed", out var cp) && cp is true;
         sb.AppendLine($"**Can proceed:** {(canProceed ? "Yes" : "No")}");
         sb.AppendLine();
+    }
+
+    private static void AppendShopErrorNote(StringBuilder sb, Dictionary<string, object?> shop)
+    {
+        if (!shop.TryGetValue("error", out var err) || err == null)
+            return;
+
+        sb.AppendLine("## Shop");
+        sb.AppendLine($"**Note:** {err}");
+        sb.AppendLine();
+    }
+
+    private static void AppendSellablePotionsMarkdown(StringBuilder sb, Dictionary<string, object?> shop)
+    {
+        if (!shop.TryGetValue("sellable_potions", out var spObj)
+            || spObj is not List<Dictionary<string, object?>> sellable
+            || sellable.Count == 0)
+            return;
+
+        sb.AppendLine("### Potions this merchant will buy");
+        foreach (var p in sellable)
+            sb.AppendLine($"- [slot {p["slot"]}] **{p["potion_name"]}** — `sell_potion slot {p["slot"]}`");
+        sb.AppendLine();
+    }
+
+    private static void AppendShopItemsMarkdown(StringBuilder sb, Dictionary<string, object?> shop)
+    {
+        if (!shop.TryGetValue("items", out var itemsObj) || itemsObj is not List<Dictionary<string, object?>> items)
+            return;
+
+        sb.AppendLine("## Shop Inventory");
+        string? lastCategory = null;
+        foreach (var item in items)
+        {
+            string category = item["category"]?.ToString() ?? "";
+            if (!string.Equals(category, lastCategory, StringComparison.Ordinal))
+            {
+                string header = category switch { "card" => "Cards", "relic" => "Relics", "potion" => "Potions", "card_removal" => "Services", _ => category };
+                sb.AppendLine($"### {header}");
+                lastCategory = category;
+            }
+            sb.AppendLine(DescribeShopItem(item, category));
+        }
+        sb.AppendLine();
+    }
+
+    /// <summary>One shop row: the item description, then its price and stock flags.</summary>
+    private static string DescribeShopItem(Dictionary<string, object?> item, string category)
+    {
+        bool stocked = item["is_stocked"] is true;
+        bool afford = item["can_afford"] is true;
+        string priceTag = stocked ? $"{item["price"]}g" : "SOLD";
+        string affordTag = stocked && !afford ? " (can't afford)" : "";
+        string saleTag = item.TryGetValue("on_sale", out var os) && os is true ? " **SALE**" : "";
+        string desc = DescribeShopItemBody(item, category);
+        return $"- [{item["index"]}] {desc} - {priceTag}{saleTag}{affordTag}";
+    }
+
+    private static string DescribeShopItemBody(Dictionary<string, object?> item, string category)
+    {
+        string cardCost = item.TryGetValue("card_cost", out var cc) && cc != null ? cc.ToString()! : "";
+        string cardStarCost = item.TryGetValue("card_star_cost", out var csc) && csc != null ? $" + {csc} star" : "";
+        string cardEnergy = !string.IsNullOrEmpty(cardCost) ? $" ({cardCost} energy{cardStarCost})" : "";
+        string cardUpgrade = DescribeShopCardUpgrade(item, category);
+        string itemKeywords = FormatKeywordNames(item);
+        return category switch
+        {
+            "card" => $"**{item.GetValueOrDefault("card_name")}**{(item.GetValueOrDefault("card_is_upgraded") is true ? "+" : "")}{cardEnergy} [{item.GetValueOrDefault("card_type")}] {item.GetValueOrDefault("card_rarity")}{itemKeywords} - {item.GetValueOrDefault("card_description")}{cardUpgrade}",
+            "relic" => $"**{item.GetValueOrDefault("relic_name")}** {item.GetValueOrDefault("relic_rarity")}{itemKeywords} - {item.GetValueOrDefault("relic_description")}",
+            "potion" => $"**{item.GetValueOrDefault("potion_name")}** {item.GetValueOrDefault("potion_rarity")} ({item.GetValueOrDefault("potion_usage")}, target: {item.GetValueOrDefault("potion_target_type")}){itemKeywords} - {item.GetValueOrDefault("potion_description")}",
+            "card_removal" => "**Remove a card** from your deck",
+            _ => "Unknown item"
+        };
+    }
+
+    /// <summary>
+    /// The upgraded preview for a shop card, when it differs from the card as it is. Empty
+    /// for every other category.
+    /// </summary>
+    private static string DescribeShopCardUpgrade(Dictionary<string, object?> item, string category)
+    {
+        if (!string.Equals(category, "card", StringComparison.Ordinal)
+            || !item.TryGetValue("card_upgrade_preview_description", out var upgradeDesc)
+            || upgradeDesc == null
+            || Equals(upgradeDesc, item.GetValueOrDefault("card_description")))
+            return "";
+
+        string upgradeCost = item.TryGetValue("card_upgrade_preview_cost", out var uc) && uc != null ? uc.ToString()! : "";
+        string upgradeStar = item.TryGetValue("card_upgrade_preview_star_cost", out var usc) && usc != null ? $" + {usc} star" : "";
+        string upgradeEnergy = !string.IsNullOrEmpty(upgradeCost) ? $"({upgradeCost} energy{upgradeStar})" : "";
+        return !string.IsNullOrEmpty(upgradeEnergy)
+            ? $" | Upgrade: {upgradeEnergy} {upgradeDesc}"
+            : $" | Upgrade: {upgradeDesc}";
     }
 
     private static void FormatFakeMerchantMarkdown(StringBuilder sb, Dictionary<string, object?> fm)
