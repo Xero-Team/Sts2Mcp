@@ -5974,22 +5974,30 @@ public static partial class McpMod
     {
         var state = new Dictionary<string, object?>(StringComparer.Ordinal);
 
-        var instructionsTitle = screen.GetNodeOrNull<Godot.Control>("%InstructionsTitle");
-        if (instructionsTitle != null)
-        {
-            var textVariant = instructionsTitle.Get("text");
-            if (textVariant.VariantType != Godot.Variant.Type.Nil)
-                state["instructions_title"] = StripRichTextTags(textVariant.AsString());
-        }
+        if (ReadLabelText(screen, "%InstructionsTitle") is { } title)
+            state["instructions_title"] = title;
+        if (ReadLabelText(screen, "%InstructionsDescription") is { } description)
+            state["instructions_description"] = description;
 
-        var instructionsDescription = screen.GetNodeOrNull<Godot.Control>("%InstructionsDescription");
-        if (instructionsDescription != null)
-        {
-            var textVariant = instructionsDescription.Get("text");
-            if (textVariant.VariantType != Godot.Variant.Type.Nil)
-                state["instructions_description"] = StripRichTextTags(textVariant.AsString());
-        }
+        AppendCrystalSphereCells(state, screen);
+        AppendCrystalSphereTools(state, screen);
 
+        if (ReadLabelText(screen, "%DivinationsLeft") is { } divinationsLeft)
+            state["divinations_left_text"] = divinationsLeft;
+
+        state["can_proceed"] = FindCrystalSphereProceedButton(screen) != null;
+
+        var minigame = BuildCrystalSphereTrace(screen);
+        if (minigame != null)
+            state["minigame"] = minigame;
+
+        return state;
+    }
+
+    /// <summary>The grid and the revealed items, both keyed off the visible cells.</summary>
+    private static void AppendCrystalSphereCells(
+        Dictionary<string, object?> state, NCrystalSphereScreen screen)
+    {
         var cells = FindAll<NCrystalSphereCell>(screen);
         state["grid_width"] = cells.Count > 0 ? cells.Max(c => c.Entity.X) + 1 : 0;
         state["grid_height"] = cells.Count > 0 ? cells.Max(c => c.Entity.Y) + 1 : 0;
@@ -6045,7 +6053,12 @@ public static partial class McpMod
             });
         }
         state["revealed_items"] = revealedItems;
+    }
 
+    /// <summary>Which divination tool is armed, and whether either can be used now.</summary>
+    private static void AppendCrystalSphereTools(
+        Dictionary<string, object?> state, NCrystalSphereScreen screen)
+    {
         var bigButton = screen.GetNodeOrNull<NClickableControl>("%BigDivinationButton");
         var smallButton = screen.GetNodeOrNull<NClickableControl>("%SmallDivinationButton");
         bool bigUsable = bigButton?.Visible == true && bigButton.IsVisibleInTree() && bigButton.IsEnabled;
@@ -6061,22 +6074,18 @@ public static partial class McpMod
         state["tool"] = tool;
         state["can_use_big_tool"] = bigUsable;
         state["can_use_small_tool"] = smallUsable;
+    }
 
-        var divinationsLeft = screen.GetNodeOrNull<Godot.Control>("%DivinationsLeft");
-        if (divinationsLeft != null)
-        {
-            var textVariant = divinationsLeft.Get("text");
-            if (textVariant.VariantType != Godot.Variant.Type.Nil)
-                state["divinations_left_text"] = StripRichTextTags(textVariant.AsString());
-        }
-
-        state["can_proceed"] = FindCrystalSphereProceedButton(screen) != null;
-
-        var minigame = BuildCrystalSphereTrace(screen);
-        if (minigame != null)
-            state["minigame"] = minigame;
-
-        return state;
+    /// <summary>The text of a %-named label under <paramref name="owner"/>, or null when it has none.</summary>
+    private static string? ReadLabelText(Node owner, string path)
+    {
+        var label = owner.GetNodeOrNull<Godot.Control>(path);
+        if (label == null)
+            return null;
+        var textVariant = label.Get("text");
+        return textVariant.VariantType != Godot.Variant.Type.Nil
+            ? StripRichTextTags(textVariant.AsString())
+            : null;
     }
 
     // True while a treasure room is loaded and still has something to do: an
