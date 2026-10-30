@@ -69,47 +69,41 @@ public static partial class McpMod
     private static object? _moveFxScope;
 
     internal static Dictionary<string, object?>? GetMoveEffects(MonsterModel monster, MoveState move)
+        => TryRead("move.effects", () => GetMoveEffectsCore(monster, move));
+
+    private static Dictionary<string, object?>? GetMoveEffectsCore(MonsterModel monster, MoveState move)
     {
-        try
+        // Synthetic stuns share an ID while carrying different callbacks.
+        // An empty Whistle stun must not cache away Bowlbug's Dizzy body.
+        if (string.Equals(move.Id, "STUNNED", StringComparison.Ordinal))
+            return ScanMoveEffects(monster, move);
+        // Amounts are read off the live monster, so a scan is only reusable
+        // within the combat it was taken in: ascension-scaled stat getters
+        // and the run's player count both differ between runs, and the
+        // cache is keyed only by type and move id.  Dropping the table when
+        // the combat changes serves fresh numbers instead of the previous
+        // fight's.
+        var scope = TryReadQuiet<object>(() => monster.CombatState);
+        if (!ReferenceEquals(scope, _moveFxScope))
         {
-            // Synthetic stuns share an ID while carrying different callbacks.
-            // An empty Whistle stun must not cache away Bowlbug's Dizzy body.
-            if (string.Equals(move.Id, "STUNNED", StringComparison.Ordinal))
-                return ScanMoveEffects(monster, move);
-            // Amounts are read off the live monster, so a scan is only reusable
-            // within the combat it was taken in: ascension-scaled stat getters
-            // and the run's player count both differ between runs, and the
-            // cache is keyed only by type and move id.  Dropping the table when
-            // the combat changes serves fresh numbers instead of the previous
-            // fight's.
-            object? scope;
-            try { scope = monster.CombatState; }
-            catch { scope = null; }
-            if (!ReferenceEquals(scope, _moveFxScope))
-            {
-                _moveFxCache.Clear();
-                _moveFxScope = scope;
-            }
-            var key = (monster.GetType(), move.Id);
-            if (_moveFxCache.TryGetValue(key, out var cached))
-            {
-                if (cached == null)
-                    return null;
-                // The command scan is reusable, but descriptors such as the
-                // curse index and Wither level read mutable monster state.
-                // Copy before refreshing so older observations stay intact.
-                var current = new Dictionary<string, object?>(cached, StringComparer.Ordinal);
-                AddStatefulMoveSemantics(monster, move, current);
-                return current;
-            }
-            var fx = ScanMoveEffects(monster, move);
-            _moveFxCache[key] = fx;
-            return fx;
+            _moveFxCache.Clear();
+            _moveFxScope = scope;
         }
-        catch
+        var key = (monster.GetType(), move.Id);
+        if (_moveFxCache.TryGetValue(key, out var cached))
         {
-            return null;
+            if (cached == null)
+                return null;
+            // The command scan is reusable, but descriptors such as the
+            // curse index and Wither level read mutable monster state.
+            // Copy before refreshing so older observations stay intact.
+            var current = new Dictionary<string, object?>(cached, StringComparer.Ordinal);
+            AddStatefulMoveSemantics(monster, move, current);
+            return current;
         }
+        var fx = ScanMoveEffects(monster, move);
+        _moveFxCache[key] = fx;
+        return fx;
     }
 
     /// <summary>Effects found, plus the IL operand state, for one move scan.</summary>
@@ -879,20 +873,17 @@ public static partial class McpMod
                 case 0x7E:                   // ldsfld: Decimal.One-style constants
                     {                            // load with no op_Implicit conversion
                         int tok = BitConverter.ToInt32(il, i + 1);
-                        try
+                        // A token that does not resolve is simply not a decimal constant.
+                        var f = TryReadQuiet(() => module.ResolveField(tok));
+                        if (f?.DeclaringType == typeof(decimal))
                         {
-                            var f = module.ResolveField(tok);
-                            if (f?.DeclaringType == typeof(decimal))
+                            switch (f.Name)
                             {
-                                switch (f.Name)
-                                {
-                                    case "One": scan.SetAmount(1); break;
-                                    case "Zero": scan.SetAmount(0); break;
-                                    case "MinusOne": scan.SetAmount(-1); break;
-                                }
+                                case "One": scan.SetAmount(1); break;
+                                case "Zero": scan.SetAmount(0); break;
+                                case "MinusOne": scan.SetAmount(-1); break;
                             }
                         }
-                        catch { }
                         i += 5; break;
                     }
                 case 0x45:                   // switch: count + count targets
@@ -930,9 +921,8 @@ public static partial class McpMod
     /// </remarks>
     private static string? MonsterTypeTestedBy(MethodBase lambda)
     {
-        byte[]? il;
-        try { il = lambda.GetMethodBody()?.GetILAsByteArray(); }
-        catch { return null; }
+        // A body the runtime will not hand over has nothing to scan.
+        var il = TryReadQuiet(() => lambda.GetMethodBody()?.GetILAsByteArray());
         if (il == null)
             return null;
 
@@ -943,17 +933,15 @@ public static partial class McpMod
             byte op = il[i];
             if ((op == 0x74 || op == 0x75) && i + 5 <= il.Length)   // castclass / isinst
             {
-                try
+                // A type token that does not resolve is not a test of anything.
+                var tested = TryReadQuiet(
+                    () => lambda.Module.ResolveType(BitConverter.ToInt32(il, i + 1)));
+                if (tested != null && typeof(MonsterModel).IsAssignableFrom(tested))
                 {
-                    var tested = lambda.Module.ResolveType(BitConverter.ToInt32(il, i + 1));
-                    if (tested != null && typeof(MonsterModel).IsAssignableFrom(tested))
-                    {
-                        if (found != null)
-                            return null;
-                        found = tested.Name;
-                    }
+                    if (found != null)
+                        return null;
+                    found = tested.Name;
                 }
-                catch { }
             }
             i += InstructionLength(il, i);
         }
@@ -993,9 +981,8 @@ public static partial class McpMod
 
     private static void CollectPowerReads(MethodBase method, List<string> found, int depth)
     {
-        byte[]? il;
-        try { il = method.GetMethodBody()?.GetILAsByteArray(); }
-        catch { return; }
+        // A body the runtime will not hand over has nothing to scan.
+        var il = TryReadQuiet(() => method.GetMethodBody()?.GetILAsByteArray());
         if (il == null)
             return;
 
@@ -1378,13 +1365,9 @@ public static partial class McpMod
     }
 
     private static object? InvokeGetter(MethodInfo getter, object? receiver)
-    {
-        try
-        {
-            if (getter.IsStatic || receiver != null)
-                return getter.Invoke(receiver, null);
-        }
-        catch { }
-        return null;
-    }
+        // A getter that throws (state not up yet, receiver of the wrong shape) has no
+        // value to export, and a missing amount is better than a guessed one.
+        => TryReadQuiet(() => getter.IsStatic || receiver != null
+            ? getter.Invoke(receiver, null)
+            : null);
 }
