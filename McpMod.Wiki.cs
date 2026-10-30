@@ -22,6 +22,10 @@ public static partial class McpMod
     // whatever never ranked in a query's top 50 was silently absent from it.
     private const int MaxWikiListLimit = 5000;
 
+    // The rendered catalog depends only on the catalog and the profile's discovery set, so one
+    // entry per (scope, item type, discovery stamp) serves every query; see BuildWikiCandidatePool.
+    private static readonly BoundedCache<string, List<WikiCandidate>> s_wikiCandidateCache = new(capacity: 8);
+
     private static void HandleGetWiki(HttpListenerRequest request, HttpListenerResponse response)
     {
         string query = request.QueryString["query"] ?? request.QueryString["q"] ?? "";
@@ -178,12 +182,48 @@ public static partial class McpMod
         HashSet<string>? discoveredCards,
         HashSet<string>? discoveredRelics)
     {
-        var candidates = new List<WikiCandidate>();
+        // A card found mid-run reaches the profile in memory before the save is written, so the
+        // stamp is the discovery sets themselves, not the save file. Digested rather than
+        // spelled out because the sets run to hundreds of ids, and sorted first so the same set
+        // always stamps the same.
+        string stamp;
+        if (discoveredCards == null)
+        {
+            stamp = "all";
+        }
+        else
+        {
+            stamp = string.Join('|',
+                SaveManager.Instance?.CurrentProfileId.ToString(CultureInfo.InvariantCulture) ?? "",
+                DiscoveryDigest(discoveredCards),
+                discoveredRelics == null ? "" : DiscoveryDigest(discoveredRelics));
+        }
+
+        string key = string.Concat(stamp, "|", itemType);
+        if (s_wikiCandidateCache.TryGet(key, out List<WikiCandidate>? cached))
+        {
+            return cached;
+        }
+
+        List<WikiCandidate> candidates = new();
         if (itemType is "all" or "card")
+        {
             candidates.AddRange(BuildCardWikiCandidates(discoveredCards));
+        }
+
         if (itemType is "all" or "relic")
+        {
             candidates.AddRange(BuildRelicWikiCandidates(discoveredRelics));
+        }
+
+        s_wikiCandidateCache.Set(key, candidates);
         return candidates;
+    }
+
+    private static string DiscoveryDigest(HashSet<string> ids)
+    {
+        List<string> sorted = ids.OrderBy(id => id, StringComparer.Ordinal).ToList();
+        return StateJsonWriter.Digest(sorted).ToString("x16", CultureInfo.InvariantCulture);
     }
 
     private static List<(WikiCandidate Candidate, double Score)> RankWikiCandidates(
