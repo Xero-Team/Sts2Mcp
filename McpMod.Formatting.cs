@@ -14,43 +14,10 @@ public static partial class McpMod
         string stateType = state.TryGetValue("state_type", out var st) ? st?.ToString() ?? "unknown" : "unknown";
         bool isMultiplayer = state.TryGetValue("game_mode", out var gm) && string.Equals(gm?.ToString(), "multiplayer", StringComparison.Ordinal);
 
-        if (isMultiplayer)
-            sb.AppendLine($"# Multiplayer Game State: {stateType}");
-        else
-            sb.AppendLine($"# Game State: {stateType}");
-        sb.AppendLine();
-        // So a pasted markdown state says which build produced it, without a second request.
-        string modVersion = state.TryGetValue("mod_version", out var mv) ? mv?.ToString() ?? Version : Version;
-        string modCommit = state.TryGetValue("mod_commit", out var mc) ? mc?.ToString() ?? "" : "";
-        string schema = state.TryGetValue("schema_version", out var sv) ? sv?.ToString() ?? "" : "";
-        sb.AppendLine($"mod {modVersion}{(modCommit.Length > 0 ? "+" + modCommit : "")}{(schema.Length > 0 ? " · schema " + schema : "")}");
-        sb.AppendLine();
-
-        if (state.TryGetValue("run", out var runObj) && runObj is Dictionary<string, object?> run)
-        {
-            sb.AppendLine($"**Act {run["act"]}** | Floor {run["floor"]} | Ascension {run["ascension"]}");
-            sb.AppendLine();
-        }
-
-        // Loud on purpose: every number below is read live, so a state taken mid-animation
-        // reports pre-resolution values.
-        if (state.TryGetValue("is_resolving", out var resolving) && resolving is true)
-        {
-            string why = state.TryGetValue("resolving_reasons", out var rr) && rr is List<string> rl && rl.Count > 0
-                ? $" ({string.Join(", ", rl)})" : "";
-            sb.AppendLine($"> ⚠ **STILL RESOLVING{why}** — values below may be pre-resolution. Re-read until is_resolving is false.");
-            sb.AppendLine();
-        }
-
-        // A pasted markdown state is often all a reader gets, so it has to say when parts
-        // of it could not be built - otherwise a field that failed reads as a field that
-        // is not there.
-        if (state.TryGetValue("warnings", out var warningsObj) && warningsObj is List<string> warnings && warnings.Count > 0)
-        {
-            var head = string.Join(" | ", warnings.GetRange(0, Math.Min(3, warnings.Count)));
-            sb.AppendLine(CultureInfo.InvariantCulture, $"> ⚠ **{warnings.Count} state warning(s)** — {head}");
-            sb.AppendLine();
-        }
+        AppendStateHeader(sb, state, stateType, isMultiplayer);
+        AppendRunSummary(sb, state);
+        AppendResolvingWarning(sb, state);
+        AppendStateWarnings(sb, state);
 
         if (string.Equals(stateType, "menu", StringComparison.Ordinal))
         {
@@ -64,75 +31,174 @@ public static partial class McpMod
             return sb.ToString();
         }
 
-        // A "message" is a note about the screen, not a replacement for it. Returning
-        // here dropped every following section, which is why some screens (treasure
-        // among them) rendered as a single line of prose with no contents at all.
-        if (state.TryGetValue("message", out var msg) && msg != null)
+        AppendMessageNote(sb, state);
+        AppendGenerationPoolMarkdown(sb, state);
+        AppendPartyMarkdown(sb, state, isMultiplayer);
+        AppendTopPlayerMarkdown(sb, state, isMultiplayer);
+        AppendRoomSections(sb, state, isMultiplayer);
+        AppendSelectionSections(sb, state, isMultiplayer);
+
+        return sb.ToString();
+    }
+
+    private static void AppendStateHeader(
+        StringBuilder sb, Dictionary<string, object?> state, string stateType, bool isMultiplayer)
+    {
+        if (isMultiplayer)
+            sb.AppendLine($"# Multiplayer Game State: {stateType}");
+        else
+            sb.AppendLine($"# Game State: {stateType}");
+        sb.AppendLine();
+
+        // So a pasted markdown state says which build produced it, without a second request.
+        string modVersion = state.TryGetValue("mod_version", out var mv) ? mv?.ToString() ?? Version : Version;
+        string modCommit = state.TryGetValue("mod_commit", out var mc) ? mc?.ToString() ?? "" : "";
+        string schema = state.TryGetValue("schema_version", out var sv) ? sv?.ToString() ?? "" : "";
+        sb.AppendLine($"mod {modVersion}{(modCommit.Length > 0 ? "+" + modCommit : "")}{(schema.Length > 0 ? " · schema " + schema : "")}");
+        sb.AppendLine();
+    }
+
+    private static void AppendRunSummary(StringBuilder sb, Dictionary<string, object?> state)
+    {
+        if (state.TryGetValue("run", out var runObj) && runObj is Dictionary<string, object?> run)
         {
-            sb.AppendLine(msg.ToString());
+            sb.AppendLine($"**Act {run["act"]}** | Floor {run["floor"]} | Ascension {run["ascension"]}");
             sb.AppendLine();
         }
+    }
 
-        if (state.GetValueOrDefault("player") is Dictionary<string, object?> poolPlayer
-            && poolPlayer.GetValueOrDefault("generation_pool") is Dictionary<string, object?> pool)
+    /// <summary>
+    /// Loud on purpose: every number below is read live, so a state taken mid-animation
+    /// reports pre-resolution values.
+    /// </summary>
+    private static void AppendResolvingWarning(StringBuilder sb, Dictionary<string, object?> state)
+    {
+        if (!state.TryGetValue("is_resolving", out var resolving) || resolving is not true)
+            return;
+
+        string why = state.TryGetValue("resolving_reasons", out var rr) && rr is List<string> rl && rl.Count > 0
+            ? $" ({string.Join(", ", rl)})" : "";
+        sb.AppendLine($"> ⚠ **STILL RESOLVING{why}** — values below may be pre-resolution. Re-read until is_resolving is false.");
+        sb.AppendLine();
+    }
+
+    /// <summary>
+    /// A pasted markdown state is often all a reader gets, so it has to say when parts of it
+    /// could not be built - otherwise a field that failed reads as a field that is not there.
+    /// </summary>
+    private static void AppendStateWarnings(StringBuilder sb, Dictionary<string, object?> state)
+    {
+        if (!state.TryGetValue("warnings", out var warningsObj)
+            || warningsObj is not List<string> warnings
+            || warnings.Count == 0)
+            return;
+
+        var head = string.Join(" | ", warnings.GetRange(0, Math.Min(3, warnings.Count)));
+        sb.AppendLine(CultureInfo.InvariantCulture, $"> ⚠ **{warnings.Count} state warning(s)** — {head}");
+        sb.AppendLine();
+    }
+
+    /// <summary>
+    /// A "message" is a note about the screen, not a replacement for it. Returning here used
+    /// to drop every following section, which is why some screens (treasure among them)
+    /// rendered as a single line of prose with no contents at all.
+    /// </summary>
+    private static void AppendMessageNote(StringBuilder sb, Dictionary<string, object?> state)
+    {
+        if (!state.TryGetValue("message", out var msg) || msg == null)
+            return;
+
+        sb.AppendLine(msg.ToString());
+        sb.AppendLine();
+    }
+
+    private static void AppendGenerationPoolMarkdown(StringBuilder sb, Dictionary<string, object?> state)
+    {
+        if (state.GetValueOrDefault("player") is not Dictionary<string, object?> poolPlayer
+            || poolPlayer.GetValueOrDefault("generation_pool") is not Dictionary<string, object?> pool)
+            return;
+
+        string summary = pool.GetValueOrDefault("known") is true
+            && pool.GetValueOrDefault("cards") is List<Dictionary<string, object?>> cards
+            ? $"{cards.Count} cards (Attack/Skill/Power), {pool.GetValueOrDefault("players")} player(s)"
+            : $"unknown: {pool.GetValueOrDefault("reason")}";
+        sb.AppendLine($"Generation pool: {summary}");
+        sb.AppendLine();
+    }
+
+    /// <summary>Multiplayer players summary (top-level).</summary>
+    private static void AppendPartyMarkdown(
+        StringBuilder sb, Dictionary<string, object?> state, bool isMultiplayer)
+    {
+        if (!isMultiplayer
+            || !state.TryGetValue("players", out var playersListObj)
+            || playersListObj is not List<Dictionary<string, object?>> playersList
+            || playersList.Count == 0)
+            return;
+
+        sb.AppendLine("## Party");
+        foreach (var p in playersList)
         {
-            string summary = pool.GetValueOrDefault("known") is true
-                && pool.GetValueOrDefault("cards") is List<Dictionary<string, object?>> cards
-                ? $"{cards.Count} cards (Attack/Skill/Power), {pool.GetValueOrDefault("players")} player(s)"
-                : $"unknown: {pool.GetValueOrDefault("reason")}";
-            sb.AppendLine($"Generation pool: {summary}");
-            sb.AppendLine();
-        }
+            string youTag = p["is_local"] is true ? " **(YOU)**" : "";
+            string aliveTag = p["is_alive"] is false ? " [DEAD]" : "";
+            string readyTag = p.TryGetValue("is_ready_to_end_turn", out var rdy) && rdy is true ? " [READY]" : "";
+            sb.AppendLine($"- **{p["character"]}**{youTag}{aliveTag}{readyTag} - HP: {p["hp"]}/{p["max_hp"]} | Gold: {p["gold"]}");
 
-        // Multiplayer players summary (top-level)
-        if (isMultiplayer && state.TryGetValue("players", out var playersListObj)
-            && playersListObj is List<Dictionary<string, object?>> playersList && playersList.Count > 0)
+            AppendTeammatePetsMarkdown(sb, p);
+        }
+        sb.AppendLine();
+    }
+
+    private static void AppendTeammatePetsMarkdown(StringBuilder sb, Dictionary<string, object?> player)
+    {
+        if (!player.TryGetValue("pets", out var tPetsObj)
+            || tPetsObj is not List<Dictionary<string, object?>> tPets)
+            return;
+
+        // Show teammate pets inline
+        foreach (var pet in tPets)
         {
-            sb.AppendLine("## Party");
-            foreach (var p in playersList)
-            {
-                string youTag = p["is_local"] is true ? " **(YOU)**" : "";
-                string aliveTag = p["is_alive"] is false ? " [DEAD]" : "";
-                string readyTag = p.TryGetValue("is_ready_to_end_turn", out var rdy) && rdy is true ? " [READY]" : "";
-                sb.AppendLine($"- **{p["character"]}**{youTag}{aliveTag}{readyTag} - HP: {p["hp"]}/{p["max_hp"]} | Gold: {p["gold"]}");
-
-                // Show teammate pets inline
-                if (p.TryGetValue("pets", out var tPetsObj) && tPetsObj is List<Dictionary<string, object?>> tPets)
-                {
-                    foreach (var pet in tPets)
-                    {
-                        bool petAlive = pet.TryGetValue("alive", out var pa) && pa is true;
-                        string petStatus = petAlive
-                            ? $"HP: {pet["hp"]}/{pet["max_hp"]} | Block: {pet["block"]}"
-                            : "DEAD";
-                        sb.AppendLine($"  - Pet: **{pet["name"]}** - {petStatus}");
-                    }
-                }
-            }
-            sb.AppendLine();
+            bool petAlive = pet.TryGetValue("alive", out var pa) && pa is true;
+            string petStatus = petAlive
+                ? $"HP: {pet["hp"]}/{pet["max_hp"]} | Block: {pet["block"]}"
+                : "DEAD";
+            sb.AppendLine($"  - Pet: **{pet["name"]}** - {petStatus}");
         }
+    }
 
-        // Top-level player summary (non-combat singleplayer only; combat renders its own detailed view)
+    /// <summary>
+    /// Top-level player summary (non-combat singleplayer only; combat renders its own
+    /// detailed view).
+    /// </summary>
+    private static void AppendTopPlayerMarkdown(
+        StringBuilder sb, Dictionary<string, object?> state, bool isMultiplayer)
+    {
         bool hasBattle = state.ContainsKey("battle");
-        if (!isMultiplayer && !hasBattle
-            && state.TryGetValue("player", out var topPlayerObj) && topPlayerObj is Dictionary<string, object?> topPlayer)
+        if (isMultiplayer || hasBattle
+            || !state.TryGetValue("player", out var topPlayerObj)
+            || topPlayerObj is not Dictionary<string, object?> topPlayer)
+            return;
+
+        sb.AppendLine("## Player (You)");
+        string stars = topPlayer.TryGetValue("stars", out var s) && s != null ? $" | Stars: {s}" : "";
+        sb.AppendLine($"**{topPlayer["character"]}** - HP: {topPlayer["hp"]}/{topPlayer["max_hp"]} | Gold: {topPlayer["gold"]}{stars}");
+        sb.AppendLine();
+
+        FormatListSection(sb, "Relics", topPlayer, "relics", r =>
         {
-            sb.AppendLine("## Player (You)");
-            string stars = topPlayer.TryGetValue("stars", out var s) && s != null ? $" | Stars: {s}" : "";
-            sb.AppendLine($"**{topPlayer["character"]}** - HP: {topPlayer["hp"]}/{topPlayer["max_hp"]} | Gold: {topPlayer["gold"]}{stars}");
-            sb.AppendLine();
+            string counter = r.TryGetValue("counter", out var c) && c != null ? $" [{c}]" : "";
+            string used = r.GetValueOrDefault("used_up") is true ? " (used)" : "";
+            string melted = r.GetValueOrDefault("melted") is true ? " (melted)" : "";
+            return $"- **{r["name"]}**{counter}{used}{melted}: {r["description"]}";
+        });
+        FormatPotionsSection(sb, topPlayer);
+        FormatMasterDeckMarkdown(sb, topPlayer);
+    }
 
-            FormatListSection(sb, "Relics", topPlayer, "relics", r =>
-            {
-                string counter = r.TryGetValue("counter", out var c) && c != null ? $" [{c}]" : "";
-                string used = r.GetValueOrDefault("used_up") is true ? " (used)" : "";
-                string melted = r.GetValueOrDefault("melted") is true ? " (melted)" : "";
-                return $"- **{r["name"]}**{counter}{used}{melted}: {r["description"]}";
-            });
-            FormatPotionsSection(sb, topPlayer);
-            FormatMasterDeckMarkdown(sb, topPlayer);
-        }
-
+    /// <summary>The room payloads, in the order a client reads them.</summary>
+    private static void AppendRoomSections(
+        StringBuilder sb, Dictionary<string, object?> state, bool isMultiplayer)
+    {
         if (state.TryGetValue("battle", out var battleObj) && battleObj is Dictionary<string, object?> battle)
         {
             var battlePlayer = state.TryGetValue("player", out var bp) && bp is Dictionary<string, object?> bpd ? bpd : null;
@@ -177,7 +243,12 @@ public static partial class McpMod
         {
             FormatCardRewardMarkdown(sb, cardReward);
         }
+    }
 
+    /// <summary>The selection screens, the overlay note and the keyword glossary.</summary>
+    private static void AppendSelectionSections(
+        StringBuilder sb, Dictionary<string, object?> state, bool isMultiplayer)
+    {
         if (state.TryGetValue("hand_select", out var handSelectObj) && handSelectObj is Dictionary<string, object?> handSelect)
         {
             FormatHandSelectMarkdown(sb, handSelect);
@@ -217,18 +288,21 @@ public static partial class McpMod
             sb.AppendLine();
         }
 
-        // Keyword glossary - collect all unique keyword definitions
+        AppendGlossaryMarkdown(sb, state);
+    }
+
+    /// <summary>Keyword glossary - all unique keyword definitions the state carries.</summary>
+    private static void AppendGlossaryMarkdown(StringBuilder sb, Dictionary<string, object?> state)
+    {
         var glossary = new Dictionary<string, string>(StringComparer.Ordinal);
         CollectKeywordsFromState(state, glossary);
-        if (glossary.Count > 0)
-        {
-            sb.AppendLine("## Keyword Glossary");
-            foreach (var (name, description) in glossary.OrderBy(kv => kv.Key, StringComparer.Ordinal))
-                sb.AppendLine($"- **{name}**: {description}");
-            sb.AppendLine();
-        }
+        if (glossary.Count == 0)
+            return;
 
-        return sb.ToString();
+        sb.AppendLine("## Keyword Glossary");
+        foreach (var (name, description) in glossary.OrderBy(kv => kv.Key, StringComparer.Ordinal))
+            sb.AppendLine($"- **{name}**: {description}");
+        sb.AppendLine();
     }
 
     private static void FormatMenuMarkdown(StringBuilder sb, Dictionary<string, object?> state)
