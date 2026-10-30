@@ -61,19 +61,16 @@ public static partial class McpMod
         if (!card.IsUpgradable)
             return null;
 
-        try
+        // A card model can refuse to clone (an unmodelled card type, a mid-combat
+        // mutation), and the preview is a nicety: report it and let the caller omit it.
+        return TryRead("card.upgrade_preview", () =>
         {
             var preview = card.IsMutable
                 ? (CardModel)card.MutableClone()
                 : card.ToMutable();
             preview.UpgradeInternal();
             return preview;
-        }
-        catch (Exception ex)
-        {
-            Warn("card.upgrade_preview", ex);
-            return null;
-        }
+        });
     }
 
     private static string? SafeGetCardUpgradePreviewDescription(CardModel card, PileType pile = PileType.Hand)
@@ -159,6 +156,31 @@ public static partial class McpMod
         {
             Warn(context, ex);
             return false;
+        }
+    }
+
+    /// <summary>
+    /// A read whose failure is normal rather than broken: a Godot node freed while a scene
+    /// transitions, or a candidate member name this game version does not have. Returns
+    /// default and records nothing - a search loop would otherwise report dozens of
+    /// non-problems per state read, and the state contract already means "absent, not
+    /// guessed" when a field is missing.
+    /// </summary>
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1031:Do not catch general exception types",
+        Justification = "Godot throws ObjectDisposedException from a freed node and reflection throws a different type per model shape; at these call sites both mean 'not there'.")]
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "ERP022:Swallowed exception",
+        Justification = "Recording the same 'not there' for every candidate name would report dozens of non-problems per state read.")]
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("Major Code Smell", "S2486:Exceptions should not be ignored",
+        Justification = "Same as ERP022: the call sites read a member that may legitimately be absent.")]
+    internal static T? TryReadQuiet<T>(Func<T> read)
+    {
+        try
+        {
+            return read();
+        }
+        catch (Exception)
+        {
+            return default;
         }
     }
 
@@ -295,6 +317,8 @@ public static partial class McpMod
     /// </remarks>
     [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1031:Do not catch general exception types",
         Justification = "This is the HTTP boundary: no exception from a builder may escape and kill the listener loop.")]
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("Major Code Smell", "EPC12:Suspicious exception handling",
+        Justification = "The response body carries the message; the Godot log line above it carries the type and the trace.")]
     internal static void RunHandler(
         HttpListenerResponse response, Action handler, string failurePrefix,
         string? failureCode = null, bool pretty = false)
@@ -322,6 +346,8 @@ public static partial class McpMod
     /// </summary>
     [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1031:Do not catch general exception types",
         Justification = "This is the HTTP boundary: no exception from an action executor may escape and kill the listener loop.")]
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("Major Code Smell", "EPC12:Suspicious exception handling",
+        Justification = "The response body carries the message; the Godot log line above it carries the type and the trace.")]
     internal static string? RunActionHandler(
         HttpListenerResponse response, Func<string?> handler, string failurePrefix, bool pretty = false)
     {
@@ -366,34 +392,20 @@ public static partial class McpMod
         if (manager == null || !manager.IsInProgress)
             return false;
 
-        try
-        {
-            var property = manager.GetType().GetProperty(
-                "IsPlayPhase",
-                System.Reflection.BindingFlags.Instance |
-                System.Reflection.BindingFlags.Public |
-                System.Reflection.BindingFlags.NonPublic);
+        // STS2 0.107 removed the compiled IsPlayPhase accessor, so read it by name when it
+        // is there, then fall back to the side the state reports, then to the action queue.
+        var property = TryRead(() => manager.GetType().GetProperty(
+            "IsPlayPhase",
+            System.Reflection.BindingFlags.Instance |
+            System.Reflection.BindingFlags.Public |
+            System.Reflection.BindingFlags.NonPublic));
+        if (property?.PropertyType == typeof(bool)
+            && TryRead(() => property.GetValue(manager)) is bool isPlayPhase)
+            return isPlayPhase;
 
-            if (property?.PropertyType == typeof(bool) &&
-                property.GetValue(manager) is bool isPlayPhase)
-                return isPlayPhase;
-        }
-        catch
-        {
-            // STS2 0.107 removed the compiled IsPlayPhase accessor. Fall back below.
-        }
-
-        try
-        {
-            var combatState = manager.DebugOnlyGetState();
-            var currentSide = combatState?.CurrentSide.ToString();
-            if (!string.IsNullOrEmpty(currentSide))
-                return currentSide.Contains("player", StringComparison.OrdinalIgnoreCase);
-        }
-        catch
-        {
-            // Keep state reads best-effort so one compatibility edge does not break MCP.
-        }
+        var currentSide = TryRead(() => manager.DebugOnlyGetState()?.CurrentSide.ToString());
+        if (!string.IsNullOrEmpty(currentSide))
+            return currentSide.Contains("player", StringComparison.OrdinalIgnoreCase);
 
         return TryRead<bool?>(() => !manager.PlayerActionsDisabled) ?? false;
     }
@@ -426,12 +438,8 @@ public static partial class McpMod
                     !typeof(MerchantInventory).IsAssignableFrom(property.PropertyType))
                     continue;
 
-                try
-                {
-                    if (property.GetValue(source) is MerchantInventory propertyInventory)
-                        return propertyInventory;
-                }
-                catch { }
+                if (TryReadQuiet(() => property.GetValue(source)) is MerchantInventory propertyInventory)
+                    return propertyInventory;
             }
 
             foreach (var field in type.GetFields(Flags))
@@ -439,12 +447,8 @@ public static partial class McpMod
                 if (!typeof(MerchantInventory).IsAssignableFrom(field.FieldType))
                     continue;
 
-                try
-                {
-                    if (field.GetValue(source) is MerchantInventory fieldInventory)
-                        return fieldInventory;
-                }
-                catch { }
+                if (TryReadQuiet(() => field.GetValue(source)) is MerchantInventory fieldInventory)
+                    return fieldInventory;
             }
         }
 
@@ -594,13 +598,9 @@ public static partial class McpMod
     {
         foreach (var name in CardSelectPreviewContainerNames)
         {
-            try
-            {
-                var container = screen.GetNodeOrNull<Control>(name);
-                if (container?.Visible == true)
-                    return container;
-            }
-            catch (ObjectDisposedException) { }
+            var container = TryReadQuiet(() => screen.GetNodeOrNull<Control>(name));
+            if (container?.Visible == true)
+                return container;
         }
         return null;
     }
@@ -689,15 +689,13 @@ public static partial class McpMod
             return;
         if (node is T item)
             found.Add(item);
-        try
-        {
-            foreach (var child in node.GetChildren())
-                FindAllRecursive(child, found);
-        }
-        // Every `catch (ObjectDisposedException)` in this file's node walkers is left out
-        // of the state warnings on purpose: nodes are freed continuously while a scene
-        // transitions, so hitting a dead one is the normal reading, not a broken field.
-        catch (ObjectDisposedException) { }
+        // Nodes are freed continuously while a scene transitions, so a walk that meets a
+        // dead child stops there instead of reporting a field that is simply gone.
+        var children = TryReadQuiet(() => node.GetChildren().ToList());
+        if (children == null)
+            return;
+        foreach (var child in children)
+            FindAllRecursive(child, found);
     }
 
     /// <summary>
@@ -707,88 +705,96 @@ public static partial class McpMod
     /// </summary>
     private static string? DescribeCanonicalModel(IHoverTip tip)
     {
-        object? model;
-        try { model = tip.CanonicalModel; }
-        catch (Exception ex) { Warn("keywords.canonical_model", ex); return null; }
-        if (model == null) return null;
+        var model = TryRead("keywords.canonical_model", () => (object?)tip.CanonicalModel);
+        if (model == null)
+            return null;
 
         foreach (var propertyName in new[] { "SmartDescription", "DynamicDescription", "Description" })
         {
-            try
-            {
-                var property = model.GetType().GetProperty(propertyName);
-                if (property == null) continue;
-                var value = property.GetValue(model);
-                if (value == null) continue;
-                var raw = value.ToString();
-                if (string.IsNullOrWhiteSpace(raw)) continue;
-                var text = StripRichTextTags(raw);
-                if (!string.IsNullOrWhiteSpace(text))
-                    return text;
-            }
-            // Left silent: this loop exists to try candidate property names until one
-            // works, so a throw on the way is a step in the search, not a lost field.
-            catch { }
+            // This loop tries candidate property names until one works, so a throw on the
+            // way is a step in the search, not a lost field.
+            var text = TryReadQuiet(() => ReadModelText(model, propertyName));
+            if (!string.IsNullOrWhiteSpace(text))
+                return text;
         }
 
         return null;
     }
 
+    /// <summary>One candidate description property of a hover tip's model, or null when
+    /// this game version has no such member or it holds nothing readable.</summary>
+    private static string? ReadModelText(object model, string propertyName)
+    {
+        var property = model.GetType().GetProperty(propertyName);
+        if (property == null)
+            return null;
+        var raw = property.GetValue(model)?.ToString();
+        if (string.IsNullOrWhiteSpace(raw))
+            return null;
+        var text = StripRichTextTags(raw);
+        return string.IsNullOrWhiteSpace(text) ? null : text;
+    }
+
     private static List<Dictionary<string, object?>> BuildHoverTips(IEnumerable<IHoverTip> tips)
     {
         var result = new List<Dictionary<string, object?>>();
-        try
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        TryDo("keywords", () =>
         {
-            var seen = new HashSet<string>(StringComparer.Ordinal);
             foreach (var tip in IHoverTip.RemoveDupes(tips))
             {
-                try
-                {
-                    string? title = null;
-                    string? description = null;
-
-                    if (tip is HoverTip ht)
-                    {
-                        title = ht.Title != null ? StripRichTextTags(ht.Title) : null;
-                        description = StripRichTextTags(ht.Description);
-                    }
-                    else if (tip is CardHoverTip cardTip)
-                    {
-                        title = SafeGetText(() => cardTip.Card.Title);
-                        description = SafeGetCardDescription(cardTip.Card);
-                    }
-
-                    // Some keywords ship with no description text at all (Sly is one),
-                    // and some describe themselves in terms of themselves. Fall back to
-                    // the canonical model the tip points at, which carries the real
-                    // effect text, before giving up.
-                    if (string.IsNullOrWhiteSpace(description))
-                        description = DescribeCanonicalModel(tip);
-
-                    if (title == null && description == null) continue;
-
-                    string key = title ?? description!;
-                    if (!seen.Add(key)) continue;
-
-                    var entry = new Dictionary<string, object?>(StringComparer.Ordinal)
-                    {
-                        ["name"] = title,
-                        ["description"] = description
-                    };
-
-                    string? tipId = SafeGetText(() => tip.Id);
-                    if (!string.IsNullOrWhiteSpace(tipId))
-                        entry["id"] = tipId;
-                    if (string.IsNullOrWhiteSpace(description))
-                        entry["description_missing"] = true;
-
+                var entry = TryRead("keywords.tip", () => DescribeHoverTip(tip, seen));
+                if (entry != null)
                     result.Add(entry);
-                }
-                catch (Exception ex) { Warn("keywords.tip", ex); }
             }
-        }
-        catch (Exception ex) { Warn("keywords", ex); }
+        });
         return result;
+    }
+
+    /// <summary>One keyword entry, or null when the tip carries nothing worth reporting
+    /// or repeats one already emitted.</summary>
+    private static Dictionary<string, object?>? DescribeHoverTip(IHoverTip tip, HashSet<string> seen)
+    {
+        string? title = null;
+        string? description = null;
+
+        if (tip is HoverTip ht)
+        {
+            title = ht.Title != null ? StripRichTextTags(ht.Title) : null;
+            description = StripRichTextTags(ht.Description);
+        }
+        else if (tip is CardHoverTip cardTip)
+        {
+            title = SafeGetText(() => cardTip.Card.Title);
+            description = SafeGetCardDescription(cardTip.Card);
+        }
+
+        // Some keywords ship with no description text at all (Sly is one), and some
+        // describe themselves in terms of themselves. Fall back to the canonical model
+        // the tip points at, which carries the real effect text, before giving up.
+        if (string.IsNullOrWhiteSpace(description))
+            description = DescribeCanonicalModel(tip);
+
+        if (title == null && description == null)
+            return null;
+
+        string key = title ?? description!;
+        if (!seen.Add(key))
+            return null;
+
+        var entry = new Dictionary<string, object?>(StringComparer.Ordinal)
+        {
+            ["name"] = title,
+            ["description"] = description
+        };
+
+        string? tipId = SafeGetText(() => tip.Id);
+        if (!string.IsNullOrWhiteSpace(tipId))
+            entry["id"] = tipId;
+        if (string.IsNullOrWhiteSpace(description))
+            entry["description_missing"] = true;
+
+        return entry;
     }
 
     internal static T? FindFirst<T>(Node start) where T : Node
@@ -987,17 +993,15 @@ public static partial class McpMod
 
     private static bool IsDescendantOf(Node? node, Node ancestor)
     {
-        try
+        return TryReadQuiet(() =>
         {
             for (var current = node; current != null && IsLiveNode(current); current = current.GetParent())
             {
                 if (ReferenceEquals(current, ancestor))
                     return true;
             }
-        }
-        catch (ObjectDisposedException) { }
-
-        return false;
+            return false;
+        });
     }
 
     private static bool IsControlVisibleInOpenModal(NClickableControl? control, Node? openModal = null)
@@ -1468,36 +1472,37 @@ public static partial class McpMod
 
         foreach (var tickbox in FindAll<NRunModifierTickbox>(screen))
         {
-            try
-            {
-                var modifier = tickbox.Modifier;
-                if (modifier == null)
-                    continue;
-
-                var id = modifier.Id.Entry;
-
-                string? characterId = null;
-                if (modifier is CharacterCards characterCards)
-                {
-                    try { characterId = characterCards.CharacterModel.Entry; }
-                    catch { }
-                }
-
-                var key = string.IsNullOrEmpty(characterId) ? id : $"{id}_{characterId}";
-                if (!usedKeys.Add(key))
-                {
-                    var suffix = 2;
-                    while (!usedKeys.Add($"{key}_{suffix}"))
-                        suffix++;
-                    key = $"{key}_{suffix}";
-                }
-
-                entries.Add(new RunModifierEntry(tickbox, modifier, id, key, characterId));
-            }
-            catch { }
+            var entry = TryReadQuiet(() => DescribeRunModifier(tickbox, usedKeys));
+            if (entry != null)
+                entries.Add(entry);
         }
 
         return entries;
+    }
+
+    /// <summary>One tickbox as an entry, or null when it exposes no modifier.</summary>
+    private static RunModifierEntry? DescribeRunModifier(NRunModifierTickbox tickbox, HashSet<string> usedKeys)
+    {
+        var modifier = tickbox.Modifier;
+        if (modifier == null)
+            return null;
+
+        var id = modifier.Id.Entry;
+
+        string? characterId = modifier is CharacterCards characterCards
+            ? TryReadQuiet(() => characterCards.CharacterModel.Entry)
+            : null;
+
+        var key = string.IsNullOrEmpty(characterId) ? id : $"{id}_{characterId}";
+        if (!usedKeys.Add(key))
+        {
+            var suffix = 2;
+            while (!usedKeys.Add($"{key}_{suffix}"))
+                suffix++;
+            key = $"{key}_{suffix}";
+        }
+
+        return new RunModifierEntry(tickbox, modifier, id, key, characterId);
     }
 
     // Keys of every currently ticked run modifier, in screen order.
