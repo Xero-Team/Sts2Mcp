@@ -5409,8 +5409,44 @@ public static partial class McpMod
     private static Dictionary<string, object?> BuildCardSelectState(NCardGridSelectionScreen screen)
     {
         var state = new Dictionary<string, object?>(StringComparer.Ordinal);
+        AppendCardSelectHeader(state, screen);
 
-        // Screen type
+        // Which cards the screen has selected right now. Read from the screen's own
+        // `_selectedCards` set - the one OnCardClicked toggles - so `selected` cannot drift
+        // from what the game will act on. Without it a caller driving a multi-card screen
+        // (the enchant screens) is blind to its own selection (A-7).
+        var selection = GetCardSelectSelection(screen);
+        if (selection == null)
+            Warn("card_select.selected", "screen has no readable _selectedCards field");
+
+        var selectedCards = SelectedCardModels(screen);
+        state["selection_observable"] = selectedCards != null;
+        var selectedIndices = new List<int>();
+        var selectedCardEntries = AppendCardSelectGrid(state, screen, selection, selectedIndices, out int selectedInGrid);
+        AppendCardSelectCounts(state, screen, selection, selectedCards, selectedIndices, selectedInGrid);
+
+        AddCardSelectionContext(state);
+        // Fork addition: selected card payloads alongside main's indices/counts.
+        state["selected_cards"] = selectedCardEntries;
+
+        // Preview container showing? (selection complete, awaiting confirm)
+        // The subclasses each name theirs differently; FindCardSelectPreviewContainers
+        // knows all the spellings (upgrade, enchant and the generic one).
+        var previewContainers = FindCardSelectPreviewContainers(screen);
+        bool previewShowing = AppendCardSelectPreview(state, previewContainers);
+        bool canCancel = ResolveCardSelectCancel(screen, previewContainers);
+        state["can_cancel"] = canCancel;
+        bool canConfirm = ResolveCardSelectConfirm(screen, previewContainers, previewShowing);
+        state["can_confirm"] = canConfirm;
+
+        AppendCardSelectActions(state, canConfirm, canCancel, previewShowing);
+        return state;
+    }
+
+    /// <summary>The screen type and its prompt label.</summary>
+    private static void AppendCardSelectHeader(
+        Dictionary<string, object?> state, NCardGridSelectionScreen screen)
+    {
         state["screen_type"] = screen switch
         {
             NDeckTransformSelectScreen => "transform",
@@ -5421,7 +5457,6 @@ public static partial class McpMod
             _ => screen.GetType().Name
         };
 
-        // Player summary
         // Prompt text from UI label
         var bottomLabel = screen.GetNodeOrNull("%BottomLabel");
         if (bottomLabel != null)
@@ -5430,31 +5465,26 @@ public static partial class McpMod
             string? prompt = textVariant.VariantType != Godot.Variant.Type.Nil ? StripRichTextTags(textVariant.AsString()) : null;
             state["prompt"] = prompt;
         }
+    }
 
-        // Which cards the screen has selected right now. Read from the screen's own
-        // `_selectedCards` set - the one OnCardClicked toggles - so `selected` cannot drift
-        // from what the game will act on. Without it a caller driving a multi-card screen
-        // (the enchant screens) is blind to its own selection (A-7).
-        var selection = GetCardSelectSelection(screen);
-        if (selection == null)
-            Warn("card_select.selected", "screen has no readable _selectedCards field");
-
-        // Cards in the grid (sorted by visual position - MoveToFront can reorder children)
+    /// <summary>
+    /// The cards in the grid, sorted by visual position (MoveToFront can reorder
+    /// children), each carrying its selected flag. Returns the selected ones as card
+    /// payloads.
+    /// </summary>
+    private static List<Dictionary<string, object?>> AppendCardSelectGrid(
+        Dictionary<string, object?> state,
+        NCardGridSelectionScreen screen,
+        HashSet<CardModel>? selection,
+        List<int> selectedIndices,
+        out int selectedInGrid)
+    {
         var cardHolders = FindAllSortedByPosition<NGridCardHolder>(screen);
-        // Which cards the screen already holds selected. `select_card` TOGGLES a
-        // holder, so a client that cannot see this cannot converge on a
-        // multi-pick screen: re-sending a pick turns it back off. Every grid
-        // selection screen keeps its own private set; nothing public exposes it,
-        // which is why the game's own AutoSlay handler tracks a local list
-        // instead. Read it so a client can see its own progress.
-        var selectedCards = SelectedCardModels(screen);
-        state["selection_observable"] = selectedCards != null;
-        var selectedIndices = new List<int>();
         var cards = new List<Dictionary<string, object?>>();
         // Fork addition: the selected cards as card payloads, not just indices.
         var selectedCardEntries = new List<Dictionary<string, object?>>();
         int index = 0;
-        int selectedInGrid = 0;
+        selectedInGrid = 0;
         foreach (var holder in cardHolders)
         {
             var card = holder.CardModel;
@@ -5482,16 +5512,29 @@ public static partial class McpMod
             index++;
         }
         state["cards"] = cards;
+        return selectedCardEntries;
+    }
+
+    /// <summary>
+    /// How many are selected and how many the screen wants. `selected_count` is the
+    /// screen's own count (it can exceed what the visible grid window shows);
+    /// `required_count` is the "select N" of the prompt, null when the screen accepts a
+    /// range ("up to N"), where min_select/max_select give the two ends.
+    /// </summary>
+    private static void AppendCardSelectCounts(
+        Dictionary<string, object?> state,
+        NCardGridSelectionScreen screen,
+        HashSet<CardModel>? selection,
+        HashSet<CardModel>? selectedCards,
+        List<int> selectedIndices,
+        int selectedInGrid)
+    {
         if (selectedCards != null)
         {
             state["selected_count"] = selectedCards.Count;
             state["selected_indices"] = selectedIndices;
         }
 
-        // How many are selected and how many the screen wants. `selected_count` is the
-        // screen's own count (it can exceed what the visible grid window shows);
-        // `required_count` is the "select N" of the prompt, null when the screen accepts a
-        // range ("up to N"), where min_select/max_select give the two ends.
         if (selection != null)
             state["selected_count"] = selection.Count;
         var prefs = GetCardSelectPrefs(screen);
@@ -5513,15 +5556,12 @@ public static partial class McpMod
             // over the deck, so a selected card can be outside `cards[]`.
             state["selected_outside_grid"] = selection.Count - selectedInGrid;
         }
+    }
 
-        AddCardSelectionContext(state);
-        // Fork addition: selected card payloads alongside main's indices/counts.
-        state["selected_cards"] = selectedCardEntries;
-
-        // Preview container showing? (selection complete, awaiting confirm)
-        // The subclasses each name theirs differently; FindCardSelectPreviewContainers
-        // knows all the spellings (upgrade, enchant and the generic one).
-        var previewContainers = FindCardSelectPreviewContainers(screen);
+    /// <summary>Reports the preview cards when a preview is open; returns whether it is.</summary>
+    private static bool AppendCardSelectPreview(
+        Dictionary<string, object?> state, List<Control> previewContainers)
+    {
         bool previewShowing = previewContainers.Count > 0;
         state["preview_showing"] = previewShowing;
         if (previewShowing)
@@ -5531,45 +5571,55 @@ public static partial class McpMod
                 AddPreviewCardsFromContainer(container, previewCards);
             state["preview_cards"] = previewCards;
         }
+        return previewShowing;
+    }
 
-        // Button states - when a preview is open, cancel goes through the
-        // preview container's Cancel / PreviewCancel button (same path as
-        // the action handler), not the top-level %Close button.
-        bool canCancel = false;
+    /// <summary>
+    /// When a preview is open, cancel goes through the preview container's Cancel /
+    /// PreviewCancel button (same path as the action handler), not the top-level %Close.
+    /// </summary>
+    private static bool ResolveCardSelectCancel(
+        NCardGridSelectionScreen screen, List<Control> previewContainers)
+    {
         foreach (var container in previewContainers)
         {
             var cancelBtn = GetCardSelectPreviewCancel(container);
-            if (IsControlVisibleOrActionable(cancelBtn)) { canCancel = true; break; }
+            if (IsControlVisibleOrActionable(cancelBtn)) return true;
         }
-        if (!canCancel)
-        {
-            var closeButton = screen.GetNodeOrNull<NBackButton>("%Close");
-            canCancel = IsControlVisibleOrActionable(closeButton);
-        }
-        state["can_cancel"] = canCancel;
+        var closeButton = screen.GetNodeOrNull<NBackButton>("%Close");
+        return IsControlVisibleOrActionable(closeButton);
+    }
 
-        // Confirm button - the preview's own confirm while one is open, otherwise the
-        // screen's. Note that below a grid, "confirm" usually opens the preview rather
-        // than applying the selection; confirm_selection reports which of the two it did.
-        bool canConfirm = false;
+    /// <summary>
+    /// The preview's own confirm while one is open, otherwise the screen's. Note that
+    /// below a grid, "confirm" usually opens the preview rather than applying the
+    /// selection; confirm_selection reports which of the two it did.
+    /// </summary>
+    private static bool ResolveCardSelectConfirm(
+        NCardGridSelectionScreen screen, List<Control> previewContainers, bool previewShowing)
+    {
         foreach (var container in previewContainers)
         {
             var confirm = GetCardSelectPreviewConfirm(container);
-            if (IsControlVisibleOrActionable(confirm)) { canConfirm = true; break; }
+            if (IsControlVisibleOrActionable(confirm)) return true;
         }
-        if (!canConfirm && !previewShowing)
-        {
-            var mainConfirm = GetCardSelectMainConfirm(screen);
-            if (IsControlVisibleOrActionable(mainConfirm)) canConfirm = true;
-            // Fallback: search the screen tree for any enabled confirm button, for a
-            // subclass that names its confirm button something else.
-            if (!canConfirm)
-                canConfirm = FindAll<NConfirmButton>(screen).Any(IsControlVisibleOrActionable);
-        }
-        state["can_confirm"] = canConfirm;
+        if (previewShowing)
+            return false;
 
-        // Expose non-card controls explicitly so API clients do not mistake
-        // the selected card for the only available next action.
+        if (IsControlVisibleOrActionable(GetCardSelectMainConfirm(screen)))
+            return true;
+        // Fallback: search the screen tree for any enabled confirm button, for a
+        // subclass that names its confirm button something else.
+        return FindAll<NConfirmButton>(screen).Any(IsControlVisibleOrActionable);
+    }
+
+    /// <summary>
+    /// Exposes non-card controls explicitly so API clients do not mistake the selected
+    /// card for the only available next action.
+    /// </summary>
+    private static void AppendCardSelectActions(
+        Dictionary<string, object?> state, bool canConfirm, bool canCancel, bool previewShowing)
+    {
         var availableActions = new List<Dictionary<string, object?>>
         {
             new(StringComparer.Ordinal)
@@ -5600,8 +5650,6 @@ public static partial class McpMod
             });
         }
         state["available_actions"] = availableActions;
-
-        return state;
     }
 
     /// <summary>
