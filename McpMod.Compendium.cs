@@ -49,31 +49,8 @@ public static partial class McpMod
         var resolvedProgressPath = ResolveProfileProgressPath(profileId);
         var profileRoot = GetProfileRootFromProgressPath(progressPath, profileId);
 
-        var cardStats = progress.CardStats
-            .OrderBy(kv => kv.Key.Entry, StringComparer.Ordinal)
-            .Select(kv => new Dictionary<string, object?>(StringComparer.Ordinal)
-            {
-                ["id"] = kv.Key.Entry,
-                ["times_picked"] = kv.Value.TimesPicked,
-                ["times_skipped"] = kv.Value.TimesSkipped,
-                ["times_won"] = kv.Value.TimesWon,
-                ["times_lost"] = kv.Value.TimesLost
-            }).ToList();
-
-        var characterStats = progress.CharacterStats
-            .OrderBy(kv => kv.Key.Entry, StringComparer.Ordinal)
-            .Select(kv => new Dictionary<string, object?>(StringComparer.Ordinal)
-            {
-                ["id"] = kv.Key.Entry,
-                ["max_ascension"] = kv.Value.MaxAscension,
-                ["preferred_ascension"] = kv.Value.PreferredAscension,
-                ["total_wins"] = kv.Value.TotalWins,
-                ["total_losses"] = kv.Value.TotalLosses,
-                ["fastest_win_time"] = kv.Value.FastestWinTime,
-                ["best_win_streak"] = kv.Value.BestWinStreak,
-                ["current_win_streak"] = kv.Value.CurrentWinStreak,
-                ["playtime"] = kv.Value.Playtime
-            }).ToList();
+        var globalStats = new Dictionary<string, object?>(StringComparer.Ordinal);
+        AddProfileTotals(globalStats, progress);
 
         return new CompendiumSnapshot
         {
@@ -83,27 +60,15 @@ public static partial class McpMod
             ProfileRoot = profileRoot,
             SaveScope = GetSaveScope(profileRoot),
             IsRunInProgress = RunManager.Instance?.IsInProgress == true,
-            DiscoveredCards = progress.DiscoveredCards.Select(id => id.Entry).OrderBy(id => id, StringComparer.Ordinal).ToList(),
-            DiscoveredRelics = progress.DiscoveredRelics.Select(id => id.Entry).OrderBy(id => id, StringComparer.Ordinal).ToList(),
-            DiscoveredPotions = progress.DiscoveredPotions.Select(id => id.Entry).OrderBy(id => id, StringComparer.Ordinal).ToList(),
-            CardStats = cardStats,
-            CharacterStats = characterStats,
+            DiscoveredCards = SortedDiscoveredIds(progress.DiscoveredCards),
+            DiscoveredRelics = SortedDiscoveredIds(progress.DiscoveredRelics),
+            DiscoveredPotions = SortedDiscoveredIds(progress.DiscoveredPotions),
+            CardStats = BuildCardStatRows(progress.CardStats),
+            CharacterStats = BuildCharacterStatRows(progress.CharacterStats),
             EncounterStats = BuildEncounterStats(progress),
             EnemyStats = BuildEnemyStats(progress),
             RunHistoryProgressMembers = BuildRunHistoryProgressMembers(progress),
-            GlobalStats = new Dictionary<string, object?>(StringComparer.Ordinal)
-            {
-                ["total_playtime"] = progress.TotalPlaytime,
-                ["total_unlocks"] = progress.TotalUnlocks,
-                ["current_score"] = progress.CurrentScore,
-                ["floors_climbed"] = progress.FloorsClimbed,
-                ["architect_damage"] = progress.ArchitectDamage,
-                ["total_wins"] = progress.Wins,
-                ["total_losses"] = progress.Losses,
-                ["fastest_victory"] = progress.FastestVictory,
-                ["best_win_streak"] = progress.BestWinStreak,
-                ["number_of_runs"] = progress.NumberOfRuns
-            }
+            GlobalStats = globalStats
         };
     }
 
@@ -125,58 +90,7 @@ public static partial class McpMod
             ["save_scope"] = snapshot.SaveScope,
             ["current_run"] = BuildCurrentRunContext(snapshot),
             ["source"] = "SaveManager.Progress plus model metadata endpoints",
-            ["sections"] = new Dictionary<string, object?>(StringComparer.Ordinal)
-            {
-                ["card_library"] = new Dictionary<string, object?>(StringComparer.Ordinal)
-                {
-                    ["ui_label"] = "Card Library",
-                    ["status"] = "exposed",
-                    ["source"] = "/api/v1/profile card_stats and discovered_cards",
-                    ["detail_endpoint"] = "/api/v1/glossary/cards",
-                    ["detail_endpoint_requires_run"] = true,
-                    ["discovered_ids"] = snapshot.DiscoveredCards,
-                    ["stats"] = snapshot.CardStats
-                },
-                ["relic_collection"] = new Dictionary<string, object?>(StringComparer.Ordinal)
-                {
-                    ["ui_label"] = "Relic Collection",
-                    ["status"] = "partially_exposed",
-                    ["source"] = "/api/v1/profile discovered_relics",
-                    ["detail_endpoint"] = "/api/v1/glossary/relics",
-                    ["detail_endpoint_requires_run"] = true,
-                    ["discovered_ids"] = snapshot.DiscoveredRelics,
-                    ["limitation"] = "Profile exposes discovered relic IDs; per-relic obtained counts are not exposed by a typed API here."
-                },
-                ["potion_lab"] = new Dictionary<string, object?>(StringComparer.Ordinal)
-                {
-                    ["ui_label"] = "Potion Lab",
-                    ["status"] = "partially_exposed",
-                    ["source"] = "/api/v1/profile discovered_potions",
-                    ["detail_endpoint"] = "/api/v1/glossary/potions",
-                    ["detail_endpoint_requires_run"] = true,
-                    ["discovered_ids"] = snapshot.DiscoveredPotions,
-                    ["limitation"] = "Profile exposes discovered potion IDs; per-potion lab UI metadata is not exposed by a typed API here."
-                },
-                ["bestiary"] = new Dictionary<string, object?>(StringComparer.Ordinal)
-                {
-                    ["ui_label"] = "Bestiary",
-                    ["status"] = "locked_in_ui",
-                    ["source"] = "/api/v1/bestiary model metadata",
-                    ["detail_endpoint"] = "/api/v1/bestiary",
-                    ["encounter_stats"] = snapshot.EncounterStats,
-                    ["enemy_stats"] = snapshot.EnemyStats,
-                    ["limitation"] = "The current game UI labels Bestiary as future/locked; the endpoint exposes reflected model metadata and profile fight stats when available."
-                },
-                ["character_stats"] = new Dictionary<string, object?>(StringComparer.Ordinal)
-                {
-                    ["ui_label"] = "Character Stats",
-                    ["status"] = "exposed",
-                    ["source"] = "/api/v1/profile characters and global totals",
-                    ["characters"] = snapshot.CharacterStats,
-                    ["global"] = snapshot.GlobalStats
-                },
-                ["run_history"] = runHistory
-            }
+            ["sections"] = BuildCompendiumSections(snapshot, runHistory)
         };
     }
 
@@ -464,6 +378,64 @@ public static partial class McpMod
 
     private static Dictionary<string, object?>? BuildCurrentRunContext(CompendiumSnapshot snapshot)
         => BuildCurrentRunContext(snapshot.IsRunInProgress, snapshot.ProfileId, snapshot.SaveScope, snapshot.ProgressPath, snapshot.ProfileRoot);
+
+    private static Dictionary<string, object?> BuildCompendiumSections(
+        CompendiumSnapshot snapshot,
+        Dictionary<string, object?>? runHistory)
+    {
+        return new Dictionary<string, object?>(StringComparer.Ordinal)
+        {
+            ["card_library"] = new Dictionary<string, object?>(StringComparer.Ordinal)
+            {
+                ["ui_label"] = "Card Library",
+                ["status"] = "exposed",
+                ["source"] = "/api/v1/profile card_stats and discovered_cards",
+                ["detail_endpoint"] = "/api/v1/glossary/cards",
+                ["detail_endpoint_requires_run"] = true,
+                ["discovered_ids"] = snapshot.DiscoveredCards,
+                ["stats"] = snapshot.CardStats
+            },
+            ["relic_collection"] = new Dictionary<string, object?>(StringComparer.Ordinal)
+            {
+                ["ui_label"] = "Relic Collection",
+                ["status"] = "partially_exposed",
+                ["source"] = "/api/v1/profile discovered_relics",
+                ["detail_endpoint"] = "/api/v1/glossary/relics",
+                ["detail_endpoint_requires_run"] = true,
+                ["discovered_ids"] = snapshot.DiscoveredRelics,
+                ["limitation"] = "Profile exposes discovered relic IDs; per-relic obtained counts are not exposed by a typed API here."
+            },
+            ["potion_lab"] = new Dictionary<string, object?>(StringComparer.Ordinal)
+            {
+                ["ui_label"] = "Potion Lab",
+                ["status"] = "partially_exposed",
+                ["source"] = "/api/v1/profile discovered_potions",
+                ["detail_endpoint"] = "/api/v1/glossary/potions",
+                ["detail_endpoint_requires_run"] = true,
+                ["discovered_ids"] = snapshot.DiscoveredPotions,
+                ["limitation"] = "Profile exposes discovered potion IDs; per-potion lab UI metadata is not exposed by a typed API here."
+            },
+            ["bestiary"] = new Dictionary<string, object?>(StringComparer.Ordinal)
+            {
+                ["ui_label"] = "Bestiary",
+                ["status"] = "locked_in_ui",
+                ["source"] = "/api/v1/bestiary model metadata",
+                ["detail_endpoint"] = "/api/v1/bestiary",
+                ["encounter_stats"] = snapshot.EncounterStats,
+                ["enemy_stats"] = snapshot.EnemyStats,
+                ["limitation"] = "The current game UI labels Bestiary as future/locked; the endpoint exposes reflected model metadata and profile fight stats when available."
+            },
+            ["character_stats"] = new Dictionary<string, object?>(StringComparer.Ordinal)
+            {
+                ["ui_label"] = "Character Stats",
+                ["status"] = "exposed",
+                ["source"] = "/api/v1/profile characters and global totals",
+                ["characters"] = snapshot.CharacterStats,
+                ["global"] = snapshot.GlobalStats
+            },
+            ["run_history"] = runHistory
+        };
+    }
 
     private static int CountMapPoints(JsonElement root)
     {

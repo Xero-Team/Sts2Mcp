@@ -779,32 +779,9 @@ public static partial class McpMod
         if (options.Count == 0)
             return Error("No rest site options available");
 
-        string? optionId = TryReadStringParam(data, "option_id", "id", "option");
-        bool hasIndex = TryGetIntParam(data, out int index, "index", "option_index");
-
-        if (optionId != null)
-        {
-            int found = options.FindIndex(o =>
-                string.Equals(o.OptionId, optionId, StringComparison.OrdinalIgnoreCase));
-            if (found < 0)
-                return Error($"No rest option '{optionId}' at this rest site. Available: {DescribeRestOptions(options, uiRoom)}");
-            // A caller that sends both is working from a stale read if they disagree;
-            // picking one silently is how you heal when you meant to smith.
-            if (hasIndex && index != found)
-                return Error(
-                    $"option_id '{optionId}' is index {found}, but index {index} was also given. "
-                    + $"Send one of them. Available: {DescribeRestOptions(options, uiRoom)}");
-            index = found;
-        }
-        else
-        {
-            if (!hasIndex)
-                return Error(
-                    "Missing rest site option selector. Provide 'option_id' (preferred; 'id'/'option' also accepted) "
-                    + $"or 'index' ('option_index'). Available: {DescribeRestOptions(options, uiRoom)}");
-            if (index < 0 || index >= options.Count)
-                return Error($"Rest option index {index} out of range ({options.Count} options). Available: {DescribeRestOptions(options, uiRoom)}");
-        }
+        var selectorError = ResolveRestOptionIndex(data, options, uiRoom, out int index);
+        if (selectorError != null)
+            return selectorError;
 
         var option = options[index];
         if (!option.IsEnabled)
@@ -839,6 +816,41 @@ public static partial class McpMod
             ["option_id"] = option.OptionId,
             ["index"] = index
         };
+    }
+
+    private static Dictionary<string, object?>? ResolveRestOptionIndex(
+        Dictionary<string, JsonElement> data,
+        List<RestSiteOption> options,
+        NRestSiteRoom uiRoom,
+        out int index)
+    {
+        index = -1;
+        string? optionId = TryReadStringParam(data, "option_id", "id", "option");
+        bool hasIndex = TryGetIntParam(data, out index, "index", "option_index");
+
+        if (optionId != null)
+        {
+            int found = options.FindIndex(o =>
+                string.Equals(o.OptionId, optionId, StringComparison.OrdinalIgnoreCase));
+            if (found < 0)
+                return Error($"No rest option '{optionId}' at this rest site. Available: {DescribeRestOptions(options, uiRoom)}");
+            // A caller that sends both is working from a stale read if they disagree;
+            // picking one silently is how you heal when you meant to smith.
+            if (hasIndex && index != found)
+                return Error(
+                    $"option_id '{optionId}' is index {found}, but index {index} was also given. "
+                    + $"Send one of them. Available: {DescribeRestOptions(options, uiRoom)}");
+            index = found;
+            return null;
+        }
+
+        if (!hasIndex)
+            return Error(
+                "Missing rest site option selector. Provide 'option_id' (preferred; 'id'/'option' also accepted) "
+                + $"or 'index' ('option_index'). Available: {DescribeRestOptions(options, uiRoom)}");
+        if (index < 0 || index >= options.Count)
+            return Error($"Rest option index {index} out of range ({options.Count} options). Available: {DescribeRestOptions(options, uiRoom)}");
+        return null;
     }
 
     private static string DescribeRestOptions(List<RestSiteOption> options, NRestSiteRoom uiRoom)
@@ -1250,83 +1262,83 @@ public static partial class McpMod
         => string.Join(", ", alternatives.Select(a => $"[{a.GetValueOrDefault("index")}] {a.GetValueOrDefault("option_id")}"));
 
     private static Dictionary<string, object?> ExecuteProceed()
+        => ProceedFromRewards()
+           ?? ProceedFromRestSite()
+           ?? ProceedFromMerchant()
+           ?? ProceedFromFakeMerchant()
+           ?? ProceedFromTreasure()
+           ?? Error("No proceed button available or enabled");
+
+    private static Dictionary<string, object?>? ProceedFromRewards()
     {
-        // Try rewards overlay
-        var overlay = NOverlayStack.Instance?.Peek();
-        if (overlay is NRewardsScreen rewardsScreen)
+        if (NOverlayStack.Instance?.Peek() is not NRewardsScreen rewardsScreen)
+            return null;
+        var btn = FindFirst<NProceedButton>(rewardsScreen);
+        if (btn == null || !IsControlVisibleOrActionable(btn))
+            return null;
+        btn.ForceClick();
+        return Ok("Proceeding from rewards");
+    }
+
+    private static Dictionary<string, object?>? ProceedFromRestSite()
+    {
+        if (NRestSiteRoom.Instance is not { } restRoom || !IsControlVisibleOrActionable(restRoom.ProceedButton))
+            return null;
+        restRoom.ProceedButton.ForceClick();
+        return Ok("Proceeding from rest site");
+    }
+
+    private static Dictionary<string, object?>? ProceedFromMerchant()
+    {
+        if (NMerchantRoom.Instance is not { } merchRoom)
+            return null;
+        if (merchRoom.Inventory?.IsOpen == true)
         {
-            var btn = FindFirst<NProceedButton>(rewardsScreen);
-            if (btn != null && IsControlVisibleOrActionable(btn))
-            {
-                btn.ForceClick();
-                return new Dictionary<string, object?>(StringComparer.Ordinal) { ["status"] = "ok", ["message"] = "Proceeding from rewards" };
-            }
+            if (!TryCloseMerchantInventoryPanel(merchRoom.Inventory))
+                return Error("Shop inventory is open but could not be closed");
+            return Ok("Closing shop inventory; call proceed again to leave the shop room");
+        }
+        if (!IsControlVisibleOrActionable(merchRoom.ProceedButton))
+            return null;
+        merchRoom.ProceedButton.ForceClick();
+        return Ok("Proceeding from shop");
+    }
+
+    private static Dictionary<string, object?>? ProceedFromFakeMerchant()
+    {
+        if (NEventRoom.Instance is not { } evtRoom)
+            return null;
+        var fmNode = FindFirst<NFakeMerchant>(evtRoom);
+        if (fmNode == null)
+            return null;
+
+        var fmInventory = FindFirst<NMerchantInventory>(fmNode);
+        if (fmInventory is { IsOpen: true })
+        {
+            if (!TryCloseMerchantInventoryPanel(fmInventory))
+                return Error("Fake merchant inventory is open but could not be closed");
+            return Ok("Closing fake merchant inventory; call proceed again to leave the event");
         }
 
-        // Try rest site
-        if (NRestSiteRoom.Instance is { } restRoom && IsControlVisibleOrActionable(restRoom.ProceedButton))
-        {
-            restRoom.ProceedButton.ForceClick();
-            return new Dictionary<string, object?>(StringComparer.Ordinal) { ["status"] = "ok", ["message"] = "Proceeding from rest site" };
-        }
+        var proceedBtn = FindFirst<NProceedButton>(fmNode);
+        if (proceedBtn == null || !IsControlVisibleOrActionable(proceedBtn))
+            return null;
+        proceedBtn.ForceClick();
+        return Ok("Proceeding from fake merchant");
+    }
 
-        // Try merchant - close inventory first if open, then proceed
-        if (NMerchantRoom.Instance is { } merchRoom)
-        {
-            if (merchRoom.Inventory?.IsOpen == true)
-            {
-                if (!TryCloseMerchantInventoryPanel(merchRoom.Inventory))
-                    return Error("Shop inventory is open but could not be closed");
-                return new Dictionary<string, object?>(StringComparer.Ordinal)
-                {
-                    ["status"] = "ok",
-                    ["message"] = "Closing shop inventory; call proceed again to leave the shop room"
-                };
-            }
-            if (IsControlVisibleOrActionable(merchRoom.ProceedButton))
-            {
-                merchRoom.ProceedButton.ForceClick();
-                return new Dictionary<string, object?>(StringComparer.Ordinal) { ["status"] = "ok", ["message"] = "Proceeding from shop" };
-            }
-        }
-
-        // Try fake merchant - close inventory first if open, then proceed
-        if (NEventRoom.Instance is { } evtRoom)
-        {
-            var fmNode = FindFirst<NFakeMerchant>(evtRoom);
-            if (fmNode != null)
-            {
-                var fmInventory = FindFirst<NMerchantInventory>(fmNode);
-                if (fmInventory is { IsOpen: true })
-                {
-                    if (!TryCloseMerchantInventoryPanel(fmInventory))
-                        return Error("Fake merchant inventory is open but could not be closed");
-                    return new Dictionary<string, object?>(StringComparer.Ordinal)
-                    {
-                        ["status"] = "ok",
-                        ["message"] = "Closing fake merchant inventory; call proceed again to leave the event"
-                    };
-                }
-                var proceedBtn = FindFirst<NProceedButton>(fmNode);
-                if (proceedBtn != null && IsControlVisibleOrActionable(proceedBtn))
-                {
-                    proceedBtn.ForceClick();
-                    return new Dictionary<string, object?>(StringComparer.Ordinal) { ["status"] = "ok", ["message"] = "Proceeding from fake merchant" };
-                }
-            }
-        }
-
-        // Try treasure room
+    private static Dictionary<string, object?>? ProceedFromTreasure()
+    {
         var treasureUI = FindFirst<NTreasureRoom>(
             ((Godot.SceneTree)Godot.Engine.GetMainLoop()).Root);
-        if (treasureUI != null && IsControlVisibleOrActionable(treasureUI.ProceedButton))
-        {
-            treasureUI.ProceedButton.ForceClick();
-            return new Dictionary<string, object?>(StringComparer.Ordinal) { ["status"] = "ok", ["message"] = "Proceeding from treasure room" };
-        }
-
-        return Error("No proceed button available or enabled");
+        if (treasureUI == null || !IsControlVisibleOrActionable(treasureUI.ProceedButton))
+            return null;
+        treasureUI.ProceedButton.ForceClick();
+        return Ok("Proceeding from treasure room");
     }
+
+    private static Dictionary<string, object?> Ok(string message)
+        => new(StringComparer.Ordinal) { ["status"] = "ok", ["message"] = message };
 
     private static bool TryCloseMerchantInventoryPanel(NMerchantInventory inventory)
     {
@@ -2776,75 +2788,68 @@ public static partial class McpMod
         var normalized = option.ToLowerInvariant();
 
         if (string.Equals(normalized, "back", StringComparison.Ordinal))
-        {
             return ClickMenuButtonField(joinScreen, "_backButton", "Going back from join screen", "Back button is not available");
-        }
 
         if (string.Equals(normalized, "refresh", StringComparison.Ordinal))
-        {
-            var refreshBtn = GetInstanceFieldValue(joinScreen, "_refreshButton") as NClickableControl;
-            if (refreshBtn != null && refreshBtn.IsEnabled && IsNodeVisible(refreshBtn))
-            {
-                refreshBtn.ForceClick();
-                return new Dictionary<string, object?>(StringComparer.Ordinal) { ["status"] = "ok", ["message"] = "Refreshing friend list" };
-            }
-            return Error("Refresh button not available");
-        }
+            return RefreshJoinFriendList(joinScreen);
 
         // join_<index> or join_<player_id>
         if (normalized.StartsWith("join_", StringComparison.Ordinal))
-        {
-            var key = normalized["join_".Length..];
-            var buttonContainer = GetInstanceFieldValue(joinScreen, "_buttonContainer") as Control;
-            if (buttonContainer == null)
-                return Error("Friend list container not available");
-
-            // Build the in-order friend list once
-            var friendButtons = new List<NJoinFriendButton>();
-            foreach (var child in buttonContainer.GetChildren())
-            {
-                if (child is NJoinFriendButton fbtn)
-                    friendButtons.Add(fbtn);
-            }
-
-            if (friendButtons.Count == 0)
-                return Error("No friends with open lobbies. Use 'refresh' to retry.");
-
-            // Try as index first
-            if (int.TryParse(key, CultureInfo.InvariantCulture, out int idx))
-            {
-                if (idx < 0 || idx >= friendButtons.Count)
-                    return Error($"Friend index {idx} out of range (0..{friendButtons.Count - 1})");
-                if (!friendButtons[idx].IsEnabled)
-                    return Error($"Friend at index {idx} is not joinable right now");
-                friendButtons[idx].ForceClick();
-                return new Dictionary<string, object?>(StringComparer.Ordinal)
-                {
-                    ["status"] = "ok",
-                    ["message"] = $"Joining friend at index {idx}"
-                };
-            }
-
-            // Otherwise treat as ulong player id
-            if (ulong.TryParse(key, out ulong playerId))
-            {
-                var match = friendButtons.FirstOrDefault(b => b.PlayerId == playerId);
-                if (match == null)
-                    return Error($"No friend with player_id {playerId} in current list. Available indices: 0..{friendButtons.Count - 1}");
-                if (!match.IsEnabled)
-                    return Error($"Friend {playerId} is not joinable right now");
-                match.ForceClick();
-                return new Dictionary<string, object?>(StringComparer.Ordinal)
-                {
-                    ["status"] = "ok",
-                    ["message"] = $"Joining friend {playerId}"
-                };
-            }
-
-            return Error($"Unknown join target: '{key}'. Use join_<index> (e.g. join_0) or join_<player_id>.");
-        }
+            return JoinFriend(joinScreen, normalized["join_".Length..]);
 
         return Error($"Unknown join screen option: {option}. Use: refresh, back, join_<index>, join_<player_id>");
+    }
+
+    private static Dictionary<string, object?> RefreshJoinFriendList(NJoinFriendScreen joinScreen)
+    {
+        var refreshBtn = GetInstanceFieldValue(joinScreen, "_refreshButton") as NClickableControl;
+        if (refreshBtn == null || !refreshBtn.IsEnabled || !IsNodeVisible(refreshBtn))
+            return Error("Refresh button not available");
+        refreshBtn.ForceClick();
+        return Ok("Refreshing friend list");
+    }
+
+    private static Dictionary<string, object?> JoinFriend(NJoinFriendScreen joinScreen, string key)
+    {
+        var buttonContainer = GetInstanceFieldValue(joinScreen, "_buttonContainer") as Control;
+        if (buttonContainer == null)
+            return Error("Friend list container not available");
+
+        // Build the in-order friend list once
+        var friendButtons = new List<NJoinFriendButton>();
+        foreach (var child in buttonContainer.GetChildren())
+        {
+            if (child is NJoinFriendButton fbtn)
+                friendButtons.Add(fbtn);
+        }
+
+        if (friendButtons.Count == 0)
+            return Error("No friends with open lobbies. Use 'refresh' to retry.");
+
+        // Try as index first
+        if (int.TryParse(key, CultureInfo.InvariantCulture, out int idx))
+        {
+            if (idx < 0 || idx >= friendButtons.Count)
+                return Error($"Friend index {idx} out of range (0..{friendButtons.Count - 1})");
+            if (!friendButtons[idx].IsEnabled)
+                return Error($"Friend at index {idx} is not joinable right now");
+            friendButtons[idx].ForceClick();
+            return Ok($"Joining friend at index {idx}");
+        }
+
+        // Otherwise treat as ulong player id
+        if (ulong.TryParse(key, out ulong playerId))
+        {
+            var match = friendButtons.FirstOrDefault(b => b.PlayerId == playerId);
+            if (match == null)
+                return Error($"No friend with player_id {playerId} in current list. Available indices: 0..{friendButtons.Count - 1}");
+            if (!match.IsEnabled)
+                return Error($"Friend {playerId} is not joinable right now");
+            match.ForceClick();
+            return Ok($"Joining friend {playerId}");
+        }
+
+        return Error($"Unknown join target: '{key}'. Use join_<index> (e.g. join_0) or join_<player_id>.");
     }
 
     private static Dictionary<string, object?> ExecuteLoadLobbyMenuOption(

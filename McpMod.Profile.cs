@@ -244,11 +244,11 @@ public static partial class McpMod
         result["save_scope"] = GetSaveScope(profileRoot);
         result["current_run"] = BuildActiveRunContext();
 
-        result["characters"] = BuildCharacterStats(progress.CharacterStats);
-        result["card_stats"] = BuildCardStats(progress.CardStats);
-        result["encounter_stats"] = BuildEncounterStats(progress.EncounterStats);
-        result["enemy_stats"] = BuildEnemyStats(progress.EnemyStats);
-        result["ancient_stats"] = BuildAncientStats(progress.AncientStats);
+        result["characters"] = BuildCharacterStatRows(progress.CharacterStats);
+        result["card_stats"] = BuildCardStatRows(progress.CardStats);
+        result["encounter_stats"] = BuildEncounterStatRows(progress.EncounterStats);
+        result["enemy_stats"] = BuildEnemyStatRows(progress.EnemyStats);
+        result["ancient_stats"] = BuildAncientStatRows(progress.AncientStats);
         AddDiscoveredIds(result, progress);
         result["achievements"] = BuildAchievementList(progress.UnlockedAchievements);
         result["epochs"] = BuildEpochList(progress.Epochs);
@@ -256,7 +256,7 @@ public static partial class McpMod
         return result;
     }
 
-    private static List<Dictionary<string, object?>> BuildCharacterStats(
+    private static List<Dictionary<string, object?>> BuildCharacterStatRows(
         IReadOnlyDictionary<ModelId, CharacterStats> stats)
     {
         var rows = new List<Dictionary<string, object?>>();
@@ -279,7 +279,7 @@ public static partial class McpMod
         return rows;
     }
 
-    private static List<Dictionary<string, object?>> BuildCardStats(
+    private static List<Dictionary<string, object?>> BuildCardStatRows(
         IReadOnlyDictionary<ModelId, CardStats> stats)
     {
         var rows = new List<Dictionary<string, object?>>();
@@ -298,29 +298,29 @@ public static partial class McpMod
         return rows;
     }
 
-    private static List<Dictionary<string, object?>> BuildEncounterStats(
+    private static List<Dictionary<string, object?>> BuildEncounterStatRows(
         IReadOnlyDictionary<ModelId, EncounterStats> stats)
     {
         var rows = new List<Dictionary<string, object?>>();
         foreach (var kv in stats.OrderBy(kv => kv.Key.Entry, StringComparer.Ordinal))
         {
-            rows.Add(BuildFightStatGroup(kv.Key.Entry, kv.Value.TotalWins, kv.Value.TotalLosses, kv.Value.FightStats));
+            rows.Add(BuildFightStatRow(kv.Key.Entry, kv.Value.TotalWins, kv.Value.TotalLosses, kv.Value.FightStats));
         }
         return rows;
     }
 
-    private static List<Dictionary<string, object?>> BuildEnemyStats(
+    private static List<Dictionary<string, object?>> BuildEnemyStatRows(
         IReadOnlyDictionary<ModelId, EnemyStats> stats)
     {
         var rows = new List<Dictionary<string, object?>>();
         foreach (var kv in stats.OrderBy(kv => kv.Key.Entry, StringComparer.Ordinal))
         {
-            rows.Add(BuildFightStatGroup(kv.Key.Entry, kv.Value.TotalWins, kv.Value.TotalLosses, kv.Value.FightStats));
+            rows.Add(BuildFightStatRow(kv.Key.Entry, kv.Value.TotalWins, kv.Value.TotalLosses, kv.Value.FightStats));
         }
         return rows;
     }
 
-    private static Dictionary<string, object?> BuildFightStatGroup(
+    private static Dictionary<string, object?> BuildFightStatRow(
         string id,
         int totalWins,
         int totalLosses,
@@ -347,7 +347,7 @@ public static partial class McpMod
         return row;
     }
 
-    private static List<Dictionary<string, object?>> BuildAncientStats(
+    private static List<Dictionary<string, object?>> BuildAncientStatRows(
         IReadOnlyDictionary<ModelId, AncientStats> stats)
     {
         var rows = new List<Dictionary<string, object?>>();
