@@ -912,119 +912,126 @@ public static partial class McpMod
         bool inCombat = CombatManager.Instance.IsInProgress;
         var players = new List<Dictionary<string, object?>>();
         for (int i = 0; i < runState.Players.Count; i++)
-        {
-            var player = runState.Players[i];
-            var entry = new Dictionary<string, object?>(StringComparer.Ordinal)
-            {
-                // Stable target id for ally/player-targeting cards and potions
-                // (play_card / use_potion 'target' parameter).
-                ["entity_id"] = $"player_{i}",
-                ["slot_index"] = i,
-                ["net_id"] = player.NetId.ToString(),
-                ["character_id"] = player.Character.Id.Entry,
-                ["character"] = SafeGetText(() => player.Character.Title),
-                ["is_local"] = LocalContext.IsMe(player),
-                ["hp"] = player.Creature.CurrentHp,
-                ["max_hp"] = player.Creature.MaxHp,
-                ["gold"] = player.Gold,
-                ["is_alive"] = player.Creature.IsAlive
-            };
-
-            // Each player rolls their own rewards/shops/transformations off a
-            // slot-seeded PlayerRngSet. See McpMod.RngStreams.cs.
-            var playerRng = BuildPlayerRngStreams(player);
-            if (playerRng != null)
-                entry["rng"] = playerRng;
-
-            if (fullDetail)
-                AddFullRunPlayerDetail(entry, player);
-
-            if (inCombat)
-            {
-                entry["combat_id"] = player.Creature.CombatId;
-                entry["block"] = player.Creature.Block;
-                entry["is_ready_to_end_turn"] = CombatManager.Instance.IsPlayerReadyToEndTurn(player);
-
-                // Include pets for teammates (local player's pets are under "player")
-                if (!LocalContext.IsMe(player))
-                {
-                    var pets = BuildPetsState(player);
-                    if (pets.Count > 0)
-                    {
-                        entry["pets"] = pets;
-                    }
-
-                    // Reveal the teammate's hand + pile counts. MP combat is
-                    // lockstep — every player's PlayerCombatState is replicated
-                    // locally — so a teammate's hand cards are known client-side
-                    // even though the game UI hides them (this mirrors the
-                    // STS2-ShowPlayerHandCards mod). Use BuildCardInfo rather than
-                    // BuildCardState so we don't run CanPlay hooks against a
-                    // non-local player's card in the local combat context.
-                    TryDo(() =>
-                    {
-                        var cs = player.PlayerCombatState;
-                        if (cs != null)
-                        {
-                            var hand = new List<Dictionary<string, object?>>();
-                            int cardIndex = 0;
-                            foreach (var card in cs.Hand.Cards)
-                            {
-                                var info = BuildCardInfo(card);
-                                info["index"] = cardIndex++;
-                                info["target_type"] = card.TargetType.ToString();
-                                hand.Add(info);
-                            }
-                            entry["hand"] = hand;
-                            entry["draw_pile_count"] = cs.DrawPile.Cards.Count;
-                            entry["discard_pile_count"] = cs.DiscardPile.Cards.Count;
-                            entry["exhaust_pile_count"] = cs.ExhaustPile.Cards.Count;
-                            entry["play_pile_count"] = cs.PlayPile.Cards.Count;
-                            entry["is_resolving"] = PlayerIsResolvingEffect(player);
-
-                            // Full pile contents so the teammate's turn can be
-                            // forward-modelled. Draw pile is in true order
-                            // (index 0 = next draw), valid until their next
-                            // shuffle — same guarantee as the local player's.
-                            entry["draw_pile"] = BuildPileCardList(cs.DrawPile.Cards, PileType.Draw);
-                            entry["discard_pile"] = BuildPileCardList(cs.DiscardPile.Cards, PileType.Discard);
-                            entry["exhaust_pile"] = BuildPileCardList(cs.ExhaustPile.Cards, PileType.Exhaust);
-                            entry["play_pile"] = BuildPileCardList(cs.PlayPile.Cards, PileType.Play);
-
-                            // Powers/status + orbs — also needed to model their
-                            // turn (Strength/Vulnerable scaling, Defect orbs).
-                            entry["status"] = BuildPowersState(player.Creature);
-                            AddOrbsState(entry, player);
-
-                            // Relics + potions make the teammate's turn fully
-                            // searchable (per-card play legality, potion actions).
-                            entry["relics"] = BuildRelicsList(player);
-                            AddPotionsState(entry, player);
-
-                            // Energy getters run hooks (Hook.ModifyMaxEnergy) —
-                            // isolate them so a throw still leaves the hand intact.
-                            TryDo(() =>
-                            {
-                                entry["energy"] = cs.Energy;
-                                entry["max_energy"] = cs.MaxEnergy;
-                            });
-
-                            // Emotion Chip's owner-turn history, as for the local
-                            // player. Isolated so a missing history omits only
-                            // this field, which the planner then reports.
-                            TryDo(() =>
-                            {
-                                entry["damage_not_fully_blocked_this_owner_turn"] = DamageNotFullyBlockedThisOwnerTurn(
-                                    player, CombatManager.Instance.History.Entries.OfType<DamageReceivedEntry>());
-                            });
-                        }
-                    });
-                    /* teammate combat state mid-transition — omit hand */
-                }
-            }
-            players.Add(entry);
-        }
+            players.Add(BuildRosterEntry(runState.Players[i], i, inCombat, fullDetail));
         return players;
+    }
+
+    /// <summary>One roster row: identity and totals, plus whatever the fight allows.</summary>
+    private static Dictionary<string, object?> BuildRosterEntry(
+        Player player, int slot, bool inCombat, bool fullDetail)
+    {
+        var entry = new Dictionary<string, object?>(StringComparer.Ordinal)
+        {
+            // Stable target id for ally/player-targeting cards and potions
+            // (play_card / use_potion 'target' parameter).
+            ["entity_id"] = $"player_{slot}",
+            ["slot_index"] = slot,
+            ["net_id"] = player.NetId.ToString(),
+            ["character_id"] = player.Character.Id.Entry,
+            ["character"] = SafeGetText(() => player.Character.Title),
+            ["is_local"] = LocalContext.IsMe(player),
+            ["hp"] = player.Creature.CurrentHp,
+            ["max_hp"] = player.Creature.MaxHp,
+            ["gold"] = player.Gold,
+            ["is_alive"] = player.Creature.IsAlive
+        };
+
+        // Each player rolls their own rewards/shops/transformations off a
+        // slot-seeded PlayerRngSet. See McpMod.RngStreams.cs.
+        var playerRng = BuildPlayerRngStreams(player);
+        if (playerRng != null)
+            entry["rng"] = playerRng;
+
+        if (fullDetail)
+            AddFullRunPlayerDetail(entry, player);
+
+        if (!inCombat)
+            return entry;
+
+        entry["combat_id"] = player.Creature.CombatId;
+        entry["block"] = player.Creature.Block;
+        entry["is_ready_to_end_turn"] = CombatManager.Instance.IsPlayerReadyToEndTurn(player);
+
+        // Include pets for teammates (local player's pets are under "player")
+        if (!LocalContext.IsMe(player))
+            AppendTeammateState(entry, player);
+        return entry;
+    }
+
+    private static void AppendTeammateState(Dictionary<string, object?> entry, Player player)
+    {
+        var pets = BuildPetsState(player);
+        if (pets.Count > 0)
+        {
+            entry["pets"] = pets;
+        }
+
+        TryDo(() => AppendTeammateCombatState(entry, player));
+        /* teammate combat state mid-transition — omit hand */
+    }
+
+    /// <summary>
+    /// A teammate's combat state. MP combat is lockstep — every player's PlayerCombatState is
+    /// replicated locally — so a teammate's hand cards are known client-side even though the
+    /// game UI hides them (this mirrors the STS2-ShowPlayerHandCards mod). BuildCardInfo is
+    /// used rather than BuildCardState so CanPlay hooks are not run against a non-local
+    /// player's card in the local combat context.
+    /// </summary>
+    private static void AppendTeammateCombatState(Dictionary<string, object?> entry, Player player)
+    {
+        var cs = player.PlayerCombatState;
+        if (cs == null)
+            return;
+
+        var hand = new List<Dictionary<string, object?>>();
+        int cardIndex = 0;
+        foreach (var card in cs.Hand.Cards)
+        {
+            var info = BuildCardInfo(card);
+            info["index"] = cardIndex++;
+            info["target_type"] = card.TargetType.ToString();
+            hand.Add(info);
+        }
+        entry["hand"] = hand;
+        entry["draw_pile_count"] = cs.DrawPile.Cards.Count;
+        entry["discard_pile_count"] = cs.DiscardPile.Cards.Count;
+        entry["exhaust_pile_count"] = cs.ExhaustPile.Cards.Count;
+        entry["play_pile_count"] = cs.PlayPile.Cards.Count;
+        entry["is_resolving"] = PlayerIsResolvingEffect(player);
+
+        // Full pile contents so the teammate's turn can be forward-modelled. Draw
+        // pile is in true order (index 0 = next draw), valid until their next
+        // shuffle — same guarantee as the local player's.
+        entry["draw_pile"] = BuildPileCardList(cs.DrawPile.Cards, PileType.Draw);
+        entry["discard_pile"] = BuildPileCardList(cs.DiscardPile.Cards, PileType.Discard);
+        entry["exhaust_pile"] = BuildPileCardList(cs.ExhaustPile.Cards, PileType.Exhaust);
+        entry["play_pile"] = BuildPileCardList(cs.PlayPile.Cards, PileType.Play);
+
+        // Powers/status + orbs — also needed to model their turn
+        // (Strength/Vulnerable scaling, Defect orbs).
+        entry["status"] = BuildPowersState(player.Creature);
+        AddOrbsState(entry, player);
+
+        // Relics + potions make the teammate's turn fully searchable
+        // (per-card play legality, potion actions).
+        entry["relics"] = BuildRelicsList(player);
+        AddPotionsState(entry, player);
+
+        // Energy getters run hooks (Hook.ModifyMaxEnergy) —
+        // isolate them so a throw still leaves the hand intact.
+        TryDo(() =>
+        {
+            entry["energy"] = cs.Energy;
+            entry["max_energy"] = cs.MaxEnergy;
+        });
+
+        // Emotion Chip's owner-turn history, as for the local player. Isolated so a
+        // missing history omits only this field, which the planner then reports.
+        TryDo(() =>
+        {
+            entry["damage_not_fully_blocked_this_owner_turn"] = DamageNotFullyBlockedThisOwnerTurn(
+                player, CombatManager.Instance.History.Entries.OfType<DamageReceivedEntry>());
+        });
     }
 
     /// <summary>Adds the complete, non-combat player state requested by
