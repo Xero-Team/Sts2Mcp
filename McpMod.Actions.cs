@@ -2338,38 +2338,81 @@ public static partial class McpMod
         if (tree?.Root == null)
             return Error("Cannot access scene tree");
 
-        // Game over screen. Prefer the active overlay stack entry so hidden or
-        // preloaded game-over nodes cannot hijack normal menu navigation.
+        var gameOverResult = TryExecuteGameOverMenuOption(tree.Root, option);
+        if (gameOverResult != null)
+            return gameOverResult;
+
+        var ftueResult = TryExecuteFtueMenuOption(tree.Root, option);
+        if (ftueResult != null)
+            return ftueResult;
+
+        var popupResult = TryExecutePopupMenuOption(tree.Root, option);
+        if (popupResult != null)
+            return popupResult;
+
+        var runMenuResult = TryExecuteRunMenuOption(tree.Root, option);
+        if (runMenuResult != null)
+            return runMenuResult;
+
+        // Timeline screen - advance through epoch reveals.
+        var timelineScreen = FindFirst<NTimelineScreen>(tree.Root);
+        if (timelineScreen != null && IsNodeVisible(timelineScreen))
+            return ExecuteTimelineMenuOption(timelineScreen, tree.Root, option);
+
+        var lobbyResult = TryExecuteLobbyScreenOption(tree.Root, option, seed, ascension);
+        if (lobbyResult != null)
+            return lobbyResult;
+
+        // Main menu — click a menu button
+        var mainMenu = FindFirst<NMainMenu>(tree.Root);
+        if (mainMenu != null)
+            return ExecuteMainMenuOption(tree.Root, mainMenu, option);
+
+        return Error("Not on a menu screen", "not_on_menu");
+    }
+
+    /// <summary>
+    /// The menu options of a game-over screen. Prefers the active overlay stack entry so
+    /// hidden or preloaded game-over nodes cannot hijack normal menu navigation.
+    /// </summary>
+    private static Dictionary<string, object?>? TryExecuteGameOverMenuOption(Node root, string option)
+    {
         var gameOver = NOverlayStack.Instance?.Peek() as NGameOverScreen;
-        gameOver ??= FindAll<NGameOverScreen>(tree.Root).FirstOrDefault(IsNodeVisible);
-        if (gameOver != null)
+        gameOver ??= FindAll<NGameOverScreen>(root).FirstOrDefault(IsNodeVisible);
+        if (gameOver == null)
+            return null;
+
+        if (string.Equals(option, "continue", StringComparison.OrdinalIgnoreCase))
+            return Error("Game-over option 'continue' is not actionable. Use: main_menu");
+
+        if (!string.Equals(option, "main_menu", StringComparison.OrdinalIgnoreCase))
+            return Error($"Unknown game over option: {option}. Use: main_menu");
+
+        var result = ClickMenuButtonField(gameOver, "_mainMenuButton", "Returning to main menu");
+        if (string.Equals((string?)result["status"], "ok", StringComparison.Ordinal))
+            return result;
+
+        var returnMethod = gameOver.GetType().GetMethod(
+            "ReturnToMainMenu",
+            System.Reflection.BindingFlags.Public |
+            System.Reflection.BindingFlags.NonPublic |
+            System.Reflection.BindingFlags.Instance);
+        if (returnMethod != null)
         {
-            if (string.Equals(option, "continue", StringComparison.OrdinalIgnoreCase))
-                return Error("Game-over option 'continue' is not actionable. Use: main_menu");
-
-            if (!string.Equals(option, "main_menu", StringComparison.OrdinalIgnoreCase))
-                return Error($"Unknown game over option: {option}. Use: main_menu");
-
-            var result = ClickMenuButtonField(gameOver, "_mainMenuButton", "Returning to main menu");
-            if (string.Equals((string?)result["status"], "ok", StringComparison.Ordinal))
-                return result;
-
-            var returnMethod = gameOver.GetType().GetMethod(
-                "ReturnToMainMenu",
-                System.Reflection.BindingFlags.Public |
-                System.Reflection.BindingFlags.NonPublic |
-                System.Reflection.BindingFlags.Instance);
-            if (returnMethod != null)
-            {
-                returnMethod.Invoke(gameOver, null);
-                return new Dictionary<string, object?>(StringComparer.Ordinal) { ["status"] = "ok", ["message"] = "Returning to main menu" };
-            }
-
-            return Error("Game-over main_menu option is not available");
+            returnMethod.Invoke(gameOver, null);
+            return Ok("Returning to main menu");
         }
 
-        // Tutorial/FTUE popup - "Enable Tutorials?" dialog
-        var tutorialFtue = FindVisibleAcceptTutorialsFtue(tree.Root);
+        return Error("Game-over main_menu option is not available");
+    }
+
+    /// <summary>
+    /// The tutorial/FTUE popups: the "Enable Tutorials?" dialog and any other popup with an
+    /// advance control.
+    /// </summary>
+    private static Dictionary<string, object?>? TryExecuteFtueMenuOption(Node root, string option)
+    {
+        var tutorialFtue = FindVisibleAcceptTutorialsFtue(root);
         if (tutorialFtue != null && IsFtueNodeActive(tutorialFtue))
         {
             if (!string.Equals(option, "yes", StringComparison.OrdinalIgnoreCase) &&
@@ -2388,283 +2431,304 @@ public static partial class McpMod
                     IsPopupButtonActionable(clickable))
                 {
                     clickable.ForceClick();
-                    return new Dictionary<string, object?>(StringComparer.Ordinal) { ["status"] = "ok", ["message"] = $"Tutorials: {(isYes ? "enabled" : "disabled")}" };
+                    return Ok($"Tutorials: {(isYes ? "enabled" : "disabled")}");
                 }
             }
             return Error("Tutorial popup visible but buttons not accessible");
         }
 
         // Any other FTUE/tutorial popup with a confirm button.
-        var ftue = FindVisibleGenericFtue(tree.Root);
-        if (ftue != null)
+        var ftue = FindVisibleGenericFtue(root);
+        if (ftue == null)
+            return null;
+
+        if (!string.Equals(option, "advance", StringComparison.OrdinalIgnoreCase) &&
+            !string.Equals(option, "proceed", StringComparison.OrdinalIgnoreCase))
         {
-            if (!string.Equals(option, "advance", StringComparison.OrdinalIgnoreCase) &&
-                !string.Equals(option, "proceed", StringComparison.OrdinalIgnoreCase))
-            {
-                return Error($"Unknown tutorial option: {option}. Use: advance, proceed");
-            }
-
-            var ftueClickable = FindFtueAdvanceButton(ftue);
-            if (ftueClickable != null)
-            {
-                ftueClickable.ForceClick();
-                return new Dictionary<string, object?>(StringComparer.Ordinal) { ["status"] = "ok", ["message"] = "Dismissed tutorial popup" };
-            }
-
-            return Error("Tutorial popup visible but no actionable advance/proceed control is available; retry after the next state poll");
+            return Error($"Unknown tutorial option: {option}. Use: advance, proceed");
         }
 
-        // Generic blocking menu popups, such as the first-run warning that appears
-        // over character select on fresh profiles.
-        var verticalPopup = FindVisibleVerticalPopup(tree.Root);
+        var ftueClickable = FindFtueAdvanceButton(ftue);
+        if (ftueClickable != null)
+        {
+            ftueClickable.ForceClick();
+            return Ok("Dismissed tutorial popup");
+        }
+
+        return Error("Tutorial popup visible but no actionable advance/proceed control is available; retry after the next state poll");
+    }
+
+    /// <summary>
+    /// Generic blocking menu popups, such as the first-run warning that appears over
+    /// character select on fresh profiles.
+    /// </summary>
+    private static Dictionary<string, object?>? TryExecutePopupMenuOption(Node root, string option)
+    {
+        var verticalPopup = FindVisibleVerticalPopup(root);
         if (verticalPopup != null)
             return ExecutePopupOption(GetPopupOptions(verticalPopup), option);
 
-        var popupButtonOptions = GetVisiblePopupButtonOptions(tree.Root);
-        if (popupButtonOptions.Count > 0)
-            return ExecutePopupOption(popupButtonOptions, option);
+        var popupButtonOptions = GetVisiblePopupButtonOptions(root);
+        return popupButtonOptions.Count > 0
+            ? ExecutePopupOption(popupButtonOptions, option)
+            : null;
+    }
 
+    /// <summary>
+    /// The screens pushed over a run: settings first (so it keeps winning while it sits on
+    /// top of the pause menu), then the pause menu and anything above it on the run's
+    /// submenu stack (the compendium and the screens it opens).
+    /// </summary>
+    private static Dictionary<string, object?>? TryExecuteRunMenuOption(Node root, string option)
+    {
         // Settings screen - checked before every screen below, and in particular before
         // the main-menu branch, which is gated on NMainMenu and so never runs during a
         // run. Without this the API could open settings ('settings' on the main menu, or
         // the pause menu in a run) and had no way back out.
-        var settingsScreen = FindFirst<NSettingsScreen>(tree.Root);
+        var settingsScreen = FindFirst<NSettingsScreen>(root);
         if (settingsScreen != null && IsNodeVisible(settingsScreen))
-        {
             return ExecuteSubmenuBackOption(settingsScreen, option);
-        }
 
-        // The pause menu, and anything pushed above it on the run's submenu stack (the
-        // compendium and the screens it opens). Checked after settings so the settings
-        // screen keeps winning while it sits on top of the pause menu.
-        var runSubmenu = GetOpenRunSubmenu(tree.Root);
+        var runSubmenu = GetOpenRunSubmenu(root);
         if (runSubmenu is NPauseMenu pauseMenu)
             return ExecutePauseMenuOption(pauseMenu, option);
-        if (runSubmenu != null)
-            return ExecuteSubmenuBackOption(runSubmenu, option);
+        return runSubmenu != null ? ExecuteSubmenuBackOption(runSubmenu, option) : null;
+    }
 
-        // Timeline screen - advance through epoch reveals.
-        var timelineScreen = FindFirst<NTimelineScreen>(tree.Root);
-        if (timelineScreen != null && IsNodeVisible(timelineScreen))
+    private static Dictionary<string, object?> ExecuteTimelineMenuOption(
+        NTimelineScreen timelineScreen, Node root, string option)
+    {
+        if (string.Equals(option, "advance", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(option, "proceed", StringComparison.OrdinalIgnoreCase))
         {
-            if (string.Equals(option, "advance", StringComparison.OrdinalIgnoreCase) ||
-                string.Equals(option, "proceed", StringComparison.OrdinalIgnoreCase))
-            {
-                // Check for timeline tutorial screen (first-time "Proceed" button).
-                var tutorial = FindFirst<NTimelineTutorial>(tree.Root);
-                if (tutorial != null && IsNodeVisible(tutorial))
-                {
-                    var ackBtn = tutorial.GetType().GetField("_acknowledgeButton", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)?.GetValue(tutorial);
-                    if (ackBtn is NClickableControl ackClickable &&
-                        ackClickable.IsEnabled &&
-                        IsNodeVisible(ackClickable))
-                    {
-                        ackClickable.ForceClick();
-                        return new Dictionary<string, object?>(StringComparer.Ordinal) { ["status"] = "ok", ["message"] = "Clicked tutorial proceed button" };
-                    }
-                }
-
-                // Check for confirm button
-                var confirmBtn = FindFirst<NConfirmButton>(tree.Root);
-                if (confirmBtn != null && IsNodeVisible(confirmBtn) && confirmBtn.IsEnabled)
-                {
-                    confirmBtn.ForceClick();
-                    return new Dictionary<string, object?>(StringComparer.Ordinal) { ["status"] = "ok", ["message"] = "Clicked confirm button" };
-                }
-
-                // Check for any clickable proceed button
-                var proceedBtn = FindFirst<NProceedButton>(tree.Root);
-                if (proceedBtn != null && IsNodeVisible(proceedBtn) && proceedBtn.IsEnabled)
-                {
-                    proceedBtn.ForceClick();
-                    return new Dictionary<string, object?>(StringComparer.Ordinal) { ["status"] = "ok", ["message"] = "Clicked proceed button" };
-                }
-
-                // Check for inspect screen (epoch detail view) - close it.
-                var inspectScreen = FindFirst<NEpochInspectScreen>(tree.Root);
-                if (inspectScreen != null && IsNodeVisible(inspectScreen))
-                {
-                    var closeBtn = inspectScreen.GetType().GetField("_closeButton", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)?.GetValue(inspectScreen);
-                    if (closeBtn is NClickableControl closeClickable &&
-                        closeClickable.IsEnabled &&
-                        IsNodeVisible(closeClickable))
-                    {
-                        closeClickable.ForceClick();
-                        return new Dictionary<string, object?>(StringComparer.Ordinal) { ["status"] = "ok", ["message"] = "Closed epoch inspect screen" };
-                    }
-                    inspectScreen.Close();
-                    return new Dictionary<string, object?>(StringComparer.Ordinal) { ["status"] = "ok", ["message"] = "Closed epoch inspect screen" };
-                }
-
-                // An unlock screen that is already open ("<character> is now playable",
-                // "you unlocked these cards") blocks everything behind it until its
-                // confirm button is pressed.
-                var openUnlockResult = TryConfirmOpenUnlockScreen(timelineScreen);
-                if (openUnlockResult != null)
-                    return openUnlockResult;
-
-                // Check for queued unlock screens.
-                var queuedUnlockResult = TryHandleQueuedTimelineUnlock(timelineScreen);
-                if (queuedUnlockResult != null)
-                    return queuedUnlockResult;
-
-                var revealResult = TryRevealOneEpochSlot(timelineScreen);
-                if (revealResult != null)
-                    return revealResult;
-
-                return new Dictionary<string, object?>(StringComparer.Ordinal) { ["status"] = "ok", ["message"] = "No more epochs to advance", ["done"] = true };
-            }
-            else if (string.Equals(option, "back", StringComparison.OrdinalIgnoreCase))
-            {
-                // Try NBackButton directly on NTimelineScreen
-                var backBtn = timelineScreen.GetType().GetField("_backButton", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)?.GetValue(timelineScreen);
-                if (backBtn is NClickableControl { IsEnabled: true } backClickable)
-                {
-                    backClickable.ForceClick();
-                    return new Dictionary<string, object?>(StringComparer.Ordinal) { ["status"] = "ok", ["message"] = "Going back from timeline" };
-                }
-                // Try the submenu stack
-                var stack = timelineScreen.GetType().GetField("_stack", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)?.GetValue(timelineScreen);
-                if (stack != null)
-                {
-                    var popMethod = stack.GetType().GetMethod("Pop");
-                    popMethod?.Invoke(stack, null);
-                    return new Dictionary<string, object?>(StringComparer.Ordinal) { ["status"] = "ok", ["message"] = "Popped timeline from stack" };
-                }
-                return Error("Back button not available on timeline");
-            }
-            return Error($"Unknown timeline option: {option}. Use: advance, back");
+            return AdvanceTimeline(timelineScreen, root);
         }
 
+        if (string.Equals(option, "back", StringComparison.OrdinalIgnoreCase))
+            return GoBackFromTimeline(timelineScreen);
+
+        return Error($"Unknown timeline option: {option}. Use: advance, back");
+    }
+
+    /// <summary>One "advance" step: open panels first, then the queued unlocks, then a reveal.</summary>
+    private static Dictionary<string, object?> AdvanceTimeline(NTimelineScreen timelineScreen, Node root)
+    {
+        var tutorialResult = TryClickTimelineTutorial(root);
+        if (tutorialResult != null)
+            return tutorialResult;
+
+        var buttonResult = TryClickTimelineAdvanceButton(root);
+        if (buttonResult != null)
+            return buttonResult;
+
+        var inspectResult = TryCloseEpochInspectScreen(root);
+        if (inspectResult != null)
+            return inspectResult;
+
+        // An unlock screen that is already open ("<character> is now playable",
+        // "you unlocked these cards") blocks everything behind it until its
+        // confirm button is pressed.
+        var openUnlockResult = TryConfirmOpenUnlockScreen(timelineScreen);
+        if (openUnlockResult != null)
+            return openUnlockResult;
+
+        var queuedUnlockResult = TryHandleQueuedTimelineUnlock(timelineScreen);
+        if (queuedUnlockResult != null)
+            return queuedUnlockResult;
+
+        var revealResult = TryRevealOneEpochSlot(timelineScreen);
+        if (revealResult != null)
+            return revealResult;
+
+        return new Dictionary<string, object?>(StringComparer.Ordinal) { ["status"] = "ok", ["message"] = "No more epochs to advance", ["done"] = true };
+    }
+
+    /// <summary>Timeline tutorial screen (first-time "Proceed" button), when it is up.</summary>
+    private static Dictionary<string, object?>? TryClickTimelineTutorial(Node root)
+    {
+        var tutorial = FindFirst<NTimelineTutorial>(root);
+        if (tutorial == null || !IsNodeVisible(tutorial))
+            return null;
+
+        var ackBtn = tutorial.GetType().GetField("_acknowledgeButton", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)?.GetValue(tutorial);
+        if (ackBtn is NClickableControl ackClickable &&
+            ackClickable.IsEnabled &&
+            IsNodeVisible(ackClickable))
+        {
+            ackClickable.ForceClick();
+            return Ok("Clicked tutorial proceed button");
+        }
+        return null;
+    }
+
+    /// <summary>The first enabled, visible confirm or proceed button in the tree.</summary>
+    private static Dictionary<string, object?>? TryClickTimelineAdvanceButton(Node root)
+    {
+        var confirmBtn = FindFirst<NConfirmButton>(root);
+        if (confirmBtn != null && IsNodeVisible(confirmBtn) && confirmBtn.IsEnabled)
+        {
+            confirmBtn.ForceClick();
+            return Ok("Clicked confirm button");
+        }
+
+        var proceedBtn = FindFirst<NProceedButton>(root);
+        if (proceedBtn != null && IsNodeVisible(proceedBtn) && proceedBtn.IsEnabled)
+        {
+            proceedBtn.ForceClick();
+            return Ok("Clicked proceed button");
+        }
+        return null;
+    }
+
+    /// <summary>The epoch detail view, closed through its button when that is available.</summary>
+    private static Dictionary<string, object?>? TryCloseEpochInspectScreen(Node root)
+    {
+        var inspectScreen = FindFirst<NEpochInspectScreen>(root);
+        if (inspectScreen == null || !IsNodeVisible(inspectScreen))
+            return null;
+
+        var closeBtn = inspectScreen.GetType().GetField("_closeButton", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)?.GetValue(inspectScreen);
+        if (closeBtn is NClickableControl closeClickable &&
+            closeClickable.IsEnabled &&
+            IsNodeVisible(closeClickable))
+        {
+            closeClickable.ForceClick();
+            return Ok("Closed epoch inspect screen");
+        }
+        inspectScreen.Close();
+        return Ok("Closed epoch inspect screen");
+    }
+
+    private static Dictionary<string, object?> GoBackFromTimeline(NTimelineScreen timelineScreen)
+    {
+        // Try NBackButton directly on NTimelineScreen
+        var backBtn = timelineScreen.GetType().GetField("_backButton", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)?.GetValue(timelineScreen);
+        if (backBtn is NClickableControl { IsEnabled: true } backClickable)
+        {
+            backClickable.ForceClick();
+            return Ok("Going back from timeline");
+        }
+
+        // Try the submenu stack
+        var stack = timelineScreen.GetType().GetField("_stack", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)?.GetValue(timelineScreen);
+        if (stack != null)
+        {
+            var popMethod = stack.GetType().GetMethod("Pop");
+            popMethod?.Invoke(stack, null);
+            return Ok("Popped timeline from stack");
+        }
+        return Error("Back button not available on timeline");
+    }
+
+    /// <summary>
+    /// The lobby screens: friend join, multiplayer load, custom run, character select and
+    /// profile select. Character select can outlive or be mounted separately from NMainMenu,
+    /// so it is handled before the main-menu routing.
+    /// </summary>
+    private static Dictionary<string, object?>? TryExecuteLobbyScreenOption(
+        Node root, string option, string? seed, int? ascension)
+    {
         // Multiplayer Join Friend screen — friend list, refresh, back, or join_<index>/<player_id>.
-        var joinScreen = FindFirst<NJoinFriendScreen>(tree.Root);
+        var joinScreen = FindFirst<NJoinFriendScreen>(root);
         if (joinScreen != null && IsNodeVisible(joinScreen))
-        {
             return ExecuteJoinScreenMenuOption(joinScreen, option);
-        }
 
         // Multiplayer Load Game lobby — confirm/embark/unready/back to resume saved MP run.
-        var loadLobby = FindFirst<NMultiplayerLoadGameScreen>(tree.Root);
+        var loadLobby = FindFirst<NMultiplayerLoadGameScreen>(root);
         if (loadLobby != null && IsNodeVisible(loadLobby))
-        {
             return ExecuteLoadLobbyMenuOption(loadLobby, option);
-        }
 
         // Custom mode setup screen (replaces char select for custom runs). Handle
         // it before the plain char select and before main-menu routing.
-        var customRun = FindFirst<NCustomRunScreen>(tree.Root);
+        var customRun = FindFirst<NCustomRunScreen>(root);
         if (customRun != null && IsNodeVisible(customRun))
-        {
             return ExecuteCustomRunMenuOption(customRun, option, seed);
-        }
 
-        // Character select can outlive or be mounted separately from NMainMenu,
-        // so handle it before main-menu-specific routing.
-        var charSelect = FindFirst<NCharacterSelectScreen>(tree.Root);
+        var charSelect = FindFirst<NCharacterSelectScreen>(root);
         if (charSelect != null && IsNodeVisible(charSelect))
-        {
             return ExecuteCharacterSelectMenuOption(charSelect, option, seed, ascension);
-        }
 
-        var profileScreen = FindFirst<NProfileScreen>(tree.Root);
-        if (profileScreen != null && IsNodeVisible(profileScreen))
+        var profileScreen = FindFirst<NProfileScreen>(root);
+        return profileScreen != null && IsNodeVisible(profileScreen)
+            ? ExecuteProfileSelectMenuOption(profileScreen, option)
+            : null;
+    }
+
+    private static Dictionary<string, object?> ExecuteMainMenuOption(
+        Node root, NMainMenu mainMenu, string option)
+    {
+        // Check if we're on singleplayer submenu
+        var spSubmenu = FindFirst<NSingleplayerSubmenu>(root);
+        if (spSubmenu != null && IsNodeVisible(spSubmenu))
+            return ExecuteGameModeSubmenuOption(spSubmenu, option, "singleplayer");
+
+        // Check if we're on multiplayer host submenu
+        var mpHostSubmenu = FindFirst<NMultiplayerHostSubmenu>(root);
+        if (mpHostSubmenu != null && IsNodeVisible(mpHostSubmenu))
+            return ExecuteGameModeSubmenuOption(mpHostSubmenu, option, "multiplayer host");
+
+        // Check if we're on multiplayer submenu
+        var mpSubmenu = FindFirst<NMultiplayerSubmenu>(root);
+        if (mpSubmenu != null && IsNodeVisible(mpSubmenu))
+            return ExecuteMultiplayerSubmenuOption(mpSubmenu, option);
+
+        // Main menu buttons
+        var menuFieldName = option.ToLowerInvariant() switch
         {
-            return ExecuteProfileSelectMenuOption(profileScreen, option);
-        }
+            "singleplayer" => "_singleplayerButton",
+            "multiplayer" => "_multiplayerButton",
+            "compendium" => "_compendiumButton",
+            "timeline" => "_timelineButton",
+            "settings" => "_settingsButton",
+            "continue" => "_continueButton",
+            "abandon_run" => "_abandonRunButton",
+            "quit" => "_quitButton",
+            _ => null
+        };
+        if (menuFieldName == null)
+            return Error($"Unknown menu option: {option}", "unknown_menu_option");
 
-        // Main menu — click a menu button
-        var mainMenu = FindFirst<NMainMenu>(tree.Root);
-        if (mainMenu != null)
+        return ClickMenuButtonField(mainMenu, menuFieldName, $"Selected {option}", $"Option '{option}' is not available");
+    }
+
+    /// <summary>The standard/daily/custom buttons shared by both game-mode submenus.</summary>
+    private static Dictionary<string, object?> ExecuteGameModeSubmenuOption(
+        Node submenu, string option, string screenLabel)
+    {
+        if (string.Equals(option, "back", StringComparison.OrdinalIgnoreCase))
+            return ClickMenuButtonField(submenu, "_backButton", "Going back", "Back button is not available");
+
+        var fieldName = option.ToLowerInvariant() switch
         {
-            // Check if we're on singleplayer submenu
-            var spSubmenu = FindFirst<NSingleplayerSubmenu>(tree.Root);
-            if (spSubmenu != null && IsNodeVisible(spSubmenu))
-            {
-                if (string.Equals(option, "back", StringComparison.OrdinalIgnoreCase))
-                {
-                    return ClickMenuButtonField(spSubmenu, "_backButton", "Going back", "Back button is not available");
-                }
+            "standard" => "_standardButton",
+            "daily" => "_dailyButton",
+            "custom" => "_customButton",
+            _ => null
+        };
+        if (fieldName == null)
+            return Error($"Unknown {screenLabel} option: {option}. Use: standard, daily, custom, back");
 
-                var fieldName = option.ToLowerInvariant() switch
-                {
-                    "standard" => "_standardButton",
-                    "daily" => "_dailyButton",
-                    "custom" => "_customButton",
-                    _ => null
-                };
-                if (fieldName == null)
-                    return Error($"Unknown singleplayer option: {option}. Use: standard, daily, custom, back");
+        return ClickMenuButtonField(submenu, fieldName, $"Selected {option}", $"Option '{option}' is not available (locked)");
+    }
 
-                return ClickMenuButtonField(spSubmenu, fieldName, $"Selected {option}", $"Option '{option}' is not available (locked)");
-            }
+    private static Dictionary<string, object?> ExecuteMultiplayerSubmenuOption(
+        Node mpSubmenu, string option)
+    {
+        if (string.Equals(option, "back", StringComparison.OrdinalIgnoreCase))
+            return ClickMenuButtonField(mpSubmenu, "_backButton", "Going back", "Back button is not available");
 
-            // Check if we're on multiplayer host submenu
-            var mpHostSubmenu = FindFirst<NMultiplayerHostSubmenu>(tree.Root);
-            if (mpHostSubmenu != null && IsNodeVisible(mpHostSubmenu))
-            {
-                if (string.Equals(option, "back", StringComparison.OrdinalIgnoreCase))
-                {
-                    return ClickMenuButtonField(mpHostSubmenu, "_backButton", "Going back", "Back button is not available");
-                }
+        var fieldName = option.ToLowerInvariant() switch
+        {
+            "host" => "_hostButton",
+            "join" => "_joinButton",
+            "load" => "_loadButton",
+            "abandon" => "_abandonButton",
+            _ => null
+        };
+        if (fieldName == null)
+            return Error($"Unknown multiplayer option: {option}. Use: host, join, load, abandon, back");
 
-                var fieldName = option.ToLowerInvariant() switch
-                {
-                    "standard" => "_standardButton",
-                    "daily" => "_dailyButton",
-                    "custom" => "_customButton",
-                    _ => null
-                };
-                if (fieldName == null)
-                    return Error($"Unknown multiplayer host option: {option}. Use: standard, daily, custom, back");
-
-                return ClickMenuButtonField(mpHostSubmenu, fieldName, $"Selected {option}", $"Option '{option}' is not available (locked)");
-            }
-
-            // Check if we're on multiplayer submenu
-            var mpSubmenu = FindFirst<NMultiplayerSubmenu>(tree.Root);
-            if (mpSubmenu != null && IsNodeVisible(mpSubmenu))
-            {
-                if (string.Equals(option, "back", StringComparison.OrdinalIgnoreCase))
-                {
-                    return ClickMenuButtonField(mpSubmenu, "_backButton", "Going back", "Back button is not available");
-                }
-
-                var fieldName = option.ToLowerInvariant() switch
-                {
-                    "host" => "_hostButton",
-                    "join" => "_joinButton",
-                    "load" => "_loadButton",
-                    "abandon" => "_abandonButton",
-                    _ => null
-                };
-                if (fieldName == null)
-                    return Error($"Unknown multiplayer option: {option}. Use: host, join, load, abandon, back");
-
-                return ClickMenuButtonField(mpSubmenu, fieldName, $"Selected {option}", $"Option '{option}' is not available");
-            }
-
-            // Main menu buttons
-            var normalizedMainMenuOption = option.ToLowerInvariant();
-
-            var menuFieldName = normalizedMainMenuOption switch
-            {
-                "singleplayer" => "_singleplayerButton",
-                "multiplayer" => "_multiplayerButton",
-                "compendium" => "_compendiumButton",
-                "timeline" => "_timelineButton",
-                "settings" => "_settingsButton",
-                "continue" => "_continueButton",
-                "abandon_run" => "_abandonRunButton",
-                "quit" => "_quitButton",
-                _ => null
-            };
-            if (menuFieldName == null)
-                return Error($"Unknown menu option: {option}", "unknown_menu_option");
-
-            return ClickMenuButtonField(mainMenu, menuFieldName, $"Selected {option}", $"Option '{option}' is not available");
-        }
-
-        return Error("Not on a menu screen", "not_on_menu");
+        return ClickMenuButtonField(mpSubmenu, fieldName, $"Selected {option}", $"Option '{option}' is not available");
     }
 
 
