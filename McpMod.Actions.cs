@@ -4,6 +4,7 @@ using System.Globalization;
 using System.Linq;
 using System.Text.Json;
 using Godot;
+using MegaCrit.Sts2.Core.CardSelection;
 using MegaCrit.Sts2.Core.Combat;
 using MegaCrit.Sts2.Core.Commands;
 using MegaCrit.Sts2.Core.Context;
@@ -1563,47 +1564,14 @@ public static partial class McpMod
         // "open the preview", which appends a second copy of every selected card (A-7).
         var preview = FindVisibleCardSelectPreview(screen);
         if (preview != null)
-        {
-            var previewConfirm = GetCardSelectPreviewConfirm(preview);
-            if (previewConfirm is not { IsEnabled: true })
-                return Error("The selection preview's confirm button is not enabled - use cancel_selection to go back to the grid");
-
-            previewConfirm.ForceClick();
-            if (IsCardSelectScreenStillOpen(screen))
-            {
-                return Error(selectedCount is 0
-                    ? "The preview is empty - cancel_selection to go back to the grid and select at least one card"
-                    : "The preview's confirm did nothing - the screen would not accept the current selection");
-
-            }
-
-            return new Dictionary<string, object?>(StringComparer.Ordinal)
-            {
-                ["status"] = "ok",
-                ["message"] = "Confirming selection from preview"
-            };
-        }
+            return ConfirmSelectionPreview(screen, preview, selectedCount);
 
         // Step one: check the count before pressing anything.
-        if (selectedCount.HasValue && prefs.HasValue)
-        {
-            int min = prefs.Value.MinSelect;
-            int max = prefs.Value.MaxSelect;
-            if (selectedCount.Value < min)
-                return Error($"{selectedCount.Value} of {min} required card(s) selected - select {min - selectedCount.Value} more before confirming");
-            if (selectedCount.Value > max)
-                return Error($"{selectedCount.Value} cards selected but at most {max} can be confirmed - deselect {selectedCount.Value - max}");
-        }
+        var countFailure = ValidateSelectedCount(selectedCount, prefs);
+        if (countFailure != null)
+            return countFailure;
 
-        // The screen's own Confirm. On the remove/upgrade/enchant/transform screens this
-        // opens the preview; only NSimpleCardSelectScreen completes straight from here.
-        var mainConfirm = GetCardSelectMainConfirm(screen);
-
-        // Fallback: any enabled, visible NConfirmButton in the screen tree, for a subclass
-        // that names its confirm button something else.
-        if (mainConfirm is not { IsEnabled: true })
-            mainConfirm = FindAll<NConfirmButton>(screen).FirstOrDefault(b => b.IsEnabled && b.IsVisibleInTree());
-
+        var mainConfirm = ResolveMainConfirm(screen);
         if (mainConfirm is not { IsEnabled: true })
         {
             return Error(selectedCount.HasValue && prefs.HasValue
@@ -1612,11 +1580,74 @@ public static partial class McpMod
         }
 
         mainConfirm.ForceClick();
+        return DescribeConfirmedSelection(screen, selectedCount);
+    }
 
+    private static Dictionary<string, object?> ConfirmSelectionPreview(
+        NCardGridSelectionScreen screen, Control preview, int? selectedCount)
+    {
+        var previewConfirm = GetCardSelectPreviewConfirm(preview);
+        if (previewConfirm is not { IsEnabled: true })
+            return Error("The selection preview's confirm button is not enabled - use cancel_selection to go back to the grid");
+
+        previewConfirm.ForceClick();
+        if (IsCardSelectScreenStillOpen(screen))
+        {
+            return Error(selectedCount is 0
+                ? "The preview is empty - cancel_selection to go back to the grid and select at least one card"
+                : "The preview's confirm did nothing - the screen would not accept the current selection");
+        }
+
+        return new Dictionary<string, object?>(StringComparer.Ordinal)
+        {
+            ["status"] = "ok",
+            ["message"] = "Confirming selection from preview"
+        };
+    }
+
+    /// <summary>
+    /// Step one: refuse a count the screen would only swallow. The game accepts a selection
+    /// when it is at least MinSelect and at most MaxSelect.
+    /// </summary>
+    private static Dictionary<string, object?>? ValidateSelectedCount(
+        int? selectedCount, CardSelectorPrefs? prefs)
+    {
+        if (!selectedCount.HasValue || !prefs.HasValue)
+            return null;
+
+        int min = prefs.Value.MinSelect;
+        int max = prefs.Value.MaxSelect;
+        if (selectedCount.Value < min)
+            return Error($"{selectedCount.Value} of {min} required card(s) selected - select {min - selectedCount.Value} more before confirming");
+        if (selectedCount.Value > max)
+            return Error($"{selectedCount.Value} cards selected but at most {max} can be confirmed - deselect {selectedCount.Value - max}");
+        return null;
+    }
+
+    /// <summary>
+    /// The screen's own Confirm, or any enabled, visible NConfirmButton in the screen tree for
+    /// a subclass that names its confirm button something else. On the
+    /// remove/upgrade/enchant/transform screens this opens the preview; only
+    /// NSimpleCardSelectScreen completes straight from here.
+    /// </summary>
+    private static NConfirmButton? ResolveMainConfirm(NCardGridSelectionScreen screen)
+    {
+        var mainConfirm = GetCardSelectMainConfirm(screen);
+        if (mainConfirm is { IsEnabled: true })
+            return mainConfirm;
+        return FindAll<NConfirmButton>(screen).FirstOrDefault(b => b.IsEnabled && b.IsVisibleInTree());
+    }
+
+    /// <summary>
+    /// Reads the screen after the press: gone means it landed, a preview means the press only
+    /// opened the preview, and still on the grid means the game swallowed it.
+    /// </summary>
+    private static Dictionary<string, object?> DescribeConfirmedSelection(
+        NCardGridSelectionScreen screen, int? selectedCount)
+    {
         // The screen takes itself off the overlay stack the moment it completes, so a stack
         // that no longer has it on top is the proof that the press landed.
         if (!IsCardSelectScreenStillOpen(screen))
-
         {
             return new Dictionary<string, object?>(StringComparer.Ordinal)
             {
