@@ -22,6 +22,7 @@ using MegaCrit.Sts2.Core.Nodes.Screens.CardSelection;
 using MegaCrit.Sts2.Core.Nodes.Screens.CustomRun;
 using MegaCrit.Sts2.Core.Nodes.Screens.Map;
 using MegaCrit.Sts2.Core.Nodes.Screens.Shops;
+using STS2_MCP.Core.Contracts;
 
 namespace STS2_MCP;
 
@@ -347,7 +348,7 @@ public static partial class McpMod
 
     internal static void SendJson(HttpListenerResponse response, object data, bool pretty = false)
     {
-        string json = JsonSerializer.Serialize(data, pretty ? _jsonOptionsPretty : _jsonOptions);
+        string json = JsonSerializer.Serialize(data, pretty ? ContractJson.PrettyOptions : ContractJson.Options);
         byte[] buffer = Encoding.UTF8.GetBytes(json);
         response.ContentType = "application/json; charset=utf-8";
         response.ContentLength64 = buffer.Length;
@@ -372,14 +373,11 @@ public static partial class McpMod
         // "status" is carried here too so a client never has to branch on the HTTP code:
         // transport-level failures (bad JSON, unknown route, wrong method) read exactly
         // like the action-level failures produced by Error().
-        var data = new Dictionary<string, object?>(StringComparer.Ordinal)
+        SendJson(response, new ErrorResponse
         {
-            ["status"] = "error",
-            ["error"] = message
-        };
-        if (!string.IsNullOrWhiteSpace(errorCode))
-            data["error_code"] = errorCode;
-        SendJson(response, data, pretty);
+            Error = message,
+            ErrorCode = string.IsNullOrWhiteSpace(errorCode) ? null : errorCode
+        }, pretty);
     }
 
     /// <summary>
@@ -400,12 +398,7 @@ public static partial class McpMod
         HttpListenerResponse response, string message, bool pretty = false)
     {
         response.StatusCode = 503;
-        SendJson(response, new Dictionary<string, object?>(StringComparer.Ordinal)
-        {
-            ["error"] = message,
-            ["status"] = "error",
-            ["retry"] = true
-        }, pretty);
+        SendJson(response, new UnavailableResponse { Error = message }, pretty);
     }
 
     /// <summary>

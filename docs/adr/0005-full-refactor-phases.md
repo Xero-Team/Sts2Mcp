@@ -17,17 +17,21 @@
      unconditional.
   3. **Typed contracts** — `Core/Contracts` for the responses `docs/raw-*.md`
      already documents; each endpoint converted with its before/after response
-     captured and compared. This is the first slice ADR 0004 named.
+     captured and compared. This is the first slice ADR 0004 named. Started:
+     the serializer settings and the two failure bodies live there, pinned by
+     `tests/ContractShape` without the game; the payloads follow one endpoint at
+     a time, each needing a live capture to compare against.
   4. **Layer migration** — `UseCases`, `Infrastructure`, `Transport` folders
      and namespaces inside the single assembly; project split still deferred.
 - Consequences: every phase ends on a clean build and an exercised in-game path,
   so a phase can be reverted alone. From phase 2 on the gate is unconditional, so
   a warning cannot reach the branch at all.
-- Debt: Phase 3 and 4 are not started. The analyzer baseline (1538 findings) is
-  closed: the catches whose bodies contained `return`/`continue` got a named
-  wrapper instead of a lambda, and the 74 long methods were split one at a time.
-  What remains is the design work the next two phases name, plus the live-game
-  smoke test for the endpoints touched by the extraction.
+- Debt: Phase 3 has its first slice (the wire format and the failure bodies) and
+  phase 4 is not started. The analyzer baseline (1538 findings) is closed: the
+  catches whose bodies contained `return`/`continue` got a named wrapper instead
+  of a lambda, and the 74 long methods were split one at a time. What remains is
+  the design work the next two phases name, plus the live-game smoke test for the
+  endpoints touched by the extraction.
 
 ## Orphans found while clearing `S1144`
 

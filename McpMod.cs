@@ -149,25 +149,6 @@ public static partial class McpMod
     private static Thread? _serverThread;
     private static string[] _boundPrefixes = Array.Empty<string>();
     private static readonly ConcurrentQueue<Action> _mainThreadQueue = new();
-    // Indentation was ~32% of a typical in-combat state response (12,069 -> 8,178 bytes).
-    // The main consumer is an LLM that pays per token, so compact is the default and
-    // ?pretty=1 opts back in. Two immutable instances: JsonSerializerOptions must not be
-    // mutated after first use, and requests are served concurrently on ThreadPool threads.
-    internal static readonly JsonSerializerOptions _jsonOptions = new()
-    {
-        WriteIndented = false,
-        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
-        PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower,
-        Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping
-    };
-
-    internal static readonly JsonSerializerOptions _jsonOptionsPretty = new()
-    {
-        WriteIndented = true,
-        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
-        PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower,
-        Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping
-    };
 
     // The game's own release version, from the release_info.json shipped next to the executable.
     // Fixed for the process, so it is read once — and only from the main thread (the manager is a
@@ -471,7 +452,7 @@ public static partial class McpMod
     private static void HandleRootEndpoint(
         HttpListenerRequest request, HttpListenerResponse response, bool pretty)
     {
-        // A dictionary, not an anonymous type: _jsonOptions drops null *properties*,
+        // A dictionary, not an anonymous type: ContractJson.Options drops null *properties*,
         // and "commit" has to stay present (as null) for clients that read it blindly.
         // kind/endpoint_count/endpoints come from the fork's discoverable api index.
         if (!string.Equals(request.HttpMethod, "GET", StringComparison.Ordinal))

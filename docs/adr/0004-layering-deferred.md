@@ -11,7 +11,9 @@
   existing HTTP responses compared before and after.
 - Consequences: the branch stays reviewable as a feature merge; the refactor does not
   ride along unverified.
-- Debt: 903 `Dictionary<string, object?>` bags; no `Core/`, `UseCases/`,
-  `Infrastructure/` or `Transport/` folders yet; the boundary `grep` checks are therefore
-  vacuous until the folders exist. `docs/raw-full.md` now carries Japanese-localised
-  sections from `cat12079801` and needs a language pass.
+- Debt: 1144 `Dictionary<string, object?>` bags; `Core/Contracts/` now holds the failure bodies
+  (`ErrorResponse`, `UnavailableResponse`) and the one JSON wire format (`ContractJson`), pinned by
+  `tests/ContractShape`, but no response payload has been converted yet. `UseCases/`,
+  `Infrastructure/` and `Transport/` do not exist, so the boundary `grep` checks stay vacuous until
+  they do. `docs/raw-full.md` now carries Japanese-localised sections from `cat12079801` and needs a
+  language pass.

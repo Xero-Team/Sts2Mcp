@@ -6,6 +6,7 @@ using System.Text.Json;
 using Godot;
 using MegaCrit.Sts2.Core.Saves;
 using MegaCrit.Sts2.Core.Settings;
+using STS2_MCP.Core.Contracts;
 
 namespace STS2_MCP;
 
@@ -237,7 +238,7 @@ public static partial class McpMod
                 ["port"] = config.Port,
                 ["instant_mode"] = config.InstantMode,
             };
-            string json = JsonSerializer.Serialize(defaultConfig, _jsonOptions);
+            string json = JsonSerializer.Serialize(defaultConfig, ContractJson.Options);
             File.WriteAllText(configPath, json);
             GD.Print($"[STS2 MCP] Created default config at {configPath}");
         }
@@ -298,7 +299,7 @@ public static partial class McpMod
 
             data["port"] = _config.Port;
             data["instant_mode"] = _config.InstantMode;
-            File.WriteAllText(configPath, JsonSerializer.Serialize(data, _jsonOptions));
+            File.WriteAllText(configPath, JsonSerializer.Serialize(data, ContractJson.Options));
             GD.Print($"[STS2 MCP] Config saved (instant_mode={_config.InstantMode})");
         });
         if (failure != null)
