@@ -161,10 +161,11 @@ PR.
     only names left alone are the external contract (`Sts2Mcp`, reflection
     strings, `snake_case` JSON). `.editorconfig` is the executable copy and
     changes to it are standalone.
-  - **Toolchain targets.** `Directory.Build.props` (configuration: game path, no
-    literals), `Directory.Build.targets` (analyzer gate), and `.editorconfig` are
-    committed. `global.json` is still absent; adding it is a small standalone
-    change, not something to smuggle into a feature PR.
+  - **Toolchain targets.** `global.json` (the SDK band), `Directory.Packages.props`
+    (central NuGet versions), `Directory.Build.props` (configuration: game path,
+    no literals), `Directory.Build.targets` (analyzer gate), and `.editorconfig`
+    are committed. Extending any of them is a small standalone change, never
+    something to smuggle into a feature PR; ADR 0007 records the current pins.
 - **Use the gates that actually exist here.** The real gates are a clean
   `dotnet build` with zero warnings (the `CONTRIBUTING.md` checklist), the
   boundary `grep` checks, an exercised in-game path, and synchronized docs.
@@ -184,8 +185,8 @@ PR.
 - **Keep a log.** Record each action with its reason and its proof, and report it
   at the end. That log becomes the PR description: why, what changed, how it was
   proven.
-- **Guard the context window.** `McpMod.StateBuilder.cs` is about 100 KB,
-  `McpMod.Formatting.cs` about 51 KB, and `docs/raw-full.md` about 1,540 lines.
+- **Guard the context window.** `McpMod.StateBuilder.cs` is about 296 KB,
+  `McpMod.Formatting.cs` about 78 KB, and `docs/raw-full.md` about 3,040 lines.
   Locate the region with search, read slices, and keep the main thread small;
   send bulk reading to a subagent and keep only the summary.
 - **Clean up safely.** Only `out/`, `bin/`, `obj/`, and the extraction or temp
@@ -245,7 +246,7 @@ setup again. This skill is instructions only; it registers nothing.
 | Contract docs | `docs/raw-full.md`, `docs/raw-simplified.md` | Update with any API surface change |
 | Build and install | `Sts2Mcp.csproj`, `Directory.Build.props`, `Makefile`, `build.ps1`, `mod_manifest.json` | Zero-warning build; config comes from `STS2_GAME_DIR` / `build.local.props`; manifest copied as `Sts2Mcp.json` |
 | Layer boundaries | `Core/`, `UseCases/`, `Infrastructure/`, `Transport/` (target; today flat partials) | Arrows point inward; grep checks until the project split |
-| Standard toolchain | `global.json` (absent); `Directory.Build.props`, `Directory.Build.targets`, `.editorconfig` committed | Add `global.json` in a standalone change; zero-warning build until then |
+| Standard toolchain | `global.json` (10.0 SDK band), `Directory.Packages.props`, `Directory.Build.props`, `Directory.Build.targets`, `.editorconfig` committed | Change them in standalone commits (ADR 0007), never inside a feature PR |
 
 The automated checks are the headless harnesses under `tests/` (`make test`) and
 the endpoint/docs audit (`make audit`); there are no CI workflows. The build, the

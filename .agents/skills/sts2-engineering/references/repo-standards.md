@@ -20,17 +20,17 @@ Layer name mapping, so the two upstream templates stay readable:
 
 ## 1. Build and toolchain
 
-`global.json` and `Directory.Packages.props` do not exist in this repository yet.
-`Directory.Build.props`, `Directory.Build.targets`, and `.editorconfig` are committed.
-Adding or extending any of them is a small, standalone change — allowed, but
-never inside a feature PR:
+`global.json`, `Directory.Packages.props`, `Directory.Build.props`,
+`Directory.Build.targets`, and `.editorconfig` are committed. Adding or extending
+any of them is a small, standalone change — allowed, but never inside a feature
+PR:
 
 | File | Standard |
 | --- | --- |
-| `global.json` | Pin the SDK family the project targets (`net9.0` today) with `rollForward: latestFeature`; do not float across major versions |
+| `global.json` | Pin the SDK band the build uses (`10.0.100` today) with `rollForward: latestFeature`; the TFM stays `net9.0` because that is the runtime the game hosts, and ADR 0007 records the split. Do not float across major versions |
 | `Directory.Build.props` | Configuration layer: resolve `STS2GameDir` from `-p:STS2GameDir`, `STS2_GAME_DIR`, or gitignored `build.local.props`, and derive the platform data directory; never commit a machine path. Do **not** set `ArtifactsPath` without updating the Makefile, `build.ps1`, and the README install steps |
-| `Directory.Build.targets` | Analyzer packages, `AnalysisMode`/`AnalysisLevel`, the warnings-as-errors gate, and the banned-API list |
-| `Directory.Packages.props` | Only when the first NuGet dependency appears; game DLLs stay direct `Reference` items with `Private=false` |
+| `Directory.Build.targets` | Analyzer references, `AnalysisMode`/`AnalysisLevel`, the warnings-as-errors gate, and the banned-API list |
+| `Directory.Packages.props` | Central NuGet versions, currently the analyzer set; game DLLs stay direct `Reference` items with `Private=false` |
 | `.editorconfig` | 4-space C#, LF, final newline, system usings first; `dotnet_style_readonly_field = true:warning` |
 
 Rules that hold with or without those files:
@@ -214,7 +214,10 @@ Reserved layout, once a test project is justified:
 | `tests/Sts2Mcp.IntegrationTests` | Transport status/response mapping over a fake request | No socket required |
 
 There is no automated project for `Infrastructure`: it is verified in a running
-game. The framework choice is a separate decision (the upstream templates use
+game. Until a test project is justified, the headless harnesses under `tests/`
+compile production sources against stand-in game types and are the gate
+(`make test`); they are not the reserved `Sts2Mcp.UnitTests` layout yet.
+The framework choice is a separate decision (the upstream templates use
 NUnit or xUnit); do not reopen it in a feature PR. The name of a test says the
 behavior: `Returns409_WhenRunIsMultiplayer`, not `Test2`.
 
@@ -224,7 +227,8 @@ behavior: `Returns409_WhenRunIsMultiplayer`, not `Test2`.
   change updates both plus the `mcp/server.py` docstrings.
 - `docs/adr/NNN-title.md` records structural decisions, new ports, new shared
   state, API-surface changes, and every violation deliberately deferred.
-- The README "Tested against" line names the game build; keep it true.
+- The README line that names the game build ("Builds against STS2 `vX.Y.Z`") stays
+  true; it is this repository's "tested against" statement.
 - Do not invent a changelog or a versioning scheme that the project does not use.
 
 ## 10. Git hygiene
@@ -264,14 +268,17 @@ Run before claiming a change is done:
 These are real and already in the tree. They are listed so that whoever touches
 them repairs them in that same change, not so that they get copied or deferred:
 
-1. `McpMod.cs:320` and `McpMod.cs:421` return `exception_type` and `stack_trace`
-   to any caller; neither field is documented in `docs/raw-full.md`.
-2. 482 `Dictionary<string, object?>` occurrences: there is no typed response
-   contract, so field drift is invisible to the compiler.
-3. No `global.json`: the SDK is whatever is on PATH. `Directory.Build.props`,
-   `Directory.Build.targets`, and `.editorconfig` now carry the build rules.
-4. The headless harnesses under `tests/` cover the contract and pure seams; most
-   of the mod still has no automated test.
-5. No `docs/adr/`, so the deferred split and the legacy exceptions are unwritten.
-6. Transport blocks on async work (`GetAwaiter().GetResult()`); new code must not
-   add another blocking wait.
+1. 1,351 `Dictionary<string, object?>` occurrences: only `/api/v1/settings` has a
+   typed contract, so field drift stays invisible to the compiler. Recorded in
+   ADR 0004/0005; convert one endpoint per change with its before/after response.
+2. `UseCases/`, `Infrastructure/` and `Transport/` do not exist yet, so their
+   boundary `grep` checks stay vacuous; `Core/` itself is clean. Recorded in
+   ADR 0004/0005.
+3. The headless harnesses under `tests/` pin the contract shapes and the pure
+   seams; most of the mod still has no automated test.
+4. One transport handler still blocks on async work
+   (`GetAwaiter().GetResult()`); new code must not add another.
+5. `scripts/audit_endpoints.py` is a static gate: it compares routes, docs and
+   helpers, and never observes a running game.
+6. `.editorconfig` does not pin `charset`: some `.cs` files carry a UTF-8 BOM and
+   normalizing them is its own commit.
