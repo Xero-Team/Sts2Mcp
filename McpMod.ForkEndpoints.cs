@@ -529,7 +529,6 @@ public static partial class McpMod
     private static List<Dictionary<string, object?>> BuildBestiaryEncounters(
         List<Dictionary<string, object?>> monsters)
     {
-        var bindFlags = BestiaryBindingFlags();
         var encounters = new List<Dictionary<string, object?>>();
         foreach (var type in typeof(EncounterModel).Assembly.GetTypes())
         {

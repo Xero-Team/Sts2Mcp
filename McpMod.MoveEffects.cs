@@ -480,171 +480,263 @@ public static partial class McpMod
                 new Dictionary<string, object?>(StringComparer.Ordinal) { ["power"] = "IMBALANCED_STUN", ["target"] = "self" },
             };
         }
-        switch ((monsterName, move.Id))
+
+        switch (monsterName)
         {
-            case ("Aeonglass", "INCREASING_INTENSITY_MOVE"):
-                fx["upgrade_status"] = new Dictionary<string, object?>(StringComparer.Ordinal)
-                {
-                    ["card"] = "Wither",
-                    ["damage_per_level"] = 3,
-                    ["current_level"] = ReadMonsterInt(monster, "WitherUpgradeCount"),
-                };
-                fx["repeat_power_growth"] = new Dictionary<string, object?>(StringComparer.Ordinal)
-                {
-                    ["power"] = "StrengthPower",
-                    ["amount"] = 1,
-                };
-                fx["repeat_power_completed"] = ReadMonsterInt(monster, "AdditionalStrength");
-                fx["repeat_power_base"] = ReadMonsterInt(monster, "IncreasingIntensityBaseStrength");
+            case "Aeonglass":
+                ApplyAeonglassMove(move, monster, fx);
                 break;
-
-            case ("Axebot", "BOOT_UP_MOVE"):
-                {
-                    // The scan reads neither half of this move. Its Block amount is
-                    // `CreatureCmd.GainBlock(base.Creature, BootUpBlock, Move, null)`
-                    // and its buff is
-                    // `PowerCmd.Apply<StrengthPower>(.., BootUpStrGain * (2 - StockAmount), ..)`
-                    // - arithmetic over live monster state, which the amount tracker
-                    // reports as null by design. So the move exported nothing at all,
-                    // and every consumer saw an Axebot that telegraphed Defend and
-                    // Buff and then did neither: seven live divergences, each missing
-                    // exactly 10 Block and 3 or 6 Strength.
-                    //
-                    // Both inputs are ordinary int design props, read the same way
-                    // `model_stats` already reads them. `StockAmount` is fixed for a
-                    // creature's lifetime - `StockPower.AfterDeath` gives the
-                    // REPLACEMENT `base.Amount - 1` - so the multiplier is 1 for the
-                    // encounter's Axebot and 2 for the one that takes its place.
-                    int? bootBlock = ReadMonsterInt(monster, "BootUpBlock");
-                    if (bootBlock != null)
-                        fx["block"] = bootBlock;
-                    int? strengthGain = ReadMonsterInt(monster, "BootUpStrGain");
-                    int? stock = ReadMonsterInt(monster, "StockAmount");
-                    if (strengthGain != null && stock != null)
-                    {
-                        fx["applies"] = new List<Dictionary<string, object?>>
-                    {
-                        new(StringComparer.Ordinal)
-                        {
-                            ["power"] = "StrengthPower",
-                            ["target"] = "self",
-                            ["amount"] = strengthGain.Value * (2 - stock.Value),
-                        },
-                    };
-                    }
-                    break;
-                }
-
-            case ("Entomancer", "PHEROMONE_SPIT_MOVE"):
-                // A linear scan sees both arms. The source chooses one from the
-                // live Personal Hive amount, so discard those unconditional
-                // entries and export the branch itself.
-                fx.Remove("applies");
-                fx["conditional_applies"] = new Dictionary<string, object?>(StringComparer.Ordinal)
-                {
-                    ["power"] = "PersonalHivePower",
-                    ["cmp"] = "lt",
-                    ["value"] = 3,
-                    ["then"] = new[]
-                    {
-                        new Dictionary<string, object?>(StringComparer.Ordinal) { ["power"] = "PersonalHivePower", ["amount"] = 1 },
-                        new Dictionary<string, object?>(StringComparer.Ordinal) { ["power"] = "StrengthPower", ["amount"] = 1 },
-                    },
-                    ["else"] = new[]
-                    {
-                        new Dictionary<string, object?>(StringComparer.Ordinal) { ["power"] = "StrengthPower", ["amount"] = 2 },
-                    },
-                };
+            case "Axebot":
+                ApplyAxebotMove(move, monster, fx);
                 break;
-
-            case ("Fabricator", "FABRICATE_MOVE"):
-                fx["random_summon_pools"] = new[]
-                {
-                    new[] { "Guardbot", "Noisebot" },
-                    new[] { "Zapbot", "Stabbot" },
-                };
+            case "Entomancer":
+                ApplyEntomancerMove(move, fx);
                 break;
-
-            case ("Fabricator", "FABRICATING_STRIKE_MOVE"):
-                fx["random_summon_pools"] = new[] { new[] { "Zapbot", "Stabbot" } };
+            case "Fabricator":
+                ApplyFabricatorMove(move, fx);
                 break;
-
-            case ("Queen", "BURN_BRIGHT_FOR_ME_MOVE"):
-                fx["applies"] = new[]
-                {
-                    new Dictionary<string, object?>(StringComparer.Ordinal)
-                    {
-                        ["power"] = "StrengthPower",
-                        ["target"] = "ally",
-                        ["amount"] = 1,
-                    },
-                };
+            case "Queen":
+                ApplyQueenMove(move, fx);
                 break;
-
-            case ("TestSubject", "MULTI_CLAW_MOVE"):
-                fx["repeat_hit_growth"] = 1;
-                fx["repeat_hit_base"] = ReadMonsterInt(monster, "BaseMultiClawCount");
-                fx["repeat_hit_completed"] = ReadMonsterInt(monster, "ExtraMultiClawCount");
+            case "TestSubject":
+                ApplyTestSubjectMove(move, monster, fx);
                 break;
-
-            case ("TheInsatiable", "LIQUIFY_GROUND_MOVE"):
-                fx["status_card"] = "Frantic Escape";
-                fx["status"] = new[]
-                {
-                    new Dictionary<string, object?>(StringComparer.Ordinal)
-                    {
-                        ["card"] = "Frantic Escape", ["pile"] = "Draw", ["count"] = 3,
-                        ["position"] = "Random",
-                    },
-                    new Dictionary<string, object?>(StringComparer.Ordinal)
-                    {
-                        ["card"] = "Frantic Escape", ["pile"] = "Discard", ["count"] = 3,
-                        ["position"] = "Random",
-                    },
-                };
+            case "TheInsatiable":
+                ApplyTheInsatiableMove(move, fx);
                 break;
-
-            case ("ToughEgg", "HATCH_MOVE"):
-                fx["hatch"] = new Dictionary<string, object?>(StringComparer.Ordinal)
-                {
-                    ["min_hp"] = ReadMonsterInt(monster, "HatchlingMinHp"),
-                    ["max_hp"] = ReadMonsterInt(monster, "HatchlingMaxHp"),
-                };
+            case "ToughEgg":
+                ApplyToughEggMove(move, monster, fx);
                 break;
-
-            case ("ThievingHopper", "THIEVERY_MOVE"):
+            case "ThievingHopper":
                 fx["steal_card"] = true;
                 break;
-
-            case ("KnowledgeDemon", "CURSE_OF_KNOWLEDGE_MOVE"):
-                fx["knowledge_choice"] = ReadMonsterInt(monster, "CurseOfKnowledgeCounter");
+            case "KnowledgeDemon":
+                ApplyKnowledgeDemonMove(move, monster, fx);
                 break;
-
-            case ("KnowledgeDemon", "PONDER_MOVE"):
-                // Ponder heals 30 * CombatState.Players.Count. A cold export
-                // has no combat to read that count from; retain the source
-                // multiplier instead of dropping an unresolved numeric heal.
-                fx.Remove("heal");
-                fx["heal_per_player"] = 30;
-                break;
-
-            case ("WaterfallGiant", "SIPHON_MOVE"):
-                // Read the ascension-scaled property, then let the consumer
-                // multiply by its actual combat player count exactly once.
-                fx.Remove("heal");
-                fx["heal_per_player"] = ReadMonsterInt(monster, "SiphonHeal");
-                break;
-
-            case ("WaterfallGiant", "PRESSURE_GUN_MOVE"):
-                fx["repeat_damage_growth"] = 5;
-                fx["repeat_damage_base"] = ReadMonsterInt(monster, "BasePressureGunDamage");
-                var pressureBase = ReadMonsterInt(monster, "BasePressureGunDamage");
-                var pressureCurrent = ReadMonsterInt(monster, "CurrentPressureGunDamage");
-                fx["repeat_damage_completed"] = pressureBase.HasValue && pressureCurrent.HasValue
-                    ? Math.Max(0, (pressureCurrent.Value - pressureBase.Value) / 5) : null;
+            case "WaterfallGiant":
+                ApplyWaterfallGiantMove(move, monster, fx);
                 break;
         }
 
+        ApplyOvicopterLayEggs(monsterName, move, fx);
+        ApplyTwoTailedRatCallForBackup(monsterName, move, fx);
+    }
+
+    private static void ApplyAeonglassMove(
+        MoveState move, MonsterModel monster, Dictionary<string, object?> fx)
+    {
+        if (!string.Equals(move.Id, "INCREASING_INTENSITY_MOVE", StringComparison.Ordinal))
+            return;
+
+        fx["upgrade_status"] = new Dictionary<string, object?>(StringComparer.Ordinal)
+        {
+            ["card"] = "Wither",
+            ["damage_per_level"] = 3,
+            ["current_level"] = ReadMonsterInt(monster, "WitherUpgradeCount"),
+        };
+        fx["repeat_power_growth"] = new Dictionary<string, object?>(StringComparer.Ordinal)
+        {
+            ["power"] = "StrengthPower",
+            ["amount"] = 1,
+        };
+        fx["repeat_power_completed"] = ReadMonsterInt(monster, "AdditionalStrength");
+        fx["repeat_power_base"] = ReadMonsterInt(monster, "IncreasingIntensityBaseStrength");
+    }
+
+    private static void ApplyAxebotMove(
+        MoveState move, MonsterModel monster, Dictionary<string, object?> fx)
+    {
+        if (!string.Equals(move.Id, "BOOT_UP_MOVE", StringComparison.Ordinal))
+            return;
+
+        // The scan reads neither half of this move. Its Block amount is
+        // `CreatureCmd.GainBlock(base.Creature, BootUpBlock, Move, null)`
+        // and its buff is
+        // `PowerCmd.Apply<StrengthPower>(.., BootUpStrGain * (2 - StockAmount), ..)`
+        // - arithmetic over live monster state, which the amount tracker
+        // reports as null by design. So the move exported nothing at all,
+        // and every consumer saw an Axebot that telegraphed Defend and
+        // Buff and then did neither: seven live divergences, each missing
+        // exactly 10 Block and 3 or 6 Strength.
+        //
+        // Both inputs are ordinary int design props, read the same way
+        // `model_stats` already reads them. `StockAmount` is fixed for a
+        // creature's lifetime - `StockPower.AfterDeath` gives the
+        // REPLACEMENT `base.Amount - 1` - so the multiplier is 1 for the
+        // encounter's Axebot and 2 for the one that takes its place.
+        int? bootBlock = ReadMonsterInt(monster, "BootUpBlock");
+        if (bootBlock != null)
+            fx["block"] = bootBlock;
+        int? strengthGain = ReadMonsterInt(monster, "BootUpStrGain");
+        int? stock = ReadMonsterInt(monster, "StockAmount");
+        if (strengthGain != null && stock != null)
+        {
+            fx["applies"] = new List<Dictionary<string, object?>>
+        {
+            new(StringComparer.Ordinal)
+            {
+                ["power"] = "StrengthPower",
+                ["target"] = "self",
+                ["amount"] = strengthGain.Value * (2 - stock.Value),
+            },
+        };
+        }
+    }
+
+    private static void ApplyEntomancerMove(
+        MoveState move, Dictionary<string, object?> fx)
+    {
+        if (!string.Equals(move.Id, "PHEROMONE_SPIT_MOVE", StringComparison.Ordinal))
+            return;
+
+        // A linear scan sees both arms. The source chooses one from the
+        // live Personal Hive amount, so discard those unconditional
+        // entries and export the branch itself.
+        fx.Remove("applies");
+        fx["conditional_applies"] = new Dictionary<string, object?>(StringComparer.Ordinal)
+        {
+            ["power"] = "PersonalHivePower",
+            ["cmp"] = "lt",
+            ["value"] = 3,
+            ["then"] = new[]
+            {
+                new Dictionary<string, object?>(StringComparer.Ordinal) { ["power"] = "PersonalHivePower", ["amount"] = 1 },
+                new Dictionary<string, object?>(StringComparer.Ordinal) { ["power"] = "StrengthPower", ["amount"] = 1 },
+            },
+            ["else"] = new[]
+            {
+                new Dictionary<string, object?>(StringComparer.Ordinal) { ["power"] = "StrengthPower", ["amount"] = 2 },
+            },
+        };
+    }
+
+    private static void ApplyFabricatorMove(
+        MoveState move, Dictionary<string, object?> fx)
+    {
+        switch (move.Id)
+        {
+            case "FABRICATE_MOVE":
+            fx["random_summon_pools"] = new[]
+            {
+                new[] { "Guardbot", "Noisebot" },
+                new[] { "Zapbot", "Stabbot" },
+            };
+                break;
+
+            case "FABRICATING_STRIKE_MOVE":
+            fx["random_summon_pools"] = new[] { new[] { "Zapbot", "Stabbot" } };
+                break;
+        }
+    }
+
+    private static void ApplyQueenMove(
+        MoveState move, Dictionary<string, object?> fx)
+    {
+        if (!string.Equals(move.Id, "BURN_BRIGHT_FOR_ME_MOVE", StringComparison.Ordinal))
+            return;
+
+        fx["applies"] = new[]
+        {
+            new Dictionary<string, object?>(StringComparer.Ordinal)
+            {
+                ["power"] = "StrengthPower",
+                ["target"] = "ally",
+                ["amount"] = 1,
+            },
+        };
+    }
+
+    private static void ApplyTestSubjectMove(
+        MoveState move, MonsterModel monster, Dictionary<string, object?> fx)
+    {
+        if (!string.Equals(move.Id, "MULTI_CLAW_MOVE", StringComparison.Ordinal))
+            return;
+
+        fx["repeat_hit_growth"] = 1;
+        fx["repeat_hit_base"] = ReadMonsterInt(monster, "BaseMultiClawCount");
+        fx["repeat_hit_completed"] = ReadMonsterInt(monster, "ExtraMultiClawCount");
+    }
+
+    private static void ApplyTheInsatiableMove(
+        MoveState move, Dictionary<string, object?> fx)
+    {
+        if (!string.Equals(move.Id, "LIQUIFY_GROUND_MOVE", StringComparison.Ordinal))
+            return;
+
+        fx["status_card"] = "Frantic Escape";
+        fx["status"] = new[]
+        {
+            new Dictionary<string, object?>(StringComparer.Ordinal)
+            {
+                ["card"] = "Frantic Escape", ["pile"] = "Draw", ["count"] = 3,
+                ["position"] = "Random",
+            },
+            new Dictionary<string, object?>(StringComparer.Ordinal)
+            {
+                ["card"] = "Frantic Escape", ["pile"] = "Discard", ["count"] = 3,
+                ["position"] = "Random",
+            },
+        };
+    }
+
+    private static void ApplyToughEggMove(
+        MoveState move, MonsterModel monster, Dictionary<string, object?> fx)
+    {
+        if (!string.Equals(move.Id, "HATCH_MOVE", StringComparison.Ordinal))
+            return;
+
+        fx["hatch"] = new Dictionary<string, object?>(StringComparer.Ordinal)
+        {
+            ["min_hp"] = ReadMonsterInt(monster, "HatchlingMinHp"),
+            ["max_hp"] = ReadMonsterInt(monster, "HatchlingMaxHp"),
+        };
+    }
+
+    private static void ApplyKnowledgeDemonMove(
+        MoveState move, MonsterModel monster, Dictionary<string, object?> fx)
+    {
+        switch (move.Id)
+        {
+            case "CURSE_OF_KNOWLEDGE_MOVE":
+            fx["knowledge_choice"] = ReadMonsterInt(monster, "CurseOfKnowledgeCounter");
+                break;
+
+            case "PONDER_MOVE":
+            // Ponder heals 30 * CombatState.Players.Count. A cold export
+            // has no combat to read that count from; retain the source
+            // multiplier instead of dropping an unresolved numeric heal.
+            fx.Remove("heal");
+            fx["heal_per_player"] = 30;
+                break;
+        }
+    }
+
+    private static void ApplyWaterfallGiantMove(
+        MoveState move, MonsterModel monster, Dictionary<string, object?> fx)
+    {
+        switch (move.Id)
+        {
+            case "SIPHON_MOVE":
+            // Read the ascension-scaled property, then let the consumer
+            // multiply by its actual combat player count exactly once.
+            fx.Remove("heal");
+            fx["heal_per_player"] = ReadMonsterInt(monster, "SiphonHeal");
+                break;
+
+            case "PRESSURE_GUN_MOVE":
+            fx["repeat_damage_growth"] = 5;
+            fx["repeat_damage_base"] = ReadMonsterInt(monster, "BasePressureGunDamage");
+            var pressureBase = ReadMonsterInt(monster, "BasePressureGunDamage");
+            var pressureCurrent = ReadMonsterInt(monster, "CurrentPressureGunDamage");
+            fx["repeat_damage_completed"] = pressureBase.HasValue && pressureCurrent.HasValue
+                ? Math.Max(0, (pressureCurrent.Value - pressureBase.Value) / 5) : null;
+                break;
+        }
+    }
+
+    private static void ApplyOvicopterLayEggs(
+        string monsterName, MoveState move, Dictionary<string, object?> fx)
+    {
         if (string.Equals(monsterName, "Ovicopter", StringComparison.Ordinal) && string.Equals(move.Id, "LAY_EGGS_MOVE"
 , StringComparison.Ordinal) && fx.TryGetValue("summons", out object? summonsObject)
             && summonsObject is List<Dictionary<string, object?>> summons)
@@ -677,8 +769,13 @@ public static partial class McpMod
                     fx.Remove("applies");
             }
         }
+    }
+
+    private static void ApplyTwoTailedRatCallForBackup(
+        string monsterName, MoveState move, Dictionary<string, object?> fx)
+    {
         if (string.Equals(monsterName, "TwoTailedRat", StringComparison.Ordinal) && string.Equals(move.Id, "CALL_FOR_BACKUP_MOVE"
-, StringComparison.Ordinal) && fx.TryGetValue("summons", out summonsObject)
+, StringComparison.Ordinal) && fx.TryGetValue("summons", out object? summonsObject)
             && summonsObject is List<Dictionary<string, object?>> ratSummons)
         {
             foreach (var summon in ratSummons)
