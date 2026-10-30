@@ -1705,36 +1705,7 @@ public static partial class McpMod
         bool noFriends = noFriendsLabel != null && noFriendsLabel.Visible;
         result["no_friends"] = noFriends;
 
-        var friends = new List<Dictionary<string, object?>>();
-        var options = new List<Dictionary<string, object?>>();
-
-        var buttonContainer = GetInstanceFieldValue(joinScreen, "_buttonContainer") as Control;
-        if (buttonContainer != null)
-        {
-            int index = 0;
-            foreach (var child in buttonContainer.GetChildren())
-            {
-                if (child is NJoinFriendButton friendBtn)
-                {
-                    string? name = null;
-                    TryDo("menu.multiplayer_join.friends.name", () => { name = PlatformUtil.GetPlayerName(PlatformUtil.PrimaryPlatform, friendBtn.PlayerId); });
-
-                    friends.Add(new Dictionary<string, object?>(StringComparer.Ordinal)
-                    {
-                        ["index"] = index,
-                        ["name"] = name,
-                        ["player_id"] = friendBtn.PlayerId.ToString(),
-                        ["enabled"] = friendBtn.IsEnabled
-                    });
-                    options.Add(new Dictionary<string, object?>(StringComparer.Ordinal)
-                    {
-                        ["name"] = $"join_{index}",
-                        ["enabled"] = friendBtn.IsEnabled
-                    });
-                    index++;
-                }
-            }
-        }
+        var (friends, options) = BuildJoinFriendOptions(joinScreen);
         result["friends"] = friends;
 
         var refreshBtn = GetInstanceFieldValue(joinScreen, "_refreshButton") as NClickableControl;
@@ -1748,26 +1719,61 @@ public static partial class McpMod
         }
         AddMenuOptionIfVisible(options, joinScreen, "_backButton", "back");
 
+        result["message"] = DescribeJoinMenuMessage(fastMp, loading, noFriends);
+        result["options"] = options;
+    }
+
+    /// <summary>The joinable friends (and their known option names), in UI order.</summary>
+    private static (List<Dictionary<string, object?>> Friends, List<Dictionary<string, object?>> Options)
+        BuildJoinFriendOptions(NJoinFriendScreen joinScreen)
+    {
+        var friends = new List<Dictionary<string, object?>>();
+        var options = new List<Dictionary<string, object?>>();
+        if (GetInstanceFieldValue(joinScreen, "_buttonContainer") is not Control buttonContainer)
+            return (friends, options);
+
+        int index = 0;
+        foreach (var child in buttonContainer.GetChildren())
+        {
+            if (child is not NJoinFriendButton friendBtn)
+                continue;
+
+            string? name = null;
+            TryDo("menu.multiplayer_join.friends.name", () =>
+            {
+                name = PlatformUtil.GetPlayerName(PlatformUtil.PrimaryPlatform, friendBtn.PlayerId);
+            });
+
+            friends.Add(new Dictionary<string, object?>(StringComparer.Ordinal)
+            {
+                ["index"] = index,
+                ["name"] = name,
+                ["player_id"] = friendBtn.PlayerId.ToString(),
+                ["enabled"] = friendBtn.IsEnabled
+            });
+            options.Add(new Dictionary<string, object?>(StringComparer.Ordinal)
+            {
+                ["name"] = $"join_{index}",
+                ["enabled"] = friendBtn.IsEnabled
+            });
+            index++;
+        }
+        return (friends, options);
+    }
+
+    private static string DescribeJoinMenuMessage(bool fastMp, bool loading, bool noFriends)
+    {
         if (fastMp)
         {
-            result["message"] = loading
+            return loading
                 ? "FastMP join flow is connecting to localhost:33771..."
                 : "FastMP mode (no Steam): join screen auto-connects to localhost:33771.";
         }
-        else if (loading)
-        {
-            result["message"] = "Refreshing friend list...";
-        }
-        else if (noFriends)
-        {
-            result["message"] = "No friends with open lobbies. Use 'refresh' to retry, or 'back' to return.";
-        }
-        else
-        {
-            result["message"] = "Pick a friend to join, or 'refresh' to update the list.";
-        }
-
-        result["options"] = options;
+        if (loading)
+            return "Refreshing friend list...";
+        if (noFriends)
+            return "No friends with open lobbies. Use 'refresh' to retry, or 'back' to return.";
+        return "Pick a friend to join, or 'refresh' to update the list.";
     }
 
     private static void AddMultiplayerLoadLobbyMenuState(
@@ -2848,14 +2854,17 @@ public static partial class McpMod
     /// </summary>
     private static Dictionary<string, object?> BuildCardInfo(CardModel card, PileType pile = PileType.None)
     {
-        // NetDeckCard addresses the current deck order. A combat card can
-        // retain a DeckVersion pointer after that parent left the deck.
-        var deckCard = card.Pile?.Type == PileType.Deck ? card : card.DeckVersion;
-        uint? deckCardIndex = deckCard?.Pile?.Type == PileType.Deck
-            ? NetDeckCard.FromModel(deckCard).DeckIndex
-            : null;
+        var info = BuildCardBaseInfo(card, pile);
+        AppendCardDeckIdentity(info, card);
+        AppendCardRuntimeState(info, card);
+        return info;
+    }
+
+    /// <summary>The display fields every card payload carries, whatever context asked for it.</summary>
+    private static Dictionary<string, object?> BuildCardBaseInfo(CardModel card, PileType pile)
+    {
         var upgradedPreview = SafeBuildUpgradedCardPreview(card);
-        var info = new Dictionary<string, object?>(StringComparer.Ordinal)
+        return new Dictionary<string, object?>(StringComparer.Ordinal)
         {
             ["id"] = card.Id.Entry,
             ["name"] = SafeGetText(() => card.Title),
@@ -2869,8 +2878,6 @@ public static partial class McpMod
             ["enchantment"] = card.Enchantment?.GetType().Name,
             ["enchantment_state"] = BuildEnchantmentState(card),
             ["affliction"] = card.Affliction?.Id.Entry,
-            ["has_deck_version"] = card.DeckVersion != null,
-            ["deck_card_index"] = deckCardIndex,
             ["is_upgraded"] = card.IsUpgraded,
             ["is_upgradable"] = card.IsUpgradable,
             ["upgrade_level"] = card.CurrentUpgradeLevel,
@@ -2894,8 +2901,23 @@ public static partial class McpMod
             ["has_sly_keyword"] = card.Keywords.Contains(CardKeyword.Sly),
             ["has_single_turn_sly"] = GetSingleTurnSly(card),
             ["is_sly_this_turn"] = card.IsSlyThisTurn
-
         };
+    }
+
+    private static void AppendCardDeckIdentity(Dictionary<string, object?> info, CardModel card)
+    {
+        // NetDeckCard addresses the current deck order. A combat card can
+        // retain a DeckVersion pointer after that parent left the deck.
+        var deckCard = card.Pile?.Type == PileType.Deck ? card : card.DeckVersion;
+        info["has_deck_version"] = card.DeckVersion != null;
+        info["deck_card_index"] = deckCard?.Pile?.Type == PileType.Deck
+            ? NetDeckCard.FromModel(deckCard).DeckIndex
+            : null;
+    }
+
+    /// <summary>Fields that only some cards, or only mutable copies, carry.</summary>
+    private static void AppendCardRuntimeState(Dictionary<string, object?> info, CardModel card)
+    {
         if (card.IsMutable)
             info["card_object_id"] = GetCardObjectIdentity(card);
         // Only present, and only false, when this build stripped the game's power
@@ -2932,7 +2954,6 @@ public static partial class McpMod
                 info["combat_card_id"] = NetCombatCard.FromModel(card).CombatCardIndex;
         });
         /* immutable/deck cards intentionally have no combat identity */
-        return info;
     }
 
     private static Dictionary<string, object?>? BuildEnchantmentState(CardModel card)
