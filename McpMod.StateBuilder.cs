@@ -3616,13 +3616,7 @@ public static partial class McpMod
         // Attack history is only meaningful relative to the local player, and an
         // enemy can be exported outside a run (compendium, combat teardown), so the
         // reference is optional and every block below guards on it.
-        Creature? localCreature = null;
-        TryDo("enemy.local_creature", () =>
-        {
-            var runState = RunManager.Instance.DebugOnlyGetState();
-            if (runState != null)
-                localCreature = LocalContext.GetMe(runState)?.Creature;
-        });
+        var localCreature = ResolveLocalCreature();
 
         var state = new Dictionary<string, object?>(StringComparer.Ordinal)
         {
@@ -3650,31 +3644,7 @@ public static partial class McpMod
             ["can_select"] = creature.IsAlive,
             ["status"] = BuildPowersState(creature)
         };
-        TryDo(() =>
-        {
-            if (localCreature != null)
-            {
-                var history = CombatManager.Instance.History;
-                state["local_powered_hits_this_turn"] = history.Entries.OfType<DamageReceivedEntry>().Count(en =>
-                    en.HappenedThisTurn(creature.CombatState)
-                    && en.Receiver == creature
-                    && en.Dealer == localCreature
-                    && en.Result.Props.IsPoweredAttack());
-                state["owner_side_powered_hits_this_turn"] = history.Entries.OfType<DamageReceivedEntry>().Count(en =>
-                    en.HappenedThisTurn(creature.CombatState)
-                    && en.Receiver == creature
-                    && en.Dealer != null
-                    && (en.Dealer == localCreature || en.Dealer.PetOwner?.Creature == localCreature)
-                    && en.Result.Props.IsPoweredAttack());
-                state["ally_powered_hits_this_turn"] = history.Entries.OfType<DamageReceivedEntry>().Count(en =>
-                    en.HappenedThisTurn(creature.CombatState)
-                    && en.Receiver == creature
-                    && en.Dealer != null
-                    && en.Dealer != localCreature
-                    && en.Dealer.Side == localCreature.Side
-                    && en.Result.Props.IsPoweredAttack());
-            }
-        });
+        AppendCreatureDamageHistory(state, creature, localCreature);
 
         if (!alive)
         {
@@ -3683,6 +3653,64 @@ public static partial class McpMod
                 state["revive"] = revive;
         }
 
+        AppendEnemyMoveInfo(state, monster, creature);
+        return state;
+    }
+
+    private static Creature? ResolveLocalCreature()
+    {
+        Creature? localCreature = null;
+        TryDo("enemy.local_creature", () =>
+        {
+            var runState = RunManager.Instance.DebugOnlyGetState();
+            if (runState != null)
+                localCreature = LocalContext.GetMe(runState)?.Creature;
+        });
+        return localCreature;
+    }
+
+    /// <summary>
+    /// How often this creature has been hit by powered attacks this turn, split by who
+    /// dealt them: the local player, the local player's side, and its allies.
+    /// </summary>
+    private static void AppendCreatureDamageHistory(
+        Dictionary<string, object?> state, Creature creature, Creature? localCreature)
+    {
+        if (localCreature == null)
+            return;
+        TryDo(() =>
+        {
+            var history = CombatManager.Instance.History;
+            state["local_powered_hits_this_turn"] = history.Entries.OfType<DamageReceivedEntry>().Count(en =>
+                en.HappenedThisTurn(creature.CombatState)
+                && en.Receiver == creature
+                && en.Dealer == localCreature
+                && en.Result.Props.IsPoweredAttack());
+            state["owner_side_powered_hits_this_turn"] = history.Entries.OfType<DamageReceivedEntry>().Count(en =>
+                en.HappenedThisTurn(creature.CombatState)
+                && en.Receiver == creature
+                && en.Dealer != null
+                && (en.Dealer == localCreature || en.Dealer.PetOwner?.Creature == localCreature)
+                && en.Result.Props.IsPoweredAttack());
+            state["ally_powered_hits_this_turn"] = history.Entries.OfType<DamageReceivedEntry>().Count(en =>
+                en.HappenedThisTurn(creature.CombatState)
+                && en.Receiver == creature
+                && en.Dealer != null
+                && en.Dealer != localCreature
+                && en.Dealer.Side == localCreature.Side
+                && en.Result.Props.IsPoweredAttack());
+        });
+    }
+
+    /// <summary>
+    /// What this creature is about to do: its intents and the effect scan behind them,
+    /// the monster's design stats, its whole move graph, and its own RNG stream.
+    /// </summary>
+    private static void AppendEnemyMoveInfo(
+        Dictionary<string, object?> state,
+        MonsterModel? monster,
+        Creature creature)
+    {
         // Intents
         if (monster?.NextMove is MoveState moveState)
         {
@@ -3722,8 +3750,6 @@ public static partial class McpMod
         var monsterRng = BuildMonsterRng(creature);
         if (monsterRng != null)
             state["rng"] = monsterRng;
-
-        return state;
     }
 
     /// <summary>
@@ -4090,13 +4116,25 @@ public static partial class McpMod
 
     private static Dictionary<string, object?> BuildEventState(EventRoom eventRoom)
     {
-        var state = new Dictionary<string, object?>(StringComparer.Ordinal);
-
         var eventModel = eventRoom.LocalMutableEvent ?? eventRoom.CanonicalEvent;
         bool isAncient = eventModel is AncientEventModel;
-        state["event_id"] = eventModel.Id.Entry;
-        state["event_name"] = SafeGetText(() => eventModel.Title);
-        state["is_ancient"] = isAncient;
+        var state = new Dictionary<string, object?>(StringComparer.Ordinal)
+        {
+            ["event_id"] = eventModel.Id.Entry,
+            ["event_name"] = SafeGetText(() => eventModel.Title),
+            ["is_ancient"] = isAncient
+        };
+        AppendEventContext(state, eventRoom, eventModel, isAncient);
+        return state;
+    }
+
+    /// <summary>
+    /// The parts of an event that are not its option list: the Linger damage, the
+    /// dialogue phase, the body text, and whether a transition makes options refuse.
+    /// </summary>
+    private static void AppendEventContext(
+        Dictionary<string, object?> state, EventRoom eventRoom, EventModel eventModel, bool isAncient)
+    {
         // Repeated Linger pages reuse the option key while damage keeps rising.
         // Read the local mutable copy: CanonicalEvent always has base damage.
         if (string.Equals(eventModel.Id.Entry, "ABYSSAL_BATHS", StringComparison.Ordinal) && eventRoom.LocalMutableEvent is { } mutableBaths)
@@ -4141,64 +4179,70 @@ public static partial class McpMod
         state["screen_open"] = NMapScreen.Instance?.IsOpen == true;
         state["screen_visible"] = NMapScreen.Instance != null && IsNodeVisible(NMapScreen.Instance);
 
-        // Options from UI
-        var options = new List<Dictionary<string, object?>>();
-        if (uiRoom != null)
-        {
-            var buttons = FindAll<NEventOptionButton>(uiRoom)
-                .Where(button => button.Visible && button.IsVisibleInTree())
-                .ToList();
-            int index = 0;
-            foreach (var button in buttons)
-            {
-                // Choosing a non-shared option clears the option container
-                // (RemoveChildSafely + QueueFreeSafely), so a poll landing on
-                // that frame can meet a button that is already gone. Skip it
-                // rather than letting ObjectDisposedException fail the whole
-                // state build - the index still advances so it keeps lining up
-                // with what choose_event_option sees.
-                TryDo(() =>
-                {
-                    var opt = button.Option;
-                    var optData = new Dictionary<string, object?>(StringComparer.Ordinal)
-                    {
-                        ["index"] = index,
-                        // The option's stable, language-independent id
-                        // ("SELF_HELP_BOOK.pages.INITIAL.options.READ_THE_BACK").
-                        // Title and description are localized display text, so
-                        // matching on them would break on a reworded or
-                        // translated option; this does not.
-                        ["option_key"] = opt.TextKey,
-                        ["title"] = SafeGetText(() => opt.Title),
-                        ["description"] = SafeGetText(() => opt.Description),
-                        ["is_locked"] = opt.IsLocked,
-                        ["is_proceed"] = opt.IsProceed,
-                        ["was_chosen"] = opt.WasChosen,
-                        // False while a choice is executing (DisableOptionButtons)
-                        // or while a room transition is resolving.
-                        // choose_event_option rejects the option in both windows,
-                        // so clients must not re-pick it.
-                        ["is_enabled"] = button.IsEnabled && !transitionInFlight,
-                        ["is_visible"] = true,
-                        ["can_choose"] = button.IsEnabled && !opt.IsLocked
-                    };
-                    if (opt.Relic != null)
-                    {
-                        optData["relic_id"] = opt.Relic.Id.Entry;
-                        optData["relic_name"] = SafeGetText(() => opt.Relic.Title);
-                        optData["relic_description"] = SafeGetText(() => opt.Relic.DynamicDescription);
-                        optData["relic_rarity"] = opt.Relic.Rarity.ToString();
-                        optData["relic_keywords"] = BuildHoverTips(opt.Relic.HoverTipsExcludingRelic);
-                    }
-                    optData["keywords"] = BuildHoverTips(opt.HoverTips);
-                    options.Add(optData);
-                });
-                index++;
-            }
-        }
-        state["options"] = options;
+        state["options"] = BuildEventOptions(uiRoom, transitionInFlight);
+    }
 
-        return state;
+    private static List<Dictionary<string, object?>> BuildEventOptions(
+        NEventRoom? uiRoom, bool transitionInFlight)
+    {
+        var options = new List<Dictionary<string, object?>>();
+        if (uiRoom == null)
+            return options;
+
+        var buttons = FindAll<NEventOptionButton>(uiRoom)
+            .Where(button => button.Visible && button.IsVisibleInTree())
+            .ToList();
+        int index = 0;
+        foreach (var button in buttons)
+        {
+            // Choosing a non-shared option clears the option container
+            // (RemoveChildSafely + QueueFreeSafely), so a poll landing on
+            // that frame can meet a button that is already gone. Skip it
+            // rather than letting ObjectDisposedException fail the whole
+            // state build - the index still advances so it keeps lining up
+            // with what choose_event_option sees.
+            TryDo(() => options.Add(BuildEventOption(button, index, transitionInFlight)));
+            index++;
+        }
+        return options;
+    }
+
+    private static Dictionary<string, object?> BuildEventOption(
+        NEventOptionButton button, int index, bool transitionInFlight)
+    {
+        var opt = button.Option;
+        var optData = new Dictionary<string, object?>(StringComparer.Ordinal)
+        {
+            ["index"] = index,
+            // The option's stable, language-independent id
+            // ("SELF_HELP_BOOK.pages.INITIAL.options.READ_THE_BACK").
+            // Title and description are localized display text, so
+            // matching on them would break on a reworded or
+            // translated option; this does not.
+            ["option_key"] = opt.TextKey,
+            ["title"] = SafeGetText(() => opt.Title),
+            ["description"] = SafeGetText(() => opt.Description),
+            ["is_locked"] = opt.IsLocked,
+            ["is_proceed"] = opt.IsProceed,
+            ["was_chosen"] = opt.WasChosen,
+            // False while a choice is executing (DisableOptionButtons)
+            // or while a room transition is resolving.
+            // choose_event_option rejects the option in both windows,
+            // so clients must not re-pick it.
+            ["is_enabled"] = button.IsEnabled && !transitionInFlight,
+            ["is_visible"] = true,
+            ["can_choose"] = button.IsEnabled && !opt.IsLocked
+        };
+        if (opt.Relic != null)
+        {
+            optData["relic_id"] = opt.Relic.Id.Entry;
+            optData["relic_name"] = SafeGetText(() => opt.Relic.Title);
+            optData["relic_description"] = SafeGetText(() => opt.Relic.DynamicDescription);
+            optData["relic_rarity"] = opt.Relic.Rarity.ToString();
+            optData["relic_keywords"] = BuildHoverTips(opt.Relic.HoverTipsExcludingRelic);
+        }
+        optData["keywords"] = BuildHoverTips(opt.HoverTips);
+        return optData;
     }
 
     private static Dictionary<string, object?> BuildFakeMerchantState(EventRoom eventRoom)
