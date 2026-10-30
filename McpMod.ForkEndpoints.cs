@@ -462,20 +462,41 @@ public static partial class McpMod
 
     internal static object BuildBestiary()
     {
-        var bindFlags = System.Reflection.BindingFlags.Public
-            | System.Reflection.BindingFlags.NonPublic
-            | System.Reflection.BindingFlags.Instance;
+        var monsters = BuildBestiaryMonsters();
+        var encounters = BuildBestiaryEncounters(monsters);
 
+        var orderedMonsters = monsters
+            .OrderBy(entry => entry.TryGetValue("id", out var id) ? id?.ToString() : "", StringComparer.Ordinal)
+            .ToList();
+        var orderedEncounters = encounters
+            .OrderBy(entry => entry.TryGetValue("id", out var id) ? id?.ToString() : "", StringComparer.Ordinal)
+            .ToList();
+
+        return BestiaryPayload(orderedMonsters, orderedEncounters);
+    }
+
+    private static Dictionary<string, object?> BestiaryPayload(
+        List<Dictionary<string, object?>> monsters, List<Dictionary<string, object?>> encounters)
+        => new(StringComparer.Ordinal)
+        {
+            ["status"] = "ok",
+            ["kind"] = "bestiary",
+            ["source"] = "reflected MonsterModel and EncounterModel metadata",
+            ["monster_count"] = monsters.Count,
+            ["encounter_count"] = encounters.Count,
+            ["monsters"] = monsters,
+            ["encounters"] = encounters
+        };
+
+    private static List<Dictionary<string, object?>> BuildBestiaryMonsters()
+    {
+        var bindFlags = BestiaryBindingFlags();
         var monsters = new List<Dictionary<string, object?>>();
         foreach (var type in typeof(MonsterModel).Assembly.GetTypes())
         {
             if (type.IsAbstract || !type.IsSubclassOf(typeof(MonsterModel)) || type.FullName!.Contains('+')) continue;
 
-            var entry = new Dictionary<string, object?>(StringComparer.Ordinal)
-            {
-                ["id"] = ModelId.SlugifyCategory(type.Name),
-                ["class"] = type.Name,
-            };
+            var entry = BestiaryEntry(type);
 
             TryDo(() =>
             {
@@ -491,32 +512,30 @@ public static partial class McpMod
             {
                 if (method.Name.EndsWith("Move", StringComparison.Ordinal)
                     && method.DeclaringType == type
-                    && !string.Equals(method.Name, "PerformMove"
-, StringComparison.Ordinal) && !string.Equals(method.Name, "RollMove"
-, StringComparison.Ordinal) && !string.Equals(method.Name, "SetMoveImmediate", StringComparison.Ordinal))
+                    && !string.Equals(method.Name, "PerformMove", StringComparison.Ordinal)
+                    && !string.Equals(method.Name, "RollMove", StringComparison.Ordinal)
+                    && !string.Equals(method.Name, "SetMoveImmediate", StringComparison.Ordinal))
                 {
                     moves.Add(method.Name.Replace("Move", ""));
                 }
             }
-            if (moves.Count > 0)
-                entry["moves"] = moves
-                    .Distinct(StringComparer.Ordinal)
-                    .OrderBy(move => move, StringComparer.Ordinal)
-                    .ToList();
+            AddBestiaryList(entry, "moves", moves);
 
             monsters.Add(entry);
         }
+        return monsters;
+    }
 
+    private static List<Dictionary<string, object?>> BuildBestiaryEncounters(
+        List<Dictionary<string, object?>> monsters)
+    {
+        var bindFlags = BestiaryBindingFlags();
         var encounters = new List<Dictionary<string, object?>>();
         foreach (var type in typeof(EncounterModel).Assembly.GetTypes())
         {
             if (type.IsAbstract || !type.IsSubclassOf(typeof(EncounterModel)) || type.FullName!.Contains('+')) continue;
 
-            var entry = new Dictionary<string, object?>(StringComparer.Ordinal)
-            {
-                ["id"] = ModelId.SlugifyCategory(type.Name),
-                ["class"] = type.Name,
-            };
+            var entry = BestiaryEntry(type);
 
             TryDo(() =>
             {
@@ -539,31 +558,35 @@ public static partial class McpMod
                 if (baseName.Contains(monsterClass) || monsterClass.Contains(baseName.TrimEnd('s')))
                     matchingMonsters.Add(monsterClass);
             }
-            if (matchingMonsters.Count > 0)
-                entry["likely_monsters"] = matchingMonsters
-                    .Distinct(StringComparer.Ordinal)
-                    .OrderBy(monster => monster, StringComparer.Ordinal)
-                    .ToList();
+            AddBestiaryList(entry, "likely_monsters", matchingMonsters);
 
             encounters.Add(entry);
         }
+        return encounters;
+    }
 
-        var orderedMonsters = monsters
-            .OrderBy(entry => entry.TryGetValue("id", out var id) ? id?.ToString() : "", StringComparer.Ordinal)
-            .ToList();
-        var orderedEncounters = encounters
-            .OrderBy(entry => entry.TryGetValue("id", out var id) ? id?.ToString() : "", StringComparer.Ordinal)
-            .ToList();
+    private static System.Reflection.BindingFlags BestiaryBindingFlags()
+        => System.Reflection.BindingFlags.Public
+           | System.Reflection.BindingFlags.NonPublic
+           | System.Reflection.BindingFlags.Instance;
 
-        return new Dictionary<string, object?>(StringComparer.Ordinal)
+    /// <summary>One reflected model, identified by its class name and slugified id.</summary>
+    private static Dictionary<string, object?> BestiaryEntry(Type type)
+        => new(StringComparer.Ordinal)
         {
-            ["status"] = "ok",
-            ["kind"] = "bestiary",
-            ["source"] = "reflected MonsterModel and EncounterModel metadata",
-            ["monster_count"] = orderedMonsters.Count,
-            ["encounter_count"] = orderedEncounters.Count,
-            ["monsters"] = orderedMonsters,
-            ["encounters"] = orderedEncounters
+            ["id"] = ModelId.SlugifyCategory(type.Name),
+            ["class"] = type.Name,
         };
+
+    /// <summary>Sorts, de-duplicates and stores a name list, only when there is one.</summary>
+    private static void AddBestiaryList(
+        Dictionary<string, object?> entry, string key, List<string> names)
+    {
+        if (names.Count == 0)
+            return;
+        entry[key] = names
+            .Distinct(StringComparer.Ordinal)
+            .OrderBy(name => name, StringComparer.Ordinal)
+            .ToList();
     }
 }
