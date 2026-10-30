@@ -197,7 +197,7 @@ internal static class RecordObserve
         var obj = new JsonObject { ["type"] = r.type.ToString() };
         foreach (var (name, value) in PublicMembers(r, slotOf))
         {
-            if (name != "type" && value != null)
+            if (!string.Equals(name, "type", StringComparison.Ordinal) && value != null)
                 obj[name] = value;
         }
         return obj;

@@ -396,8 +396,8 @@ public static partial class McpMod
                 SendError(response, 403, "Browser origins are not permitted");
                 return;
             }
-            if (request.HttpMethod == "POST"
-                && !(request.ContentType?.StartsWith("application/json", StringComparison.OrdinalIgnoreCase) ?? false))
+            if (string.Equals(request.HttpMethod, "POST"
+, StringComparison.Ordinal) && !(request.ContentType?.StartsWith("application/json", StringComparison.OrdinalIgnoreCase) ?? false))
             {
                 SendError(response, 415, "application/json required");
                 return;
@@ -405,7 +405,7 @@ public static partial class McpMod
 
             bool pretty = WantsPretty(request);
 
-            if (request.HttpMethod == "OPTIONS")
+            if (string.Equals(request.HttpMethod, "OPTIONS", StringComparison.Ordinal))
             {
                 response.StatusCode = 204;
                 response.Close();
@@ -414,12 +414,12 @@ public static partial class McpMod
 
             string path = request.Url?.AbsolutePath ?? "/";
 
-            if (path == "/")
+            if (string.Equals(path, "/", StringComparison.Ordinal))
             {
                 // A dictionary, not an anonymous type: _jsonOptions drops null *properties*,
                 // and "commit" has to stay present (as null) for clients that read it blindly.
                 // kind/endpoint_count/endpoints come from the fork's discoverable api index.
-                if (request.HttpMethod == "GET")
+                if (string.Equals(request.HttpMethod, "GET", StringComparison.Ordinal))
                 {
                     var endpoints = BuildEndpointIndex();
                     SendJson(response, new Dictionary<string, object?>(StringComparer.Ordinal)
@@ -440,9 +440,9 @@ public static partial class McpMod
                     SendError(response, 405, "Method not allowed", pretty, "method_not_allowed");
                 }
             }
-            else if (path == "/api/v1/singleplayer")
+            else if (string.Equals(path, "/api/v1/singleplayer", StringComparison.Ordinal))
             {
-                if (request.HttpMethod != "GET" && request.HttpMethod != "POST")
+                if (!string.Equals(request.HttpMethod, "GET", StringComparison.Ordinal) && !string.Equals(request.HttpMethod, "POST", StringComparison.Ordinal))
                 {
                     SendError(response, 405, "Method not allowed", pretty, "method_not_allowed");
                     return;
@@ -458,16 +458,16 @@ public static partial class McpMod
                     return;
                 }
 
-                if (request.HttpMethod == "GET")
+                if (string.Equals(request.HttpMethod, "GET", StringComparison.Ordinal))
                     HandleGetState(request, response);
-                else if (request.HttpMethod == "POST")
+                else if (string.Equals(request.HttpMethod, "POST", StringComparison.Ordinal))
                     HandlePostAction(request, response);
                 else
                     SendError(response, 405, "Method not allowed", pretty, "method_not_allowed");
             }
-            else if (path == "/api/v1/multiplayer")
+            else if (string.Equals(path, "/api/v1/multiplayer", StringComparison.Ordinal))
             {
-                if (request.HttpMethod != "GET" && request.HttpMethod != "POST")
+                if (!string.Equals(request.HttpMethod, "GET", StringComparison.Ordinal) && !string.Equals(request.HttpMethod, "POST", StringComparison.Ordinal))
                 {
                     SendError(response, 405, "Method not allowed", pretty, "method_not_allowed");
                     return;
@@ -482,130 +482,130 @@ public static partial class McpMod
                     return;
                 }
 
-                if (request.HttpMethod == "GET")
+                if (string.Equals(request.HttpMethod, "GET", StringComparison.Ordinal))
                     HandleGetMultiplayerState(request, response);
-                else if (request.HttpMethod == "POST")
+                else if (string.Equals(request.HttpMethod, "POST", StringComparison.Ordinal))
                     HandlePostMultiplayerAction(request, response);
                 else
                     SendError(response, 405, "Method not allowed", pretty, "method_not_allowed");
             }
-            else if (path == "/api/v1/settings")
+            else if (string.Equals(path, "/api/v1/settings", StringComparison.Ordinal))
             {
-                if (request.HttpMethod == "GET")
+                if (string.Equals(request.HttpMethod, "GET", StringComparison.Ordinal))
                     HandleGetSettings(response);
                 else
                     SendError(response, 405, "Method not allowed", pretty, "method_not_allowed");
             }
-            else if (path == "/api/v1/profiles")
+            else if (string.Equals(path, "/api/v1/profiles", StringComparison.Ordinal))
             {
-                if (request.HttpMethod == "GET")
+                if (string.Equals(request.HttpMethod, "GET", StringComparison.Ordinal))
                     HandleGetProfiles(request, response);
-                else if (request.HttpMethod == "POST")
+                else if (string.Equals(request.HttpMethod, "POST", StringComparison.Ordinal))
                     HandlePostProfiles(request, response);
                 else
                     SendError(response, 405, "Method not allowed", pretty, "method_not_allowed");
             }
-            else if (path == "/api/v1/profile")
+            else if (string.Equals(path, "/api/v1/profile", StringComparison.Ordinal))
             {
-                if (request.HttpMethod == "GET")
+                if (string.Equals(request.HttpMethod, "GET", StringComparison.Ordinal))
                     HandleGetProfile(request, response);
                 else
                     SendError(response, 405, "Method not allowed", pretty);
             }
-            else if (path == "/api/v1/compendium")
+            else if (string.Equals(path, "/api/v1/compendium", StringComparison.Ordinal))
             {
-                if (request.HttpMethod == "GET")
+                if (string.Equals(request.HttpMethod, "GET", StringComparison.Ordinal))
                     HandleGetCompendium(request, response);
                 else
                     SendError(response, 405, "Method not allowed", pretty);
             }
-            else if (path == "/api/v1/record")
+            else if (string.Equals(path, "/api/v1/record", StringComparison.Ordinal))
             {
-                if (request.HttpMethod == "GET")
+                if (string.Equals(request.HttpMethod, "GET", StringComparison.Ordinal))
                     SendJson(response, Recorder.CombatRecorder.Status(), pretty);
                 else
                     SendError(response, 405, "Method not allowed", pretty);
             }
-            else if (path == "/api/v1/record/inspect")
+            else if (string.Equals(path, "/api/v1/record/inspect", StringComparison.Ordinal))
             {
-                if (request.HttpMethod == "GET")
+                if (string.Equals(request.HttpMethod, "GET", StringComparison.Ordinal))
                     HandleInspectReplay(request, response);
                 else
                     SendError(response, 405, "Method not allowed", pretty);
             }
-            else if (path == "/api/v1/wiki")
+            else if (string.Equals(path, "/api/v1/wiki", StringComparison.Ordinal))
             {
-                if (request.HttpMethod == "GET")
+                if (string.Equals(request.HttpMethod, "GET", StringComparison.Ordinal))
                     HandleGetWiki(request, response);
                 else
                     SendError(response, 405, "Method not allowed", pretty);
             }
-            else if (path == "/api/v1/cardpools")
+            else if (string.Equals(path, "/api/v1/cardpools", StringComparison.Ordinal))
             {
-                if (request.HttpMethod == "GET")
+                if (string.Equals(request.HttpMethod, "GET", StringComparison.Ordinal))
                     HandleGetCardPools(response);
                 else
                     SendError(response, 405, "Method not allowed");
             }
-            else if (path == "/api/v1/potionpools")
+            else if (string.Equals(path, "/api/v1/potionpools", StringComparison.Ordinal))
             {
-                if (request.HttpMethod == "GET")
+                if (string.Equals(request.HttpMethod, "GET", StringComparison.Ordinal))
                     HandleGetPotionPools(response);
                 else
                     SendError(response, 405, "Method not allowed");
             }
-            else if (path == "/api/v1/relicbag")
+            else if (string.Equals(path, "/api/v1/relicbag", StringComparison.Ordinal))
             {
-                if (request.HttpMethod == "GET")
+                if (string.Equals(request.HttpMethod, "GET", StringComparison.Ordinal))
                     HandleGetRelicBag(response);
                 else
                     SendError(response, 405, "Method not allowed");
             }
-            else if (path == "/api/v1/mapdrawings")
+            else if (string.Equals(path, "/api/v1/mapdrawings", StringComparison.Ordinal))
             {
-                if (request.HttpMethod == "GET")
+                if (string.Equals(request.HttpMethod, "GET", StringComparison.Ordinal))
                     HandleGetMapDrawings(response);
                 else
                     SendError(response, 405, "Method not allowed", pretty, "method_not_allowed");
             }
-            else if (path == "/api/v1/compendium")
+            else if (string.Equals(path, "/api/v1/compendium", StringComparison.Ordinal))
             {
-                if (request.HttpMethod == "GET")
+                if (string.Equals(request.HttpMethod, "GET", StringComparison.Ordinal))
                     HandleGetCompendium(request, response);
                 else
                     SendError(response, 405, "Method not allowed", pretty, "method_not_allowed");
             }
-            else if (path == "/api/v1/bestiary")
+            else if (string.Equals(path, "/api/v1/bestiary", StringComparison.Ordinal))
             {
-                if (request.HttpMethod == "GET")
+                if (string.Equals(request.HttpMethod, "GET", StringComparison.Ordinal))
                     HandleGetBestiary(response);
                 else
                     SendError(response, 405, "Method not allowed", pretty, "method_not_allowed");
             }
-            else if (path == "/api/v1/glossary/cards")
+            else if (string.Equals(path, "/api/v1/glossary/cards", StringComparison.Ordinal))
             {
-                if (request.HttpMethod == "GET")
+                if (string.Equals(request.HttpMethod, "GET", StringComparison.Ordinal))
                     HandleGetGlossaryCards(response);
                 else
                     SendError(response, 405, "Method not allowed", pretty, "method_not_allowed");
             }
-            else if (path == "/api/v1/glossary/relics")
+            else if (string.Equals(path, "/api/v1/glossary/relics", StringComparison.Ordinal))
             {
-                if (request.HttpMethod == "GET")
+                if (string.Equals(request.HttpMethod, "GET", StringComparison.Ordinal))
                     HandleGetGlossaryRelics(response);
                 else
                     SendError(response, 405, "Method not allowed", pretty, "method_not_allowed");
             }
-            else if (path == "/api/v1/glossary/potions")
+            else if (string.Equals(path, "/api/v1/glossary/potions", StringComparison.Ordinal))
             {
-                if (request.HttpMethod == "GET")
+                if (string.Equals(request.HttpMethod, "GET", StringComparison.Ordinal))
                     HandleGetGlossaryPotions(response);
                 else
                     SendError(response, 405, "Method not allowed", pretty, "method_not_allowed");
             }
-            else if (path == "/api/v1/glossary/keywords")
+            else if (string.Equals(path, "/api/v1/glossary/keywords", StringComparison.Ordinal))
             {
-                if (request.HttpMethod == "GET")
+                if (string.Equals(request.HttpMethod, "GET", StringComparison.Ordinal))
                     HandleGetGlossaryKeywords(response);
                 else
                     SendError(response, 405, "Method not allowed", pretty, "method_not_allowed");
@@ -688,7 +688,7 @@ public static partial class McpMod
             SendError(response, 400, "detail must be either 'summary' or 'full'.", pretty);
             return;
         }
-        bool fullDetail = detail == "full";
+        bool fullDetail = string.Equals(detail, "full", StringComparison.Ordinal);
 
         // Card descriptions and enemy intent labels are rendered by the game with the
         // player's standing powers and relics already applied. "unpowered" strips that
@@ -699,7 +699,7 @@ public static partial class McpMod
             SendError(response, 400, "values must be either 'powered' or 'unpowered'.", pretty);
             return;
         }
-        bool unpowered = values == "unpowered";
+        bool unpowered = string.Equals(values, "unpowered", StringComparison.Ordinal);
 
         try
         {
@@ -714,7 +714,7 @@ public static partial class McpMod
                 return s;
             }));
 
-            if (format == "markdown")
+            if (string.Equals(format, "markdown", StringComparison.Ordinal))
             {
                 string md = FormatAsMarkdown(state);
                 SendText(response, md, "text/markdown");
@@ -781,7 +781,7 @@ public static partial class McpMod
         // scene-tree-driven and equally valid in MP. Route them to the shared handler
         // so MP clients can dismiss blocking FTUE prompts without going through the
         // run-mode-specific dispatcher.
-        if (action == "menu_select")
+        if (string.Equals(action, "menu_select", StringComparison.Ordinal))
         {
             try
             {
@@ -845,7 +845,7 @@ public static partial class McpMod
             SendError(response, 400, "values must be either 'powered' or 'unpowered'.", pretty);
             return;
         }
-        bool unpowered = values == "unpowered";
+        bool unpowered = string.Equals(values, "unpowered", StringComparison.Ordinal);
 
         try
         {
@@ -869,7 +869,7 @@ public static partial class McpMod
                 finally { _passiveRead = false; }
             });
 
-            if (format == "markdown")
+            if (string.Equals(format, "markdown", StringComparison.Ordinal))
             {
                 try
                 {
@@ -944,8 +944,8 @@ public static partial class McpMod
         if (value == null) return false;
         // `?wait=` with nothing after it still reads as "switch it on".
         if (value.Length == 0) return true;
-        return value == "1"
-            || value.Equals("true", StringComparison.OrdinalIgnoreCase)
+        return string.Equals(value, "1"
+, StringComparison.Ordinal) || value.Equals("true", StringComparison.OrdinalIgnoreCase)
             || value.Equals("yes", StringComparison.OrdinalIgnoreCase)
             || value.Equals("on", StringComparison.OrdinalIgnoreCase);
     }
@@ -1068,7 +1068,7 @@ public static partial class McpMod
             {
                 last = state;
                 waitError = null;
-                if (before != null && StateFingerprint(state) != before)
+                if (before != null && !string.Equals(StateFingerprint(state), before, StringComparison.Ordinal))
                     changed = true;
 
                 if (IsSettledState(state))
@@ -1138,7 +1138,7 @@ public static partial class McpMod
         var result = EnsureStatus(RunOnMainThreadBlocking(action));
 
         // Waiting on an action the game rejected would just burn the whole timeout.
-        if (result.GetValueOrDefault("status") as string == "ok")
+        if (string.Equals(result.GetValueOrDefault("status") as string, "ok", StringComparison.Ordinal))
         {
             AppendSettleResult(result, before, timeoutMs, includeState);
             if (result.ContainsKey("reward_id") || result.ContainsKey("parent_reward_id"))
@@ -1192,7 +1192,7 @@ public static partial class McpMod
         string action = actionElem.GetString() ?? "";
 
         // The recorder's switch works with or without a run, and is not itself recorded.
-        if (action == "set_recording")
+        if (string.Equals(action, "set_recording", StringComparison.Ordinal))
         {
             try
             {
@@ -1235,7 +1235,7 @@ public static partial class McpMod
         Dictionary<string, JsonElement> parsed, string action, long apiRequest, bool pretty)
     {
         // Revealing timeline epochs is a main-menu operation, so it must not require a run.
-        if (action == "timeline_reveal_epochs")
+        if (string.Equals(action, "timeline_reveal_epochs", StringComparison.Ordinal))
         {
             try
             {
@@ -1257,7 +1257,7 @@ public static partial class McpMod
         }
 
         // Handle menu actions separately (no run required)
-        if (action == "menu_select")
+        if (string.Equals(action, "menu_select", StringComparison.Ordinal))
         {
             try
             {
@@ -1282,13 +1282,13 @@ public static partial class McpMod
         }
 
         // Utility actions valid with or without a run (fork additions).
-        if (action == "set_time_scale" || action == "set_ascension")
+        if (string.Equals(action, "set_time_scale", StringComparison.Ordinal) || string.Equals(action, "set_ascension", StringComparison.Ordinal))
         {
             try
             {
                 var result = ExecuteWithOptionalWait(request, parsed,
-                    Recorder.CombatRecorder.InHandler(apiRequest, () => action == "set_time_scale"
-                        ? ExecuteSetTimeScale(parsed)
+                    Recorder.CombatRecorder.InHandler(apiRequest, () => string.Equals(action, "set_time_scale"
+, StringComparison.Ordinal) ? ExecuteSetTimeScale(parsed)
                         : ExecuteSetAscension(parsed)));
                 SendJson(response, result, pretty);
                 return result.GetValueOrDefault("status") as string;
@@ -1336,7 +1336,7 @@ public static partial class McpMod
 
     private static void SendActionResultJson(HttpListenerResponse response, Dictionary<string, object?> result)
     {
-        if (result.TryGetValue("status", out var status) && status as string == "error")
+        if (result.TryGetValue("status", out var status) && string.Equals(status as string, "error", StringComparison.Ordinal))
         {
             if (result.TryGetValue("error_code", out var errorCode))
             {

@@ -622,7 +622,7 @@ public static partial class McpMod
             var steamUtil = typeof(SteamInitializer).Assembly.GetType("MegaCrit.Sts2.Core.Platform.Steam.SteamUtil");
             var getSteamId = steamUtil?.GetMethod("GetSteamID64", BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
             var steamId = getSteamId?.Invoke(null, null)?.ToString();
-            if (string.IsNullOrWhiteSpace(steamId) || steamId == "0")
+            if (string.IsNullOrWhiteSpace(steamId) || string.Equals(steamId, "0", StringComparison.Ordinal))
                 return null;
 
             return steamId;

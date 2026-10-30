@@ -234,7 +234,7 @@ public static partial class McpMod
     {
         if (result is Dictionary<string, object?> data
             && data.TryGetValue("status", out var status)
-            && status as string == "error")
+            && string.Equals(status as string, "error", StringComparison.Ordinal))
         {
             response.StatusCode = data.TryGetValue("error_code", out var errorCode)
                 ? (errorCode as string) switch

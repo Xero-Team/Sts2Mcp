@@ -94,7 +94,7 @@ public static partial class McpMod
                 var tool = GetInstanceMemberValue(__instance, "CrystalSphereTool")?.ToString();
                 trace.Clicks.Add(new Dictionary<string, object?>(StringComparer.Ordinal)
                 {
-                    ["tool"] = tool == "Big" ? "big" : "small",
+                    ["tool"] = string.Equals(tool, "Big", StringComparison.Ordinal) ? "big" : "small",
                     ["x"] = GetInstanceMemberValue(clickedCell, "X"),
                     ["y"] = GetInstanceMemberValue(clickedCell, "Y"),
                 });

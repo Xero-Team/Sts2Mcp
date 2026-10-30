@@ -77,7 +77,7 @@ public static partial class McpMod
         var normalizedScope = NormalizeWikiScope(scope);
         if (normalizedScope == null)
             return Error("scope must be one of: discovered, all.");
-        var everything = normalizedScope == "all";
+        var everything = string.Equals(normalizedScope, "all", StringComparison.Ordinal);
 
         var discoveredCards = progress.DiscoveredCards
             .Select(id => id.Entry)

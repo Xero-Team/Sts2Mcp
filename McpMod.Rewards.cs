@@ -39,7 +39,7 @@ public static partial class McpMod
         foreach (var button in buttons) _rewardSession.Register(button.Reward!, fresh && _rewardTrackingAvailable);
         var enabled = buttons.Where(b => b.IsEnabled).ToList();
         _rewardSession.Sync(enabled.Select(b => (object)b.Reward!));
-        return enabled.Where(b => _rewardSession.Find(b.Reward!)?.SelectionState != "claimed").ToList();
+        return enabled.Where(b => !string.Equals(_rewardSession.Find(b.Reward!)?.SelectionState, "claimed", StringComparison.Ordinal)).ToList();
     }
 
     private static RewardSession.Entry? GetCardRewardParent(NCardRewardSelectionScreen screen)
@@ -154,11 +154,11 @@ public static partial class McpMod
         var id = (result.GetValueOrDefault("parent_reward_id") ?? result.GetValueOrDefault("reward_id")) as string;
         if (id == null) return;
         RefreshRewardRun();
-        var entry = _rewardSession.Entries.FirstOrDefault(e => e.Id == id);
+        var entry = _rewardSession.Entries.FirstOrDefault(e => string.Equals(e.Id, id, StringComparison.Ordinal));
         bool observed = entry != null && !entry.Resolving && entry.SelectionState is "claimed" or "skipped";
         result["outcome_observed"] = observed;
         result["selection_state"] = entry?.SelectionState ?? "unknown";
-        result["reward_consumed"] = observed ? entry!.SelectionState == "claimed" : null;
+        result["reward_consumed"] = observed ? string.Equals(entry!.SelectionState, "claimed", global::System.StringComparison.Ordinal) : null;
         if (observed)
         {
             result["action_stage"] = "resolved";

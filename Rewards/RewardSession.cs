@@ -20,8 +20,8 @@ internal sealed class RewardSession
             ["reward_id"] = Id,
             ["selection_state"] = SelectionState,
             ["claimable"] = claimable,
-            ["skipped"] = SelectionState == "skipped",
-            ["reward_consumed"] = SelectionState == "claimed" ? true : SelectionState == "skipped" ? false : null,
+            ["skipped"] = string.Equals(SelectionState, "skipped", StringComparison.Ordinal),
+            ["reward_consumed"] = string.Equals(SelectionState, "claimed", StringComparison.Ordinal) ? true : string.Equals(SelectionState, "skipped", global::System.StringComparison.Ordinal) ? false : null,
             ["last_selection"] = LastSelection,
             ["last_option_id"] = LastOptionId
         };
@@ -76,7 +76,7 @@ internal sealed class RewardSession
 
     internal void Sync(IEnumerable<object> available)
     {
-        var next = available.Select(key => Register(key)).Where(e => e.SelectionState != "claimed").ToList();
+        var next = available.Select(key => Register(key)).Where(e => !string.Equals(e.SelectionState, "claimed", StringComparison.Ordinal)).ToList();
         if (_claimable.SequenceEqual(next)) return;
         _claimable = next;
         _revision++;
@@ -85,11 +85,11 @@ internal sealed class RewardSession
     internal string? Resolve(string? id, int? index, string? revision, out Entry? entry)
     {
         entry = null;
-        if (revision != null && revision != Revision)
+        if (revision != null && !string.Equals(revision, Revision, StringComparison.Ordinal))
             return "Stale screen_revision; re-read rewards state";
         if (id != null)
         {
-            entry = _claimable.FirstOrDefault(e => e.Id == id);
+            entry = _claimable.FirstOrDefault(e => string.Equals(e.Id, id, StringComparison.Ordinal));
             if (entry == null) return "reward_id is unknown, from another screen, claimed, or not currently claimable";
         }
         if (index.HasValue)
@@ -134,7 +134,7 @@ internal sealed class RewardSession
     internal void Complete(Entry entry, bool consumed)
     {
         if (!Contains(entry)) return;
-        entry.SelectionState = consumed ? "claimed" : entry.LastSelection == "skip" ? "skipped" : "unknown";
+        entry.SelectionState = consumed ? "claimed" : string.Equals(entry.LastSelection, "skip", StringComparison.Ordinal) ? "skipped" : "unknown";
         entry.Resolving = false;
         if (consumed)
         {

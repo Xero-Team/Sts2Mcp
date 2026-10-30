@@ -184,7 +184,7 @@ public static partial class McpMod
             var found = new List<PropertyInfo>();
             foreach (var prop in type.GetProperties(BindingFlags.Public | BindingFlags.Instance))
             {
-                if (prop.PropertyType.Name == "Rng" && prop.CanRead && prop.GetIndexParameters().Length == 0)
+                if (string.Equals(prop.PropertyType.Name, "Rng", StringComparison.Ordinal) && prop.CanRead && prop.GetIndexParameters().Length == 0)
                     found.Add(prop);
             }
             props = found.ToArray();

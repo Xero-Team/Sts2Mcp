@@ -74,7 +74,7 @@ public static partial class McpMod
         {
             // Synthetic stuns share an ID while carrying different callbacks.
             // An empty Whistle stun must not cache away Bowlbug's Dizzy body.
-            if (move.Id == "STUNNED")
+            if (string.Equals(move.Id, "STUNNED", StringComparison.Ordinal))
                 return ScanMoveEffects(monster, move);
             // Amounts are read off the live monster, so a scan is only reusable
             // within the combat it was taken in: ascension-scaled stat getters
@@ -453,7 +453,7 @@ public static partial class McpMod
             var current = pending.Pop();
             if (!visited.Add(current))
                 continue;
-            if (current.Method.DeclaringType?.Name == ownerType && current.Method.Name == methodName)
+            if (string.Equals(current.Method.DeclaringType?.Name, ownerType, StringComparison.Ordinal) && string.Equals(current.Method.Name, methodName, StringComparison.Ordinal))
                 return true;
             foreach (var entry in current.GetInvocationList())
             {
@@ -486,7 +486,7 @@ public static partial class McpMod
         Dictionary<string, object?> fx)
     {
         string monsterName = monster.GetType().Name;
-        if (monsterName == "BowlbugRock" && MoveCalls(move, "BowlbugRock", "DizzyMove"))
+        if (string.Equals(monsterName, "BowlbugRock", StringComparison.Ordinal) && MoveCalls(move, "BowlbugRock", "DizzyMove"))
         {
             fx["removes"] = new[]
             {
@@ -658,8 +658,8 @@ public static partial class McpMod
                 break;
         }
 
-        if (monsterName == "Ovicopter" && move.Id == "LAY_EGGS_MOVE"
-            && fx.TryGetValue("summons", out object? summonsObject)
+        if (string.Equals(monsterName, "Ovicopter", StringComparison.Ordinal) && string.Equals(move.Id, "LAY_EGGS_MOVE"
+, StringComparison.Ordinal) && fx.TryGetValue("summons", out object? summonsObject)
             && summonsObject is List<Dictionary<string, object?>> summons)
         {
             foreach (var summon in summons)
@@ -683,15 +683,15 @@ public static partial class McpMod
             {
                 applies.RemoveAll(apply =>
                     apply.TryGetValue("power", out object? power)
-                    && power as string == "MinionPower"
-                    && apply.TryGetValue("target", out object? target)
-                    && target as string == "unknown");
+                    && string.Equals(power as string, "MinionPower"
+, StringComparison.Ordinal) && apply.TryGetValue("target", out object? target)
+                    && string.Equals(target as string, "unknown", StringComparison.Ordinal));
                 if (applies.Count == 0)
                     fx.Remove("applies");
             }
         }
-        if (monsterName == "TwoTailedRat" && move.Id == "CALL_FOR_BACKUP_MOVE"
-            && fx.TryGetValue("summons", out summonsObject)
+        if (string.Equals(monsterName, "TwoTailedRat", StringComparison.Ordinal) && string.Equals(move.Id, "CALL_FOR_BACKUP_MOVE"
+, StringComparison.Ordinal) && fx.TryGetValue("summons", out summonsObject)
             && summonsObject is List<Dictionary<string, object?>> ratSummons)
         {
             foreach (var summon in ratSummons)
@@ -731,7 +731,7 @@ public static partial class McpMod
         var parameters = method.GetParameters();
         for (int p = 0; p < parameters.Length; p++)
         {
-            if (parameters[p].Name == "targets")
+            if (string.Equals(parameters[p].Name, "targets", StringComparison.Ordinal))
                 targetsArg = method.IsStatic ? p : p + 1;
         }
 
@@ -1025,7 +1025,7 @@ public static partial class McpMod
                 {
                     if (method.Module.ResolveMethod(BitConverter.ToInt32(il, i + 1)) is MethodInfo callee)
                     {
-                        if (callee.Name == "GetPowerAmount" && callee.IsGenericMethod)
+                        if (string.Equals(callee.Name, "GetPowerAmount", StringComparison.Ordinal) && callee.IsGenericMethod)
                         {
                             string? power = callee.GetGenericArguments().FirstOrDefault()?.Name;
                             if (power != null && !found.Contains(power))
@@ -1062,7 +1062,7 @@ public static partial class McpMod
     private static void HandleCall(MethodBase mm, MonsterModel monster, MoveFxScan scan)
     {
         // int -> Decimal conversion marks "this int is about to be an amount"
-        if (mm.Name == "op_Implicit" && mm.DeclaringType == typeof(decimal))
+        if (string.Equals(mm.Name, "op_Implicit", StringComparison.Ordinal) && mm.DeclaringType == typeof(decimal))
         {
             scan.SetAmount(scan.LastInt);
             return;
@@ -1076,19 +1076,19 @@ public static partial class McpMod
         {
             // Which creature an expression produced decides who a non-generic
             // apply targets, since that overload's parameter is always Creature.
-            if (getter.Name == "get_Creature")
+            if (string.Equals(getter.Name, "get_Creature", StringComparison.Ordinal))
                 scan.LastCreatureIsSelf = true;
             // A creature pulled out of an enumerator opened over the move's own
             // `targets` is a player-side target. It is flagged for this argument
             // run (a body that uses it straight away) and marked pending for the
             // store that follows (a body that keeps it in a local or a hoisted
             // field first), because both lowerings occur.
-            if (getter.Name == "get_Current" && scan.EnumeratingTargets)
+            if (string.Equals(getter.Name, "get_Current", StringComparison.Ordinal) && scan.EnumeratingTargets)
             {
                 scan.LastCreatureIsTarget = true;
                 scan.PendingTargetCreature = true;
             }
-            if (getter.Name == "get_Current" && scan.EnumeratingOwnSide)
+            if (string.Equals(getter.Name, "get_Current", StringComparison.Ordinal) && scan.EnumeratingOwnSide)
             {
                 scan.LastCreatureIsAlly = true;
                 scan.PendingAllyCreature = true;
@@ -1117,9 +1117,9 @@ public static partial class McpMod
         if (mm is MethodInfo generic && generic.IsGenericMethod)
         {
             string? argument = generic.GetGenericArguments().FirstOrDefault()?.Name;
-            if (mm.Name == "CreateCard")
+            if (string.Equals(mm.Name, "CreateCard", StringComparison.Ordinal))
                 scan.PendingCard = argument;
-            else if (mm.Name == "Power" && mm.DeclaringType?.Name == "ModelDb")
+            else if (string.Equals(mm.Name, "Power", StringComparison.Ordinal) && string.Equals(mm.DeclaringType?.Name, "ModelDb", StringComparison.Ordinal))
                 scan.PendingPower = argument;
         }
 
@@ -1135,7 +1135,7 @@ public static partial class McpMod
         scan.EndArgumentRun();
 
         string owner = mm.DeclaringType?.Name ?? "";
-        if (owner == "PowerCmd" && mm.Name == "Apply" && mm is MethodInfo applyMi)
+        if (string.Equals(owner, "PowerCmd", StringComparison.Ordinal) && string.Equals(mm.Name, "Apply", StringComparison.Ordinal) && mm is MethodInfo applyMi)
         {
             var pars = applyMi.GetParameters();
             if (applyMi.IsGenericMethod)
@@ -1186,7 +1186,7 @@ public static partial class McpMod
                 });
             }
         }
-        else if (owner == "PowerCmd" && mm.Name == "Remove" && mm is MethodInfo removeMi
+        else if (string.Equals(owner, "PowerCmd", StringComparison.Ordinal) && string.Equals(mm.Name, "Remove", StringComparison.Ordinal) && mm is MethodInfo removeMi
                  && removeMi.IsGenericMethod)
         {
             // `Remove<T>(creature)` names the power in its generic argument, and
@@ -1202,7 +1202,7 @@ public static partial class McpMod
                     : creatureWasAlly ? "ally" : "unknown",
             });
         }
-        else if (owner == "CreatureCmd" && mm.Name == "Add" && mm is MethodInfo addMi
+        else if (string.Equals(owner, "CreatureCmd", StringComparison.Ordinal) && string.Equals(mm.Name, "Add", StringComparison.Ordinal) && mm is MethodInfo addMi
                  && addMi.IsGenericMethod)
         {
             // A literal slot is the whole answer (the game does no occupancy
@@ -1214,7 +1214,7 @@ public static partial class McpMod
                 ["slot"] = literalSlot,
             });
         }
-        else if (mm.Name == "GetEnumerator")
+        else if (string.Equals(mm.Name, "GetEnumerator", StringComparison.Ordinal))
         {
             // What the loop about to run walks. Set after `EndArgumentRun` so it
             // survives the whole loop body, and overwritten by the next
@@ -1224,7 +1224,7 @@ public static partial class McpMod
             scan.EnumeratingOwnSide = collectionWasOwnSide;
             scan.PendingOwnSideCollection = false;
         }
-        else if (owner == "CreatureCmd" && mm.Name == "GainBlock")
+        else if (string.Equals(owner, "CreatureCmd", StringComparison.Ordinal) && string.Equals(mm.Name, "GainBlock", StringComparison.Ordinal))
         {
             // The amount is consumed either way, so it can never be inherited
             // by the next effect. Who receives it is read from the creature
@@ -1249,7 +1249,7 @@ public static partial class McpMod
             }
             scan.PendingRecipient = null;
         }
-        else if (mm.Name == "GetTeammatesOf")
+        else if (string.Equals(mm.Name, "GetTeammatesOf", StringComparison.Ordinal))
         {
             // `CombatState.GetTeammatesOf(c)` is the mover's OWN side, owner
             // included. Set after `EndArgumentRun` above so it survives into
@@ -1258,18 +1258,18 @@ public static partial class McpMod
             scan.LastCollectionIsOwnSide = true;
             scan.PendingOwnSideCollection = true;
         }
-        else if (owner == "CreatureCmd" && mm.Name.Contains("Heal"))
+        else if (string.Equals(owner, "CreatureCmd", StringComparison.Ordinal) && mm.Name.Contains("Heal"))
         {
             scan.Heal = (scan.Heal ?? 0) + (scan.TakeAmount() ?? 0);
             if (scan.Heal == 0) scan.Heal = null;
         }
-        else if (owner == "CardPileCmd" && mm.Name.StartsWith("AddToCombat")
+        else if (string.Equals(owner, "CardPileCmd", StringComparison.Ordinal) && mm.Name.StartsWith("AddToCombat")
                  && mm is MethodInfo cardMi && cardMi.IsGenericMethod)
         {
             scan.StatusCards.Add(BuildStatusCard(
                 cardMi.GetGenericArguments().FirstOrDefault()?.Name, cardMi, scan.CallArgs, null));
         }
-        else if (owner == "CardPileCmd" && mm.Name.StartsWith("AddGeneratedCard")
+        else if (string.Equals(owner, "CardPileCmd", StringComparison.Ordinal) && mm.Name.StartsWith("AddGeneratedCard")
                  && mm is MethodInfo generatedMi)
         {
             // One call inserts the single card the preceding `CreateCard<T>`
@@ -1313,9 +1313,9 @@ public static partial class McpMod
                 continue;
             if (par.ParameterType == typeof(int))
                 card["count"] = value;
-            else if (par.ParameterType.Name == "PileType")
+            else if (string.Equals(par.ParameterType.Name, "PileType", StringComparison.Ordinal))
                 card["pile"] = Enum.GetName(par.ParameterType, value.Value);
-            else if (par.ParameterType.Name == "CardPilePosition")
+            else if (string.Equals(par.ParameterType.Name, "CardPilePosition", StringComparison.Ordinal))
                 card["position"] = Enum.GetName(par.ParameterType, value.Value);
         }
         return card;
@@ -1343,7 +1343,7 @@ public static partial class McpMod
     {
         try
         {
-            return module.ResolveField(token)?.Name == "targets";
+            return string.Equals(module.ResolveField(token)?.Name, "targets", StringComparison.Ordinal);
         }
         catch
         {

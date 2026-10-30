@@ -242,7 +242,7 @@ public static partial class McpMod
         if (cardUid != null)
         {
             RefreshCardUidRegistry(combatState);
-            card = hand.Cards.FirstOrDefault(c => GetStableCardUid(c) == cardUid)!;
+            card = hand.Cards.FirstOrDefault(c => string.Equals(GetStableCardUid(c), cardUid, StringComparison.Ordinal))!;
             if (card == null)
                 return Error(
                     $"Card '{cardUid}' is not in hand. Hand: "
@@ -1351,7 +1351,7 @@ public static partial class McpMod
                 if (gridScreen.GetNodeOrNull<Godot.Control>(containerName)?.Visible == true)
                 {
                     var confirmResult = ExecuteConfirmSelection();
-                    if (confirmResult.TryGetValue("status", out var status) && status?.ToString() == "ok")
+                    if (confirmResult.TryGetValue("status", out var status) && string.Equals(status?.ToString(), "ok", StringComparison.Ordinal))
                     {
                         confirmResult["message"] =
                             "Card selection preview was already open; confirming the selected card instead of selecting it again";
@@ -1362,7 +1362,7 @@ public static partial class McpMod
             }
 
             var grid = FindFirst<NCardGrid>(gridScreen);
-            if (grid == null && method != "holder")
+            if (grid == null && !string.Equals(method, "holder", StringComparison.Ordinal))
                 return Error("Card grid not found in selection screen");
 
             // While a preview covers the grid the game takes the grid out of the input path
@@ -1394,7 +1394,7 @@ public static partial class McpMod
             // Pressing the holder drives the real signal chain, which is what
             // the choose-a-card path already does. "grid" remains available via
             // the method parameter for anything that depends on the old path.
-            bool useHolder = method != "grid";
+            bool useHolder = !string.Equals(method, "grid", StringComparison.Ordinal);
 
             // The screen's own selection set, so the outcome is read back from the game
             // instead of assumed.
@@ -2006,7 +2006,7 @@ public static partial class McpMod
         foreach (var creature in combatState.Enemies)
         {
             if (!creature.IsAlive) continue;
-            if (GetStableEntityId(creature) == entityId)
+            if (string.Equals(GetStableEntityId(creature), entityId, StringComparison.Ordinal))
                 return creature;
         }
 
@@ -2053,7 +2053,7 @@ public static partial class McpMod
                 return Error("Not on the main menu; open the main menu before revealing epochs");
 
             var opened = ClickMenuButtonField(mainMenu, "_timelineButton", "Opening timeline to reveal epochs");
-            if ((string?)opened["status"] == "error")
+            if (string.Equals((string?)opened["status"], "error", StringComparison.Ordinal))
                 return opened;
 
             opened["pending_epoch_ids"] = pending;
@@ -2077,7 +2077,7 @@ public static partial class McpMod
             // `singleplayer` again.
             var back = ExecuteMenuSelect("back");
             step["message"] = "All epochs revealed; returned to the main menu";
-            step["left_timeline"] = (string?)back["status"] == "ok";
+            step["left_timeline"] = string.Equals((string?)back["status"], "ok", StringComparison.Ordinal);
             step["done"] = true;
             return step;
         }
@@ -2179,7 +2179,7 @@ public static partial class McpMod
                 return Error($"Unknown game over option: {option}. Use: main_menu");
 
             var result = ClickMenuButtonField(gameOver, "_mainMenuButton", "Returning to main menu");
-            if ((string?)result["status"] == "ok")
+            if (string.Equals((string?)result["status"], "ok", StringComparison.Ordinal))
                 return result;
 
             var returnMethod = gameOver.GetType().GetMethod(
@@ -2575,7 +2575,7 @@ public static partial class McpMod
     {
         var screen = SubmenuScreenName(submenu);
         var normalized = option.ToLowerInvariant();
-        if (normalized != "back" && normalized != "close" && normalized != "resume")
+        if (!string.Equals(normalized, "back", StringComparison.Ordinal) && !string.Equals(normalized, "close", StringComparison.Ordinal) && !string.Equals(normalized, "resume", StringComparison.Ordinal))
             return Error($"Unknown {screen} option: {option}. Use: back");
 
         var backButton = GetSubmenuBackButton(submenu);
@@ -2780,12 +2780,12 @@ public static partial class McpMod
     {
         var normalized = option.ToLowerInvariant();
 
-        if (normalized == "back")
+        if (string.Equals(normalized, "back", StringComparison.Ordinal))
         {
             return ClickMenuButtonField(joinScreen, "_backButton", "Going back from join screen", "Back button is not available");
         }
 
-        if (normalized == "refresh")
+        if (string.Equals(normalized, "refresh", StringComparison.Ordinal))
         {
             var refreshBtn = GetInstanceFieldValue(joinScreen, "_refreshButton") as NClickableControl;
             if (refreshBtn != null && refreshBtn.IsEnabled && IsNodeVisible(refreshBtn))
@@ -2858,7 +2858,7 @@ public static partial class McpMod
     {
         var normalized = option.ToLowerInvariant();
 
-        if (normalized == "confirm" || normalized == "embark" || normalized == "ready")
+        if (string.Equals(normalized, "confirm", StringComparison.Ordinal) || string.Equals(normalized, "embark", StringComparison.Ordinal) || string.Equals(normalized, "ready", StringComparison.Ordinal))
         {
             var confirmBtn = GetInstanceFieldValue(loadLobby, "_confirmButton") as NClickableControl;
             if (confirmBtn != null && confirmBtn.IsEnabled && IsNodeVisible(confirmBtn))
@@ -2869,7 +2869,7 @@ public static partial class McpMod
             return Error("Confirm button not available — already ready, or lobby not yet initialized");
         }
 
-        if (normalized == "unready")
+        if (string.Equals(normalized, "unready", StringComparison.Ordinal))
         {
             var unreadyBtn = GetInstanceFieldValue(loadLobby, "_unreadyButton") as NClickableControl;
             if (unreadyBtn != null && unreadyBtn.IsEnabled && IsNodeVisible(unreadyBtn))
@@ -2880,7 +2880,7 @@ public static partial class McpMod
             return Error("Unready button not available — you have not confirmed yet");
         }
 
-        if (normalized == "back")
+        if (string.Equals(normalized, "back", StringComparison.Ordinal))
         {
             return ClickMenuButtonField(loadLobby, "_backButton", "Going back from load lobby", "Back button is not available");
         }
@@ -2980,7 +2980,7 @@ public static partial class McpMod
                 return Error("Ascension can only be set on the character select screen");
 
             var ascensionResult = ApplyAscension(ascensionScreen, ascension.Value);
-            if ((string?)ascensionResult["status"] == "error")
+            if (string.Equals((string?)ascensionResult["status"], "error", StringComparison.Ordinal))
                 return ascensionResult;
             if (string.IsNullOrEmpty(option))
                 return ascensionResult;

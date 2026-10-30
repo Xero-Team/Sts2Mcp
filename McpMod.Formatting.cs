@@ -11,7 +11,7 @@ public static partial class McpMod
     {
         var sb = new StringBuilder();
         string stateType = state.TryGetValue("state_type", out var st) ? st?.ToString() ?? "unknown" : "unknown";
-        bool isMultiplayer = state.TryGetValue("game_mode", out var gm) && gm?.ToString() == "multiplayer";
+        bool isMultiplayer = state.TryGetValue("game_mode", out var gm) && string.Equals(gm?.ToString(), "multiplayer", StringComparison.Ordinal);
 
         if (isMultiplayer)
             sb.AppendLine($"# Multiplayer Game State: {stateType}");
@@ -51,13 +51,13 @@ public static partial class McpMod
             sb.AppendLine();
         }
 
-        if (stateType == "menu")
+        if (string.Equals(stateType, "menu", StringComparison.Ordinal))
         {
             FormatMenuMarkdown(sb, state);
             return sb.ToString();
         }
 
-        if (stateType == "game_over")
+        if (string.Equals(stateType, "game_over", StringComparison.Ordinal))
         {
             FormatGameOverMarkdown(sb, state);
             return sb.ToString();
@@ -364,7 +364,7 @@ public static partial class McpMod
         var aboutToBegin = lobby.TryGetValue("is_about_to_begin", out var ab) && ab is true;
 
         sb.Append($"### Lobby ({type}, {mode}) — Ascension: {asc}");
-        if (!string.IsNullOrEmpty(maxAsc) && maxAsc != "0")
+        if (!string.IsNullOrEmpty(maxAsc) && !string.Equals(maxAsc, "0", StringComparison.Ordinal))
             sb.Append($" / max {maxAsc}");
         sb.AppendLine();
         sb.AppendLine($"- All ready: **{allReady}**" + (aboutToBegin ? "  — about to begin" : ""));
@@ -806,7 +806,7 @@ public static partial class McpMod
             foreach (var item in items)
             {
                 string category = item["category"]?.ToString() ?? "";
-                if (category != lastCategory)
+                if (!string.Equals(category, lastCategory, StringComparison.Ordinal))
                 {
                     string header = category switch { "card" => "Cards", "relic" => "Relics", "potion" => "Potions", "card_removal" => "Services", _ => category };
                     sb.AppendLine($"### {header}");
@@ -823,8 +823,8 @@ public static partial class McpMod
                 string cardStarCost = item.TryGetValue("card_star_cost", out var csc) && csc != null ? $" + {csc} star" : "";
                 string cardEnergy = cardCost != "" ? $" ({cardCost} energy{cardStarCost})" : "";
                 string cardUpgrade = "";
-                if (category == "card"
-                    && item.TryGetValue("card_upgrade_preview_description", out var upgradeDesc)
+                if (string.Equals(category, "card"
+, StringComparison.Ordinal) && item.TryGetValue("card_upgrade_preview_description", out var upgradeDesc)
                     && upgradeDesc != null
                     && !Equals(upgradeDesc, item.GetValueOrDefault("card_description")))
                 {
@@ -1121,7 +1121,7 @@ public static partial class McpMod
         sb.AppendLine();
 
         string mode = handSelect.TryGetValue("mode", out var m) ? m?.ToString() ?? "simple_select" : "simple_select";
-        if (mode == "upgrade_select")
+        if (string.Equals(mode, "upgrade_select", StringComparison.Ordinal))
             sb.AppendLine("**Mode:** Upgrade selection");
         sb.AppendLine();
 
@@ -1462,7 +1462,7 @@ public static partial class McpMod
             }
             foreach (var (key, value) in dict)
             {
-                if (key != "keywords")
+                if (!string.Equals(key, "keywords", StringComparison.Ordinal))
                     CollectKeywordsFromState(value, glossary);
             }
         }

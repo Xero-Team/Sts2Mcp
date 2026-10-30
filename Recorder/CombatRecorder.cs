@@ -189,7 +189,7 @@ internal static class CombatRecorder
     /// </summary>
     private static readonly JsonArray ConsoleInProcess = new();
 
-    private static bool Installed => InstallState == "installed";
+    private static bool Installed => string.Equals(InstallState, "installed", StringComparison.Ordinal);
 
     // ========================================================================================
     // Configuration and install
@@ -227,7 +227,7 @@ internal static class CombatRecorder
     {
         lock (Gate)
         {
-            if (InstallState == "installed")
+            if (string.Equals(InstallState, "installed", StringComparison.Ordinal))
                 return true;
             _installedAt = by;
             try
@@ -376,7 +376,7 @@ internal static class CombatRecorder
         var args = new JsonObject();
         foreach (var (k, v) in parsed)
         {
-            if (k == "action")
+            if (string.Equals(k, "action", StringComparison.Ordinal))
                 continue;
             try { args[k] = JsonNode.Parse(v.GetRawText()); }
             catch { args[k] = v.GetRawText(); }
@@ -484,7 +484,7 @@ internal static class CombatRecorder
         }
         if (action is GenericHookGameAction || !ActionQueueSet.IsGameActionPlayerDriven(action))
             return new JsonObject { ["kind"] = "game" };
-        if (_installedAt != "startup")
+        if (!string.Equals(_installedAt, "startup", StringComparison.Ordinal))
             return new JsonObject { ["kind"] = "unknown", ["why"] = "recorder installed at runtime: requests before the install were not seen" };
         if (SeenRequests.TryGetValue(action, out _))
             return new JsonObject { ["kind"] = "not_mod_api" };
@@ -1213,7 +1213,7 @@ internal static class CombatRecorder
         var pausedAtOpen = _track.Paused;
         // Inputs the game's replay cannot reproduce: "complete" only when the recorder was installed
         // before any run (it saw every console command of this process) and there were none.
-        string inputs = ConsoleInProcess.Count > 0 ? "tainted" : _installedAt == "startup" ? "complete" : "unknown";
+        string inputs = ConsoleInProcess.Count > 0 ? "tainted" : string.Equals(_installedAt, "startup", StringComparison.Ordinal) ? "complete" : "unknown";
 
         Emit("record_open", new JsonObject
         {
@@ -1252,7 +1252,7 @@ internal static class CombatRecorder
                 ["checksums_before_open"] = checksBefore,
                 ["game_writer_enabled"] = writer?.IsEnabled,
                 ["game_writer_recording"] = replay != null,
-                ["reproducible_from_start"] = boundary == "room_entry",
+                ["reproducible_from_start"] = string.Equals(boundary, "room_entry", StringComparison.Ordinal),
                 ["pre_combat_requests"] = eventRoom ? pending?.Requests.DeepClone() : null,
                 // "room_entry": the tracking layer saw this room's entry (it knows every reservation,
                 // pause and request since). "inside_room": it started inside the room (installed by
@@ -1266,7 +1266,7 @@ internal static class CombatRecorder
                 ["console_in_process"] = ConsoleInProcess.Count > 0 ? ConsoleInProcess.DeepClone() : null,
             },
         });
-        if (inputs == "tainted")
+        if (string.Equals(inputs, "tainted", StringComparison.Ordinal))
             _rec.Faults.Add("console_command_in_process");
 
         if (replay != null)
@@ -1349,7 +1349,7 @@ internal static class CombatRecorder
         int? firstMismatch = null;
         for (int i = 0; i < Math.Max(game.Count, journal.Count); i++)
         {
-            if (i >= game.Count || i >= journal.Count || game[i] != journal[i])
+            if (i >= game.Count || i >= journal.Count || !string.Equals(game[i], journal[i], StringComparison.Ordinal))
             {
                 firstMismatch = i;
                 break;

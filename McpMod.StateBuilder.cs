@@ -2289,7 +2289,7 @@ public static partial class McpMod
                 state["doom_applied_this_turn"] = history.Entries.OfType<PowerReceivedEntry>().Any(en =>
                     en.HappenedThisTurn(combatStateShared)
                     && en.Applier == creature
-                    && en.Power.GetType().Name == "DoomPower");
+                    && string.Equals(en.Power.GetType().Name, "DoomPower", StringComparison.Ordinal));
                 // Whether the end-of-turn flush will run at all: a hook can
                 // suppress it, in which case the WHOLE hand is kept and no card
                 // left in it should read as discarded.
@@ -2619,7 +2619,7 @@ public static partial class McpMod
                     continue;
                 // The normalized return_cards above replaces the opaque save
                 // objects, retaining list order and exact rendered card values.
-                if (relic is MegaCrit.Sts2.Core.Models.Relics.PaelsTooth && field.Name == "_serializableCards")
+                if (relic is MegaCrit.Sts2.Core.Models.Relics.PaelsTooth && string.Equals(field.Name, "_serializableCards", StringComparison.Ordinal))
                     continue;
                 runtime[field.Name] = SerializePowerRuntimeValue(field.GetValue(relic), seen, 0);
             }
@@ -3316,9 +3316,9 @@ public static partial class McpMod
 
                 if (_perHitDamageCaps.TryGetValue(typeName, out var note))
                 {
-                    int perHit = typeName == "HardToKillPower" ? System.Math.Max(power.Amount, 0) : 1;
+                    int perHit = string.Equals(typeName, "HardToKillPower", StringComparison.Ordinal) ? System.Math.Max(power.Amount, 0) : 1;
                     int capped = System.Math.Min(damage, perHit);
-                    int remaining = typeName == "SlipperyPower" ? System.Math.Max(power.Amount, 0) : int.MaxValue;
+                    int remaining = string.Equals(typeName, "SlipperyPower", StringComparison.Ordinal) ? System.Math.Max(power.Amount, 0) : int.MaxValue;
                     int cappedHits = System.Math.Min(hits, remaining);
 
                     return new Dictionary<string, object?>(StringComparer.Ordinal)
@@ -3331,7 +3331,7 @@ public static partial class McpMod
                     };
                 }
 
-                if (typeName == HardenedShellPowerName)
+                if (string.Equals(typeName, HardenedShellPowerName, StringComparison.Ordinal))
                 {
                     return new Dictionary<string, object?>(StringComparer.Ordinal)
                     {
@@ -4075,7 +4075,7 @@ public static partial class McpMod
         state["is_ancient"] = isAncient;
         // Repeated Linger pages reuse the option key while damage keeps rising.
         // Read the local mutable copy: CanonicalEvent always has base damage.
-        if (eventModel.Id.Entry == "ABYSSAL_BATHS" && eventRoom.LocalMutableEvent is { } mutableBaths)
+        if (string.Equals(eventModel.Id.Entry, "ABYSSAL_BATHS", StringComparison.Ordinal) && eventRoom.LocalMutableEvent is { } mutableBaths)
             state["next_damage"] = mutableBaths.DynamicVars.Damage.BaseValue;
 
         // Check dialogue state for ancients
@@ -6110,7 +6110,7 @@ public static partial class McpMod
                 var extraTips = new List<IHoverTip>();
                 foreach (var tip in allTips)
                 {
-                    if (tip.Id == power.Id.ToString())
+                    if (string.Equals(tip.Id, power.Id.ToString(), StringComparison.Ordinal))
                     {
                         if (tip is HoverTip ht && ht.Description != null)
                             resolvedDesc = StripRichTextTags(ht.Description);

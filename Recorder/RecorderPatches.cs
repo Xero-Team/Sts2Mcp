@@ -71,7 +71,7 @@ internal static class RecorderPatches
         // Counted only: AC2 asks that recording sends nothing to Sentry (docs/recording.md).
         foreach (var m in AccessTools.GetDeclaredMethods(typeof(SentryService)))
         {
-            if (m.Name == nameof(SentryService.CaptureException))
+            if (string.Equals(m.Name, nameof(SentryService.CaptureException), StringComparison.Ordinal))
             {
                 Harmony.Patch(m, prefix: new HarmonyMethod(typeof(RecorderPatches), nameof(SentryPrefix)));
                 AppliedList.Add($"SentryService.CaptureException({m.GetParameters().Length})");

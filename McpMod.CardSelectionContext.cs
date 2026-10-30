@@ -102,8 +102,8 @@ public static partial class McpMod
 
     private static string SelectionEffect(string methodName, string? originType)
     {
-        if (methodName == nameof(CardSelectCmd.FromHandForDiscard)) return "discard";
-        if (methodName == nameof(CardSelectCmd.FromHandForUpgrade)) return "upgrade";
+        if (string.Equals(methodName, nameof(CardSelectCmd.FromHandForDiscard), StringComparison.Ordinal)) return "discard";
+        if (string.Equals(methodName, nameof(CardSelectCmd.FromHandForUpgrade), StringComparison.Ordinal)) return "upgrade";
 
         return originType switch
         {

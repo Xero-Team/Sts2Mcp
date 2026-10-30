@@ -111,7 +111,7 @@ public static partial class McpMod
                 ["random_weights_are_snapshots"] = hasWeightSnapshots,
                 ["states"] = states,
             };
-            if (monster.GetType().Name == "TwoTailedRat")
+            if (string.Equals(monster.GetType().Name, "TwoTailedRat", StringComparison.Ordinal))
             {
                 result["dynamic_weight_state"] = new Dictionary<string, object?>(StringComparer.Ordinal)
                 {
@@ -174,7 +174,7 @@ public static partial class McpMod
                 ["weight_rule"] = dynamicRule == null ? null : new Dictionary<string, object?>(StringComparer.Ordinal)
                 {
                     ["kind"] = dynamicRule,
-                    ["summon_branch"] = branch.stateId == "CALL_FOR_BACKUP_MOVE",
+                    ["summon_branch"] = string.Equals(branch.stateId, "CALL_FOR_BACKUP_MOVE", StringComparison.Ordinal),
                 },
             });
         }

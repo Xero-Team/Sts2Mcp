@@ -45,7 +45,7 @@ public static partial class McpMod
         // to the registry by ModelId: the category slug for EncounterModel plus the
         // class name slugified the way ModelDb.GetEntry does it.
         var encounter = ModelDb.AllEncounters
-            .FirstOrDefault(e => e.GetType().Name == name)
+            .FirstOrDefault(e => string.Equals(e.GetType().Name, name, StringComparison.Ordinal))
             ?? ModelDb.GetByIdOrNull<EncounterModel>(
                 new ModelId(ModelId.SlugifyCategory<EncounterModel>(), StringHelper.Slugify(name)));
         if (encounter == null)
@@ -90,7 +90,7 @@ public static partial class McpMod
         var name = evEl.GetString()!;
         // AllEvents already folds in AllSharedEvents.
         var eventModel = ModelDb.AllEvents
-            .FirstOrDefault(e => e.GetType().Name == name);
+            .FirstOrDefault(e => string.Equals(e.GetType().Name, name, StringComparison.Ordinal));
         if (eventModel == null)
             return Error($"Unknown event: {name}");
 

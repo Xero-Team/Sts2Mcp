@@ -199,7 +199,7 @@ public static partial class McpMod
     /// </remarks>
     private static string? SourceComparison(PredicateScan scan, bool negated)
     {
-        string? raw = scan.Comparisons.FirstOrDefault(c => c != "ceq") ?? scan.Comparisons.FirstOrDefault();
+        string? raw = scan.Comparisons.FirstOrDefault(c => !string.Equals(c, "ceq", StringComparison.Ordinal)) ?? scan.Comparisons.FirstOrDefault();
         return raw switch
         {
             "clt" => negated ? "ge" : "lt",
@@ -232,7 +232,7 @@ public static partial class McpMod
     /// </remarks>
     private static bool IsNegated(PredicateScan scan)
     {
-        if (scan.Comparisons.Count == 0 || scan.Comparisons[^1] != "ceq")
+        if (scan.Comparisons.Count == 0 || !string.Equals(scan.Comparisons[^1], "ceq", StringComparison.Ordinal))
             return false;
         if (scan.Comparisons.Count == 1 && !TestsBoolean(scan))
             return false;
@@ -258,7 +258,7 @@ public static partial class McpMod
             var declaring = call.DeclaringType;
             if (declaring == null || !typeof(MegaCrit.Sts2.Core.Models.MonsterModel).IsAssignableFrom(declaring))
                 continue;
-            if (call.Name == "get_Creature")
+            if (string.Equals(call.Name, "get_Creature", StringComparison.Ordinal))
                 continue;
             var inner = ScanPredicate(call);
             if (inner.Comparisons.Count > 0 || inner.FunctionPointers.Count > 0)
@@ -457,7 +457,7 @@ public static partial class McpMod
         // The predicate owns the comparison when it makes one itself
         // (`GetAllyCount() > 0`); otherwise it just reads a bool property and
         // the comparison belongs to that property's body.
-        bool comparesDirectly = scan.Comparisons.Any(comparison => comparison != "ceq")
+        bool comparesDirectly = scan.Comparisons.Any(comparison => !string.Equals(comparison, "ceq", StringComparison.Ordinal))
             || (scan.Comparisons.Count > 0 && !TestsBoolean(scan));
         var source = comparesDirectly || inlined == null ? scan : inlined;
         // An inner `<=` is itself a negated `>`, and an outer `!` inverts that

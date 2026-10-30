@@ -560,9 +560,9 @@ public static partial class McpMod
             {
                 if (method.Name.EndsWith("Move")
                     && method.DeclaringType == type
-                    && method.Name != "PerformMove"
-                    && method.Name != "RollMove"
-                    && method.Name != "SetMoveImmediate")
+                    && !string.Equals(method.Name, "PerformMove"
+, StringComparison.Ordinal) && !string.Equals(method.Name, "RollMove"
+, StringComparison.Ordinal) && !string.Equals(method.Name, "SetMoveImmediate", StringComparison.Ordinal))
                 {
                     moves.Add(method.Name.Replace("Move", ""));
                 }
@@ -608,7 +608,7 @@ public static partial class McpMod
                 {
                     foreach (var method in type.GetMethods(bindFlags))
                     {
-                        if (method.Name == "GenerateMonsters" && method.DeclaringType == type)
+                        if (string.Equals(method.Name, "GenerateMonsters", StringComparison.Ordinal) && method.DeclaringType == type)
                             break;
                     }
                 }

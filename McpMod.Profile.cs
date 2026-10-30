@@ -114,7 +114,7 @@ public static partial class McpMod
     private static void SendProfileActionJson(
         HttpListenerResponse response, Dictionary<string, object?> result, bool pretty = false)
     {
-        if (result.TryGetValue("status", out var status) && status as string == "error")
+        if (result.TryGetValue("status", out var status) && string.Equals(status as string, "error", StringComparison.Ordinal))
         {
             response.StatusCode = result.TryGetValue("error_code", out var errorCode)
                 ? (errorCode as string) switch
@@ -188,7 +188,7 @@ public static partial class McpMod
 
         var normalizedAction = action.Trim().ToLowerInvariant();
 
-        if (normalizedAction == "switch")
+        if (string.Equals(normalizedAction, "switch", StringComparison.Ordinal))
         {
             if (RunManager.Instance?.IsInProgress == true)
                 return Error("Cannot switch profiles during a run", "run_in_progress");
@@ -228,7 +228,7 @@ public static partial class McpMod
             };
         }
 
-        if (normalizedAction == "delete")
+        if (string.Equals(normalizedAction, "delete", StringComparison.Ordinal))
         {
             if (profileId == sm.CurrentProfileId)
                 return Error("Cannot delete the active profile", "active_profile_delete");
