@@ -6128,8 +6128,7 @@ public static partial class McpMod
     // caller warns when every alternative fails.
     private static int? SafeGetInt(Func<int> getter)
     {
-        try { return getter(); }
-        catch { return null; }
+        return TryRead(() => getter());
     }
 
     private static Dictionary<string, object?> BuildPowerRuntimeState(PowerModel power)

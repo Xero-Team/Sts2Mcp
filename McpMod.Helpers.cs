@@ -331,8 +331,7 @@ public static partial class McpMod
             // Keep state reads best-effort so one compatibility edge does not break MCP.
         }
 
-        try { return !manager.PlayerActionsDisabled; }
-        catch { return false; }
+        return TryRead<bool?>(() => !manager.PlayerActionsDisabled) ?? false;
     }
 
     private static MerchantInventory? GetMerchantInventory(object? owner)
@@ -584,14 +583,7 @@ public static partial class McpMod
     /// </summary>
     internal static HashSet<CardModel>? GetCardSelectSelection(NCardGridSelectionScreen screen)
     {
-        try
-        {
-            return GetInstanceFieldValue(screen, "_selectedCards") as HashSet<CardModel>;
-        }
-        catch (Exception)
-        {
-            return null;
-        }
+        return TryRead(() => GetInstanceFieldValue(screen, "_selectedCards") as HashSet<CardModel>);
     }
 
     /// <summary>
@@ -600,14 +592,7 @@ public static partial class McpMod
     /// </summary>
     internal static CardSelectorPrefs? GetCardSelectPrefs(NCardGridSelectionScreen screen)
     {
-        try
-        {
-            return GetInstanceFieldValue(screen, "_prefs") as CardSelectorPrefs?;
-        }
-        catch (Exception)
-        {
-            return null;
-        }
+        return TryRead(() => GetInstanceFieldValue(screen, "_prefs") as CardSelectorPrefs?);
     }
 
     internal static List<T> FindAll<T>(Node start) where T : Node
@@ -839,15 +824,8 @@ public static partial class McpMod
     /// </remarks>
     private static bool IsRunTransitionInFlight()
     {
-        try
-        {
-            return MegaCrit.Sts2.Core.Runs.RunManager.Instance.IsInProgress
-                && MegaCrit.Sts2.Core.Runs.RunManager.Instance.NetService.IsGameLoading;
-        }
-        catch
-        {
-            return false;
-        }
+        return TryRead<bool?>(() => MegaCrit.Sts2.Core.Runs.RunManager.Instance.IsInProgress
+                && MegaCrit.Sts2.Core.Runs.RunManager.Instance.NetService.IsGameLoading) ?? false;
     }
 
     /// <summary>

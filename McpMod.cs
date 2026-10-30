@@ -669,12 +669,8 @@ public static partial class McpMod
     // Authoritative checks happen inside RunOnMainThread lambdas.
     internal static bool IsMultiplayerRun()
     {
-        try
-        {
-            return MegaCrit.Sts2.Core.Runs.RunManager.Instance.IsInProgress
-                && MegaCrit.Sts2.Core.Runs.RunManager.Instance.NetService.Type.IsMultiplayer();
-        }
-        catch { return false; }
+        return TryRead<bool?>(() => MegaCrit.Sts2.Core.Runs.RunManager.Instance.IsInProgress
+                && MegaCrit.Sts2.Core.Runs.RunManager.Instance.NetService.Type.IsMultiplayer()) ?? false;
     }
 
     private static void HandleGetMultiplayerState(HttpListenerRequest request, HttpListenerResponse response)

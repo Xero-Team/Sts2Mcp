@@ -119,15 +119,7 @@ public static partial class McpMod
     internal static bool InstantModeIsActive()
     {
         if (!PrefsAreLoaded()) return false;
-        try
-        {
-            return SaveManager.Instance.PrefsSave?.FastMode == FastModeType.Instant;
-        }
-        catch
-        {
-            // Scene tree or save manager not up yet; nothing is running Instant either.
-            return false;
-        }
+        return TryRead<bool?>(() => SaveManager.Instance.PrefsSave?.FastMode == FastModeType.Instant) ?? false;
     }
 
     private static bool IsInInstantModeLine(Node node)

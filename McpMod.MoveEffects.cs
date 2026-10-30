@@ -698,16 +698,9 @@ public static partial class McpMod
     /// <summary>Reads one integer property from the live monster.</summary>
     private static int? ReadMonsterInt(MonsterModel monster, string propertyName)
     {
-        try
-        {
-            return monster.GetType()
+        return TryRead(() => monster.GetType()
                 .GetProperty(propertyName, BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance)?
-                .GetValue(monster) as int?;
-        }
-        catch
-        {
-            return null;
-        }
+                .GetValue(monster) as int?);
     }
 
     private static void WalkForEffects(MethodBase method, MonsterModel monster, MoveFxScan scan)
@@ -1334,27 +1327,13 @@ public static partial class McpMod
     /// </remarks>
     private static bool IsHoistedTargetsField(Module module, int token)
     {
-        try
-        {
-            return string.Equals(module.ResolveField(token)?.Name, "targets", StringComparison.Ordinal);
-        }
-        catch
-        {
-            return false;
-        }
+        return TryRead<bool?>(() => string.Equals(module.ResolveField(token)?.Name, "targets", StringComparison.Ordinal)) ?? false;
     }
 
     /// <summary>Whether a field token names an <c>int</c> field.</summary>
     private static bool IsIntField(Module module, int token)
     {
-        try
-        {
-            return module.ResolveField(token)?.FieldType == typeof(int);
-        }
-        catch
-        {
-            return false;
-        }
+        return TryRead<bool?>(() => module.ResolveField(token)?.FieldType == typeof(int)) ?? false;
     }
 
     private static int? ReadIntField(Module module, int token, MonsterModel monster)

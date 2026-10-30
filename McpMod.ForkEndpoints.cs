@@ -203,14 +203,7 @@ public static partial class McpMod
 
     private static string SafeGetNetTypeName()
     {
-        try
-        {
-            return RunManager.Instance?.NetService?.Type.ToString() ?? "";
-        }
-        catch
-        {
-            return "";
-        }
+        return TryRead(() => RunManager.Instance?.NetService?.Type.ToString() ?? "") ?? "";
     }
 
     private static void SendGlossaryJson(HttpListenerResponse response, GlossaryPayload payload)

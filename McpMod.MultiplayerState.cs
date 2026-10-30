@@ -392,8 +392,7 @@ public static partial class McpMod
 
     private static int GetEntryRound(CombatHistoryEntry entry)
     {
-        try { return _historyRoundProp?.GetValue(entry) is int r ? r : 0; }
-        catch { return 0; }
+        return TryRead<int?>(() => _historyRoundProp?.GetValue(entry) is int r ? r : 0) ?? 0;
     }
 
     // CombatHistoryEntry._playerTurnNumbers is private; read it via cached
@@ -430,8 +429,7 @@ public static partial class McpMod
     {
         if (card == null)
             return null;
-        try { return NetCombatCard.FromModel(card).CombatCardIndex; }
-        catch { return null; }
+        return TryRead(() => NetCombatCard.FromModel(card).CombatCardIndex);
     }
 
     // CardModel.Owner throws once the owning creature is gone (combat teardown,
@@ -441,8 +439,7 @@ public static partial class McpMod
     {
         if (card == null)
             return null;
-        try { return card.Owner; }
-        catch { return null; }
+        return TryRead(() => card.Owner);
     }
 
     private static List<Dictionary<string, object?>> BuildCardPlaysState(ICombatState combatState)
@@ -574,8 +571,7 @@ public static partial class McpMod
     {
         if (card == null)
             return null;
-        try { return card.Keywords.Select(kw => kw.ToString()).ToArray(); }
-        catch { return null; }
+        return TryRead(() => card.Keywords.Select(kw => kw.ToString()).ToArray());
     }
 
     private static List<Dictionary<string, object?>> BuildPlayerDamageState(RunState runState, int currentRound)

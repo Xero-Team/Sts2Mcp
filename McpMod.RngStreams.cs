@@ -354,8 +354,7 @@ public static partial class McpMod
 
     private static object? SafeGet(Func<object?> get)
     {
-        try { return get(); }
-        catch { return null; }
+        return TryRead(() => get());
     }
 
     private static string SnakeCase(string name)
