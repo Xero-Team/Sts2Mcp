@@ -44,8 +44,8 @@ Rules that hold with or without those files:
 ## 2. Naming and file layout
 
 - One public type per file, file name equal to the type name. The existing
-  `McpMod.*.cs` partials are the grandfathered exception; new files follow the
-  rule.
+  `McpMod.*.cs` partials are the recorded exception (see the deferred project
+  split); new files and new types follow the rule.
 - Folders are layers: `Core/Contracts/<Area>.cs`, `UseCases/<Area>/<Verbs>Handler.cs`,
   `Infrastructure/<Area>/`, `Transport/`. Namespaces match the folder path.
 - Identifier names follow section 3: private fields `_camelCase`, static fields
@@ -75,15 +75,16 @@ ignoring the rule inside a feature PR.
   that chain gets braces.
 - **Usings** stay at the top of the file, outside the namespace, alphabetically
   sorted with `System.*` first. The mod uses **file-scoped namespaces**
-  (`namespace STS2_MCP;`); the test harnesses still use block-scoped ones and keep
-  that until they are normalized in their own commit.
+  (`namespace STS2_MCP;`); a test harness still on block-scoped syntax is
+  converted when the change touches it.
 - **One public type per file**, named after the type; the `McpMod.*.cs` partials
-  remain the grandfathered exception. No `#region` to hide size.
+  remain the recorded exception. No `#region` to hide size.
 - **Non-ASCII source text** is written as `\uXXXX` escapes rather than literal
   characters: a tool on this pipeline garbles them, and JSON/log strings are the
   usual casualty.
-- `dotnet format` on a touched file must be a no-op. Formatting-only changes stay
-  in their own commit; never reformat the tree inside a feature PR.
+- `dotnet format` on a touched file must be a no-op. If a file you touch formats
+  wrong, fix it in the same change; when the reformat would drown the behavior
+  diff, give it its own commit inside the same PR so the reviewer sees both.
 
 ### 3.2 Declarations, visibility, fields
 
@@ -125,16 +126,23 @@ ignoring the rule inside a feature PR.
   declaration; `object`/`dynamic` is a boundary decision, not a convenience (see
   "Type discipline" in `SKILL.md`).
 
-### 3.4 Exceptions to the style rules
+### 3.4 No grandfathering: fix it when you see it
 
-- **The existing style of a touched file wins.** A legacy file with a
-  `_`-prefixed static field or a block-scoped namespace keeps that style on the
-  lines you touch; new code follows this section, and the file is normalized in
-  its own commit. Do not reformat a file you are only adding one field to.
-- **Generated or interop-shaped names are not renamed.** `STS2_MCP` stays
-  (`CA1707` is off for exactly this reason), game members reached through
-  reflection keep their exact spelling, and JSON stays `snake_case` because the
-  contract says so.
+- **Wrong names and wrong structure are repaired immediately.** A file that has
+  been `_`-prefixed on a static field, block-scoped in its namespace, brace-style
+  inconsistent, or shaped against section 3 is fixed in the change that touches
+  it. "It was already like that" is not an argument, and the fix is not deferred
+  to a later cleanup PR.
+- **A breaking rename is the expected cost.** Rename the type, field, or member
+  to the correct name and update every call site in the same change; let the
+  zero-warning build prove the rename is complete. Do not keep the wrong name,
+  add an alias, or leave a `// old name` comment to avoid touching call sites.
+  If the rename is too large for one commit, split it into commits that each
+  compile, with the last one removing the old name — the PR finishes the job.
+- **Contract and interop names are not style violations.** `STS2_MCP`,
+  reflection-reached game members, `snake_case` JSON, and `docs/raw-*.md` field
+  names stay exactly as the external contract requires. Renaming one of those is
+  a contract change with its own schema/version decision, not a cleanup.
 - **No style rule justifies a warning.** The gate is `TreatWarningsAsErrors` plus
   the analyzers in `Directory.Build.targets`; a finding is fixed in code or the
   rule is fixed in `.editorconfig` with its reason written down — never silenced
@@ -240,17 +248,21 @@ Run before claiming a change is done:
 - [ ] New and edited C# follows section 3: explicit visibility, `_`/`s_` field
       prefixes, fields at the top, Allman braces, `var`/`new()` only where the
       type is named on the other side, no `this.`.
+- [ ] A naming or structure violation in code you touched is fixed in this
+      change, with every call site renamed and the build proving it — not
+      inherited into the next file.
 - [ ] `dotnet format --verify-no-changes --include <touched files>` is clean, or
       the reason it was not run is stated.
 - [ ] No new `#pragma warning disable`; a rule that had to change is in
       `.editorconfig` with its reason written down.
 - [ ] `docs/raw-*.md` and `mcp/server.py` docstrings match the response.
-- [ ] Structural changes and deferred violations are in `docs/adr/`.
+- [ ] Deliberate structural exceptions (the deferred project split, the
+      single-assembly layering) are in `docs/adr/`.
 
 ## Known violations (observed 2026-10-30, re-verify before acting)
 
 These are real and already in the tree. They are listed so that whoever touches
-them repairs them, not so that they get copied:
+them repairs them in that same change, not so that they get copied or deferred:
 
 1. `McpMod.cs:320` and `McpMod.cs:421` return `exception_type` and `stack_trace`
    to any caller; neither field is documented in `docs/raw-full.md`.

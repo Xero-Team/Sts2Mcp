@@ -128,6 +128,11 @@ PR.
 - **Check behavior, not implementation.** The observable contract is HTTP status,
   response fields, and the resulting game state. A check that would still pass
   when the handler returned nothing is not a check.
+- **No inherited violations.** A wrong name, field prefix, visibility, brace
+  style, or file layout in the code you touch is repaired here, even when that
+  means a breaking rename across call sites; the build proves the rename is
+  complete. Only the external contract (`STS2_MCP`, reflection-reached game
+  members, JSON `snake_case`) is exempt from renaming for style.
 - **Match the repository standards.**
   [references/repo-standards.md](references/repo-standards.md) holds the full
   list; the ones that get violated first:
@@ -143,16 +148,19 @@ PR.
     only.
   - **Names and files.** One public type per file, file named after it, folders
     are layers, JSON is `snake_case` and mapped in one place. The `McpMod.*.cs`
-    partials are the grandfathered exception.
+    partials are the recorded exception (see the deferred project split).
   - **C# style.** [dotnet/runtime's coding guidelines](https://github.com/dotnet/runtime/blob/main/docs/coding-guidelines/coding-style.md)
     are the reference; the review-deciding rules are in
     [references/repo-standards.md](references/repo-standards.md). Allman braces,
     explicit visibility first, fields at the top, `_camelCase` / `s_name` /
     `t_name` field prefixes, `PascalCase` constants and methods, `nameof` over
     repeated literals, `var`/`new()` only when the type is named on the other
-    side, `sealed`/`static` helpers, `\uXXXX` for non-ASCII. The touched file's
-    existing style wins until that file is normalized in its own commit;
-    `.editorconfig` is the executable copy and changes to it are standalone.
+    side, `sealed`/`static` helpers, `\uXXXX` for non-ASCII. Wrong names and
+    wrong structure in code you touch are fixed in that change: a rename that
+    ripples through call sites is the expected cost, never a reason to defer. The
+    only names left alone are the external contract (`STS2_MCP`, reflection
+    strings, `snake_case` JSON). `.editorconfig` is the executable copy and
+    changes to it are standalone.
   - **Toolchain targets.** `Directory.Build.props` (configuration: game path, no
     literals), `Directory.Build.targets` (analyzer gate), and `.editorconfig` are
     committed. `global.json` is still absent; adding it is a small standalone

@@ -68,7 +68,9 @@ This skill fuses four upstreams and adapts them to STS2_MCP.
   `_camelCase` / `s_` / `t_` prefixes, `PascalCase` constants and methods,
   `nameof` over repeated literals, `var`/target-typed `new()` only when the type
   is named on the other side, `sealed`/`static` internal types, `\uXXXX` for
-  non-ASCII source, and "the existing style of a touched file wins". The rules
+  non-ASCII source. Upstream's "existing style in that file takes precedence"
+  rule is deliberately **not** adopted: a wrong name or structure found in
+  touched code is repaired in that change, breaking rename included. The rules
   live in `references/repo-standards.md` section 3; `.editorconfig` is the
   executable subset. Upstream's tooling claims (`dotnet format` in CI) are not
   imported as gates: this repository has no CI workflow.
