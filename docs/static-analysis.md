@@ -84,16 +84,29 @@ The gate is on, so this list is a list of build breakers. Numbers are from the b
 will move as the code does; re-measure with `-p:STS2StrictWarnings=false` and count warnings rather
 than trusting them.
 
+Cleared so far (measured at `a08495a`): `MA0002` (442), `MA0006` (352),
+`MA0011` (41), the one-line findings `MA0004`/`MA0009`/`MA0074`/`S1125`/
+`S1481`/`S1862`/`S1905`/`S4136`/`S6610`/`CA1805`/`CA1820`/`CA1847`/`CA1865`/
+`CA2244`, and all formatting drift (419 whitespace, 6 import orders, 2 final
+newlines). 1538 warnings at the baseline commit are 860 now.
+
 | Bucket | Count | Note |
 | --- | --- | --- |
-| `MA0002` use an explicit `StringComparer`/`StringComparison` | ~400 | Mostly dictionary and `string.Equals` calls over identifier-like strings; `StringComparer.Ordinal` is the right default here |
-| `CA1031` catch a more specific exception | ~270 | Deliberate in the state builders (a renamed game member must not kill a state read) - needs per-site judgement or a documented suppression helper, not a blanket `none` |
-| `ERP022` swallow exception without observing it | ~160 | Same defensive style; the recorder/state builders should log through `McpMod.Warnings` instead of dropping |
-| `MA0006` use `string.Equals` instead of `==` | ~150 | Mechanical |
-| `MA0051` method too long | ~70 | Concentrated in `McpMod.StateBuilder.cs`; extract only where it buys clarity |
-| `S108` empty `catch` block | ~43 | Same family as `ERP022` |
-| `MA0011` pass `IFormatProvider` | ~40 | JSON payload building; `CultureInfo.InvariantCulture` |
-| formatting drift | 419 whitespace + 6 imports + 2 final newline | One `dotnet format STS2_MCP.csproj` pass fixes all of it; do it as its own commit |
+| `CA1031` catch a more specific exception | 282 | Deliberate in the state builders (a renamed game member must not kill a state read). Route through the `TryRead` helper in `docs/adr/0005-full-refactor-phases.md` instead of suppressing per site |
+| `ERP022` swallow exception without observing it | 167 | Same family as `CA1031`; the helper records through `McpMod.Warnings` |
+| `MA0051` method too long | 74 | Concentrated in `McpMod.StateBuilder.cs`; extract only where it buys clarity |
+| `S108` empty `catch` block | 51 | Same family as `CA1031` |
+| `S2486` exception ignored | 46 | Same family as `CA1031` |
+| `EPC12` catch block hides an exception | 45 | Same family as `CA1031` |
+| `S1144` unused private method | 31 | **Mostly a false positive**: Harmony reaches `TargetMethods`/`Prefix`/`Postfix` by attribute, not by call. Delete only the non-patch members, and only after a patch run |
+| `S3358` nested ternary | 25 | Extract a local or a small method at each site |
+| `S3267` loop could be LINQ | 20 | Only where the query form is clearer than the loop |
+| `S8969` | 18 | Preferred null/pattern form |
+| `VSTHRD002` synchronous wait | 12 | Real deadlock risk on the game thread; needs the main-thread queue, not a mechanical fix |
+| `S1172` unused parameter | 12 | Drop the parameter where the call sites allow it |
+| `CA1859`/`VSTHRD200`/`VSTHRD003`/`S6444`/`S3218` | 8/5/3/3/3 | One decision each; `S6444` should get a regex timeout |
+| `CA2007` | 4 | Deliberately open: the reward-observation awaits must resume on the thread that owns the reward session |
+| rest | 1-3 each | `CA1001`/`CA1032`/`CA1064`/`CA1508`/`CA1707`/`CA1812`/`S1450`/`S2094`/`S2223`/`S3871`/`S4487`/`MA0048`/`MA0134`/`MA0169`/`EPC13`/`AsyncFixer01`, judged one at a time |
 
 Then delete this line from `Directory.Build.targets` once the list is empty, so the gate can no
 longer be relaxed by a property:
