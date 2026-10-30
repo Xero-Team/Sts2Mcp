@@ -3308,12 +3308,7 @@ public static partial class McpMod
         }
         catch (System.ObjectDisposedException)
         {
-            return new Dictionary<string, object?>(StringComparer.Ordinal)
-            {
-                ["status"] = "ok",
-                ["message"] = "Timeline changed while checking queued unlocks; retry after the next state poll",
-                ["retry"] = true
-            };
+            return QueuedUnlockRetry("Timeline changed while checking queued unlocks; retry after the next state poll");
         }
 
         if (!isQueued)
@@ -3322,30 +3317,10 @@ public static partial class McpMod
         var queuedScreen = TryPeekQueuedTimelineScreen(timelineScreen);
         var queuedType = queuedScreen?.GetType().Name ?? "unlock";
         var queuedEpochIds = GetQueuedTimelineEpochIds(queuedScreen);
-        var alreadyRevealed = queuedEpochIds
-            .Where(id => string.Equals(GetProgressEpochState(id), "Revealed", StringComparison.OrdinalIgnoreCase))
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .ToList();
 
-        if (alreadyRevealed.Count > 0)
-        {
-            var alreadyRevealedSet = new HashSet<string>(alreadyRevealed, StringComparer.OrdinalIgnoreCase);
-            var pendingEpochIds = queuedEpochIds
-                .Where(id => !alreadyRevealedSet.Contains(id))
-                .Distinct(StringComparer.OrdinalIgnoreCase)
-                .ToList();
-
-            return new Dictionary<string, object?>(StringComparer.Ordinal)
-            {
-                ["status"] = "ok",
-                ["message"] = "Queued timeline unlock references already revealed epochs; not opening it to avoid an invalid unlock path",
-                ["queued_unlock_type"] = queuedType,
-                ["already_revealed_epoch_ids"] = alreadyRevealed,
-                ["pending_epoch_ids"] = pendingEpochIds,
-                ["manual_action_required"] = pendingEpochIds.Count > 0,
-                ["done"] = true
-            };
-        }
+        var alreadyRevealed = BuildAlreadyRevealedUnlockResult(queuedType, queuedEpochIds);
+        if (alreadyRevealed != null)
+            return alreadyRevealed;
 
         if (string.Equals(queuedType, "NUnlockTimelineScreen", StringComparison.Ordinal) &&
             IsTimelineScreenBusy(timelineScreen))
@@ -3360,7 +3335,53 @@ public static partial class McpMod
             };
         }
 
-        return RunAction(
+        return OpenQueuedTimelineScreen(timelineScreen, queuedType, queuedEpochIds);
+    }
+
+    /// <summary>A queued-unlock answer that asks the caller to poll again.</summary>
+    private static Dictionary<string, object?> QueuedUnlockRetry(string message)
+        => new(StringComparer.Ordinal)
+        {
+            ["status"] = "ok",
+            ["message"] = message,
+            ["retry"] = true
+        };
+
+    /// <summary>
+    /// A queued unlock naming an already revealed epoch would take the invalid unlock path,
+    /// so it is reported instead of opened.
+    /// </summary>
+    private static Dictionary<string, object?>? BuildAlreadyRevealedUnlockResult(
+        string queuedType, List<string> queuedEpochIds)
+    {
+        var alreadyRevealed = queuedEpochIds
+            .Where(id => string.Equals(GetProgressEpochState(id), "Revealed", StringComparison.OrdinalIgnoreCase))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        if (alreadyRevealed.Count == 0)
+            return null;
+
+        var alreadyRevealedSet = new HashSet<string>(alreadyRevealed, StringComparer.OrdinalIgnoreCase);
+        var pendingEpochIds = queuedEpochIds
+            .Where(id => !alreadyRevealedSet.Contains(id))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        return new Dictionary<string, object?>(StringComparer.Ordinal)
+        {
+            ["status"] = "ok",
+            ["message"] = "Queued timeline unlock references already revealed epochs; not opening it to avoid an invalid unlock path",
+            ["queued_unlock_type"] = queuedType,
+            ["already_revealed_epoch_ids"] = alreadyRevealed,
+            ["pending_epoch_ids"] = pendingEpochIds,
+            ["manual_action_required"] = pendingEpochIds.Count > 0,
+            ["done"] = true
+        };
+    }
+
+    private static Dictionary<string, object?> OpenQueuedTimelineScreen(
+        NTimelineScreen timelineScreen, string queuedType, List<string> queuedEpochIds)
+        => RunAction(
             "timeline.queued_unlock.open",
             () =>
             {
@@ -3374,13 +3395,7 @@ public static partial class McpMod
                 };
             },
             ex => ex is System.ObjectDisposedException
-                ? new Dictionary<string, object?>(StringComparer.Ordinal)
-                {
-                    ["status"] = "ok",
-                    ["message"] = "Timeline changed before the queued unlock could open; retry after the next state poll",
-                    ["queued_unlock_type"] = queuedType,
-                    ["retry"] = true
-                }
+                ? QueuedUnlockRetry("Timeline changed before the queued unlock could open; retry after the next state poll")
                 : new Dictionary<string, object?>(StringComparer.Ordinal)
                 {
                     ["status"] = "ok",
@@ -3388,7 +3403,6 @@ public static partial class McpMod
                     ["queued_unlock_type"] = queuedType,
                     ["retry"] = true
                 });
-    }
 
     private static object? TryPeekQueuedTimelineScreen(NTimelineScreen timelineScreen)
     {
