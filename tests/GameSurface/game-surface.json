@@ -369,29 +369,7 @@
     },
     {
       "file": "McpMod.Compendium.cs",
-      "line": 584,
-      "api": "Assembly.GetType",
-      "member": "MegaCrit.Sts2.Core.Platform.Steam.SteamUtil",
-      "kind": "type",
-      "scope": "assembly",
-      "type": null,
-      "required": true,
-      "broken": "Steam changed type or namespace (v0.111.0: Multiplayer.Transport.Steam.SteamUtil has no GetSteamID64)"
-    },
-    {
-      "file": "McpMod.Compendium.cs",
-      "line": 585,
-      "api": "GetMethod",
-      "member": "GetSteamID64",
-      "kind": "method",
-      "scope": "assembly",
-      "type": null,
-      "required": true,
-      "broken": "owner lookup targets a type that is not in this build (see the Assembly.GetType entry)"
-    },
-    {
-      "file": "McpMod.Compendium.cs",
-      "line": 606,
+      "line": 607,
       "api": "GetMethod",
       "member": "GetProgressPathForProfile",
       "kind": "method",
@@ -401,7 +379,7 @@
     },
     {
       "file": "McpMod.Compendium.cs",
-      "line": 678,
+      "line": 679,
       "api": "GetProperty",
       "member": "Entry",
       "kind": "property",

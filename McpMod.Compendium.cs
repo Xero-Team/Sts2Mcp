@@ -1,11 +1,13 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Net;
 using System.Reflection;
 using System.Text.Json;
+using MegaCrit.Sts2.Core.Platform;
 using MegaCrit.Sts2.Core.Platform.Steam;
 using MegaCrit.Sts2.Core.Runs;
 using MegaCrit.Sts2.Core.Saves;
@@ -581,13 +583,12 @@ public static partial class McpMod
             if (!SteamInitializer.Initialized)
                 return null;
 
-            Type? steamUtil = typeof(SteamInitializer).Assembly.GetType("MegaCrit.Sts2.Core.Platform.Steam.SteamUtil");
-            MethodInfo? getSteamId = steamUtil?.GetMethod("GetSteamID64", BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
-            string? steamId = getSteamId?.Invoke(null, null)?.ToString();
-            if (string.IsNullOrWhiteSpace(steamId) || string.Equals(steamId, "0", StringComparison.Ordinal))
-                return null;
-
-            return steamId;
+            // v0.111 dropped the SteamUtil.GetSteamID64 helper this used to reflect
+            // into. PlatformUtil is the game's own way to ask the same question, and
+            // a direct call is compile-checked instead of silently reporting "no
+            // active account" when the helper moves again.
+            ulong steamId = PlatformUtil.GetLocalPlayerId(PlatformUtil.PrimaryPlatform);
+            return steamId == 0 ? null : steamId.ToString(CultureInfo.InvariantCulture);
         });
     }
 

@@ -44,14 +44,18 @@ has moved. Regenerate with:
 python3 scripts/test_game_surface_manifest.py --write
 ```
 
-## Known mismatch in v0.111.0
+## The Steam id lookup, fixed
 
-`McpMod.Compendium.cs:584` looks up `MegaCrit.Sts2.Core.Platform.Steam.SteamUtil` and calls
-`GetSteamID64` on it. This build ships `MegaCrit.Sts2.Core.Multiplayer.Transport.Steam.SteamUtil`
-instead, and that type has no `GetSteamID64` (the id accessor is a Steamworks extension). The
-manifest records both entries as `broken`, the harness prints `BROKEN …` for them, and the exit
-code stays 0 so the rest of the surface is still graded. Fixing it is its own change: it alters
-what `GetActiveSteamId` returns.
+An earlier revision looked up `MegaCrit.Sts2.Core.Platform.Steam.SteamUtil` by name and called
+`GetSteamID64` on it. v0.111 moved Steam transport under
+`MegaCrit.Sts2.Core.Multiplayer.Transport.Steam` and the new `SteamUtil` has no such method, so the
+reflection silently reported "no active account". `GetActiveSteamId` now calls the game's own
+`PlatformUtil.GetLocalPlayerId(PlatformUtil.PrimaryPlatform)` directly, which the compiler checks and
+which needs no manifest entry. The two broken entries are gone; the check grades 188 bindings.
+
+There is no "known mismatch" bucket on purpose: a binding that is not optional must exist in the
+build, or this check fails. If the mod can tolerate a member going away, mark it
+`required: false` and say why.
 
 ## What it cannot check
 
