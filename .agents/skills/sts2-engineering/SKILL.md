@@ -7,14 +7,15 @@ description: >-
   working change, honest checks, root causes, deterministic gates, small commits
   — with a layered dependency rule and repository standards adapted from Clean
   Architecture (layers, one endpoint per request/response/handler, error bodies,
-  naming, build hygiene) and REA game-build evidence: managed members in
-  sts2.dll, Harmony patch targets, Godot .pck resources. Skip REA when this
-  repository, docs/raw-*.md, or a running game's localhost API already answers
-  the question.
+  naming, build hygiene), dotnet/runtime C# coding style (braces, visibility,
+  `_`/`s_` field prefixes, `var`/`new()`), and REA game-build evidence: managed
+  members in sts2.dll, Harmony patch targets, Godot .pck resources. Skip REA when
+  this repository, docs/raw-*.md, or a running game's localhost API already
+  answers the question.
 metadata:
-  version: "3"
+  version: "4"
   adapted-for: STS2MCP
-  fuses: "unclebob/ub-mode@9ac940b (principles paraphrased; upstream has no license file), morluto/rea reverse-engineer-anything@9da1eed (MIT), ardalis/CleanArchitecture (MIT; layer and REPR rules extracted, no scaffold copied), jasontaylordev/CleanArchitecture (MIT; build hygiene, naming, endpoint and error standards extracted, no scaffold copied)"
+  fuses: "unclebob/ub-mode@9ac940b (principles paraphrased; upstream has no license file), morluto/rea reverse-engineer-anything@9da1eed (MIT), ardalis/CleanArchitecture (MIT; layer and REPR rules extracted, no scaffold copied), jasontaylordev/CleanArchitecture (MIT; build hygiene, naming, endpoint and error standards extracted, no scaffold copied), dotnet/runtime docs/coding-guidelines (MIT; C# style rules paraphrased, no text or file copied)"
 ---
 
 # STS2 engineering mode
@@ -143,6 +144,15 @@ PR.
   - **Names and files.** One public type per file, file named after it, folders
     are layers, JSON is `snake_case` and mapped in one place. The `McpMod.*.cs`
     partials are the grandfathered exception.
+  - **C# style.** [dotnet/runtime's coding guidelines](https://github.com/dotnet/runtime/blob/main/docs/coding-guidelines/coding-style.md)
+    are the reference; the review-deciding rules are in
+    [references/repo-standards.md](references/repo-standards.md). Allman braces,
+    explicit visibility first, fields at the top, `_camelCase` / `s_name` /
+    `t_name` field prefixes, `PascalCase` constants and methods, `nameof` over
+    repeated literals, `var`/`new()` only when the type is named on the other
+    side, `sealed`/`static` helpers, `\uXXXX` for non-ASCII. The touched file's
+    existing style wins until that file is normalized in its own commit;
+    `.editorconfig` is the executable copy and changes to it are standalone.
   - **Toolchain targets.** `Directory.Build.props` (configuration: game path, no
     literals), `Directory.Build.targets` (analyzer gate), and `.editorconfig` are
     committed. `global.json` is still absent; adding it is a small standalone
@@ -252,8 +262,9 @@ explain.
 
 - Layer target, dependency rules, boundary checks, and ADR-lite:
   [references/architecture.md](references/architecture.md)
-- Build hygiene, naming, endpoint shape, error bodies, logging, test layout, and
-  the compliance checklist: [references/repo-standards.md](references/repo-standards.md)
+- Build hygiene, naming, C# coding style, endpoint shape, error bodies, logging,
+  test layout, and the compliance checklist:
+  [references/repo-standards.md](references/repo-standards.md)
 - STS2 recipes and the file that consumes each answer:
   [references/sts2-game-artifacts.md](references/sts2-game-artifacts.md)
 - Managed assemblies, packs, extraction, and native targets:

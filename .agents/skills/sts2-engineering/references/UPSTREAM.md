@@ -1,6 +1,6 @@
 # Provenance
 
-This skill fuses three upstreams and adapts them to STS2_MCP.
+This skill fuses four upstreams and adapts them to STS2_MCP.
 
 ## Clean Architecture (jasontaylordev)
 
@@ -57,6 +57,22 @@ This skill fuses three upstreams and adapts them to STS2_MCP.
   upstream material, MIT-licensed and attributed here. The `SKILL.md` itself was
   rewritten and merged into the engineering passes rather than copied.
 
+## dotnet/runtime coding guidelines
+
+- Source: https://github.com/dotnet/runtime/tree/main/docs/coding-guidelines
+  (`coding-style.md`, the C# style page)
+- License: MIT
+- Handling: **no text or file was copied.** The rules were paraphrased and
+  re-scoped to the decisions that actually come up in this repository: Allman
+  braces and single-statement chains, explicit visibility, field placement and
+  `_camelCase` / `s_` / `t_` prefixes, `PascalCase` constants and methods,
+  `nameof` over repeated literals, `var`/target-typed `new()` only when the type
+  is named on the other side, `sealed`/`static` internal types, `\uXXXX` for
+  non-ASCII source, and "the existing style of a touched file wins". The rules
+  live in `references/repo-standards.md` section 3; `.editorconfig` is the
+  executable subset. Upstream's tooling claims (`dotnet format` in CI) are not
+  imported as gates: this repository has no CI workflow.
+
 ## What changed for STS2MCP
 
 - One skill replaces the earlier `reverse-engineer-anything` copy: the ub-mode
@@ -82,9 +98,10 @@ This skill fuses three upstreams and adapts them to STS2_MCP.
   - Game-build routing keeps the STS2 target map, path resolution, and
     version-local evidence rules from the previous copy.
 - Added `references/repo-standards.md`: build hygiene targets, naming and file
-  layout, endpoint and error-body standards, validation split, logging, one
-  composition root, test project layout, git hygiene, a runnable compliance
-  checklist, and the known violations observed in the tree on 2026-10-30.
+  layout, the dotnet/runtime-derived C# coding style, endpoint and error-body
+  standards, validation split, logging, one composition root, test project
+  layout, git hygiene, a runnable compliance checklist, and the known violations
+  observed in the tree on 2026-10-30.
 - Added `references/architecture.md`: the layered target, the dependency rule,
   runnable boundary checks for the single-assembly era, the ADR-lite template,
   tests by layer, and how to handle a violation found in touched code.
