@@ -13,20 +13,21 @@
   2. **Analyzer gate** — drive `docs/static-analysis.md` to zero so the
      `STS2StrictWarnings` opt-out can be deleted. Mechanical buckets first,
      the defensive-catch family as one documented helper, `MA0051` only where
-     extraction buys clarity.
+     extraction buys clarity. Done: the opt-out is gone and the gate is
+     unconditional.
   3. **Typed contracts** — `Core/Contracts` for the responses `docs/raw-*.md`
      already documents; each endpoint converted with its before/after response
      captured and compared. This is the first slice ADR 0004 named.
   4. **Layer migration** — `UseCases`, `Infrastructure`, `Transport` folders
      and namespaces inside the single assembly; project split still deferred.
 - Consequences: every phase ends on a clean build and an exercised in-game path,
-  so a phase can be reverted alone. The strict analyzer gate stays off until
-  phase 2 finishes, which means a new warning can still reach the branch.
-- Debt: Phase 2 is not finished. 361 warnings remain at `9122b64`
-  (`CA1031` 124, `MA0051` 65, `ERP022` 64, `EPC12` 20, `S108` 12, `S2486` 12,
-  the rest single-digit). What is left is the catches whose bodies contain
-  `return`/`continue` (a lambda cannot express them, so each needs its own
-  restructure) and 65 long methods that need extraction one at a time.
+  so a phase can be reverted alone. From phase 2 on the gate is unconditional, so
+  a warning cannot reach the branch at all.
+- Debt: Phase 3 and 4 are not started. The analyzer baseline (1538 findings) is
+  closed: the catches whose bodies contained `return`/`continue` got a named
+  wrapper instead of a lambda, and the 74 long methods were split one at a time.
+  What remains is the design work the next two phases name, plus the live-game
+  smoke test for the endpoints touched by the extraction.
 
 ## Orphans found while clearing `S1144`
 
