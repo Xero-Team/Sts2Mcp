@@ -38,100 +38,96 @@ public static partial class McpMod
     /// Builds the complete intent machine for one enemy.
     /// </summary>
     private static Dictionary<string, object?>? BuildIntentMachine(Creature creature)
+        => TryRead("intent.machine", () => BuildIntentMachineCore(creature));
+
+    private static Dictionary<string, object?>? BuildIntentMachineCore(Creature creature)
     {
-        try
-        {
-            var monster = creature.Monster;
-            var machine = monster?.MoveStateMachine;
-            var current = _msmCurrentStateField?.GetValue(machine) as MonsterState;
-            var initial = _msmInitialStateField?.GetValue(machine) as MonsterState;
-            if (monster == null || machine == null || current == null || initial == null)
-                return null;
-            if (_msmPerformedFirstMoveField?.GetValue(machine) is not bool performedFirstMove)
-                return null;
-
-            var states = new List<Dictionary<string, object?>>();
-            bool hasConditionalSnapshots = false;
-            bool hasWeightSnapshots = false;
-            // `States` is built from the list the monster passed to the machine's
-            // constructor, which does NOT necessarily contain the machine's own
-            // cursor or its initial node. Two shipped shapes escape it:
-            //
-            //   - `PhantasmalGardener` and `Myte` pass their `INIT_MOVE`
-            //     conditional as the initial state without ever adding it to the
-            //     list, so the graph's entry point is missing.
-            //   - `CreatureCmd.Stun` builds a synthetic `MoveState("STUNNED")`
-            //     and installs it with `SetMoveImmediate`, so a stunned monster's
-            //     cursor names a state the list never had.
-            //
-            // Either one leaves the consumer unable to resolve an id it was
-            // handed, which costs it the ENTIRE machine and drops that enemy to
-            // the intent-DB fallback. Both nodes are perfectly serializable, so
-            // they are appended rather than left dangling.
-            foreach (var state in machine.States.Values.Concat(new[] { initial, current }).Distinct())
-            {
-                Dictionary<string, object?>? serialized = state switch
-                {
-                    MoveState move => BuildMoveMachineState(monster, creature, move),
-                    RandomBranchState random => BuildRandomMachineState(random, ref hasWeightSnapshots),
-                    ConditionalBranchState conditional =>
-                        BuildConditionalMachineState(conditional, ref hasConditionalSnapshots),
-                    _ => null,
-                };
-                if (serialized == null)
-                    continue;
-                // A monster that DID list its cursor must not export it twice.
-                if (states.Any(existing => Equals(existing["id"], serialized["id"])))
-                    continue;
-                states.Add(serialized);
-            }
-
-            if (states.Count == 0)
-                return null;
-
-            var rng = monster.RunRng.MonsterAi;
-            var rngCoords = RngCoords(rng);
-            if (rngCoords == null)
-                return null;
-            var stateLog = new List<string>(machine.StateLog.Count);
-            foreach (var logged in machine.StateLog)
-                stateLog.Add(logged.Id);
-
-            var result = new Dictionary<string, object?>(StringComparer.Ordinal)
-            {
-                ["initial_state"] = initial.Id,
-                ["current_state"] = current.Id,
-                ["can_transition_away"] = current.CanTransitionAway,
-                ["performed_first_move"] = performedFirstMove,
-                ["state_log"] = stateLog,
-                ["rng_counter"] = rngCoords["counter"],
-                ["conditional_values_are_snapshots"] = hasConditionalSnapshots,
-                // Set when a weight lambda was seen to read live state, rather
-                // than for a named monster: any shipped or modded machine whose
-                // weights move is detected the same way.
-                ["random_weights_are_snapshots"] = hasWeightSnapshots,
-                ["states"] = states,
-            };
-            if (string.Equals(monster.GetType().Name, "TwoTailedRat", StringComparison.Ordinal))
-            {
-                result["dynamic_weight_state"] = new Dictionary<string, object?>(StringComparer.Ordinal)
-                {
-                    ["turns_until_summonable"] = ReadMonsterInt(monster, "TurnsUntilSummonable"),
-                    ["call_for_backup_count"] = ReadMonsterInt(monster, "CallForBackupCount"),
-                };
-            }
-            if (monster is MegaCrit.Sts2.Core.Models.Monsters.BowlbugRock bowlbug)
-                result["bowlbug_off_balance"] = bowlbug.IsOffBalance;
-            if (rngCoords.TryGetValue("seed", out var seed))
-                result["rng_seed"] = seed;
-            if (rngCoords.TryGetValue("state", out var rngState))
-                result["rng_state"] = rngState;
-            return result;
-        }
-        catch
-        {
+        var monster = creature.Monster;
+        var machine = monster?.MoveStateMachine;
+        var current = _msmCurrentStateField?.GetValue(machine) as MonsterState;
+        var initial = _msmInitialStateField?.GetValue(machine) as MonsterState;
+        if (monster == null || machine == null || current == null || initial == null)
             return null;
+        if (_msmPerformedFirstMoveField?.GetValue(machine) is not bool performedFirstMove)
+            return null;
+
+        var states = new List<Dictionary<string, object?>>();
+        bool hasConditionalSnapshots = false;
+        bool hasWeightSnapshots = false;
+        // `States` is built from the list the monster passed to the machine's
+        // constructor, which does NOT necessarily contain the machine's own
+        // cursor or its initial node. Two shipped shapes escape it:
+        //
+        //   - `PhantasmalGardener` and `Myte` pass their `INIT_MOVE`
+        //     conditional as the initial state without ever adding it to the
+        //     list, so the graph's entry point is missing.
+        //   - `CreatureCmd.Stun` builds a synthetic `MoveState("STUNNED")`
+        //     and installs it with `SetMoveImmediate`, so a stunned monster's
+        //     cursor names a state the list never had.
+        //
+        // Either one leaves the consumer unable to resolve an id it was
+        // handed, which costs it the ENTIRE machine and drops that enemy to
+        // the intent-DB fallback. Both nodes are perfectly serializable, so
+        // they are appended rather than left dangling.
+        foreach (var state in machine.States.Values.Concat(new[] { initial, current }).Distinct())
+        {
+            Dictionary<string, object?>? serialized = state switch
+            {
+                MoveState move => BuildMoveMachineState(monster, creature, move),
+                RandomBranchState random => BuildRandomMachineState(random, ref hasWeightSnapshots),
+                ConditionalBranchState conditional =>
+                    BuildConditionalMachineState(conditional, ref hasConditionalSnapshots),
+                _ => null,
+            };
+            if (serialized == null)
+                continue;
+            // A monster that DID list its cursor must not export it twice.
+            if (states.Any(existing => Equals(existing["id"], serialized["id"])))
+                continue;
+            states.Add(serialized);
         }
+
+        if (states.Count == 0)
+            return null;
+
+        var rng = monster.RunRng.MonsterAi;
+        var rngCoords = RngCoords(rng);
+        if (rngCoords == null)
+            return null;
+        var stateLog = new List<string>(machine.StateLog.Count);
+        foreach (var logged in machine.StateLog)
+            stateLog.Add(logged.Id);
+
+        var result = new Dictionary<string, object?>(StringComparer.Ordinal)
+        {
+            ["initial_state"] = initial.Id,
+            ["current_state"] = current.Id,
+            ["can_transition_away"] = current.CanTransitionAway,
+            ["performed_first_move"] = performedFirstMove,
+            ["state_log"] = stateLog,
+            ["rng_counter"] = rngCoords["counter"],
+            ["conditional_values_are_snapshots"] = hasConditionalSnapshots,
+            // Set when a weight lambda was seen to read live state, rather
+            // than for a named monster: any shipped or modded machine whose
+            // weights move is detected the same way.
+            ["random_weights_are_snapshots"] = hasWeightSnapshots,
+            ["states"] = states,
+        };
+        if (string.Equals(monster.GetType().Name, "TwoTailedRat", StringComparison.Ordinal))
+        {
+            result["dynamic_weight_state"] = new Dictionary<string, object?>(StringComparer.Ordinal)
+            {
+                ["turns_until_summonable"] = ReadMonsterInt(monster, "TurnsUntilSummonable"),
+                ["call_for_backup_count"] = ReadMonsterInt(monster, "CallForBackupCount"),
+            };
+        }
+        if (monster is MegaCrit.Sts2.Core.Models.Monsters.BowlbugRock bowlbug)
+            result["bowlbug_off_balance"] = bowlbug.IsOffBalance;
+        if (rngCoords.TryGetValue("seed", out var seed))
+            result["rng_seed"] = seed;
+        if (rngCoords.TryGetValue("state", out var rngState))
+            result["rng_state"] = rngState;
+        return result;
     }
 
     private static Dictionary<string, object?> BuildMoveMachineState(
@@ -158,9 +154,9 @@ public static partial class McpMod
         var branches = new List<Dictionary<string, object?>>(random.States.Count);
         foreach (var branch in random.States)
         {
-            float weight;
-            try { weight = branch.GetWeight(); }
-            catch { weight = 0f; }
+            // A weight that cannot be evaluated is exported as zero, which reads as
+            // "unknown" alongside the snapshot flag below.
+            var weight = TryReadQuiet<float?>(() => branch.GetWeight()) ?? 0f;
             string? dynamicRule = DynamicWeightRule(branch.weightLambda);
             // A supported live rule is re-evaluated by the consumer. Any other
             // dynamic lambda remains an explicit snapshot.
@@ -201,9 +197,9 @@ public static partial class McpMod
                 var evaluate = valueType.GetMethod("Evaluate", BindingFlags.Public | BindingFlags.Instance);
                 if (id == null || evaluate == null)
                     continue;
-                bool enabled;
-                try { enabled = Convert.ToSingle(evaluate.Invoke(value, null), CultureInfo.InvariantCulture) > 0f; }
-                catch { enabled = false; }
+                // A condition that cannot be evaluated is reported as disabled, not guessed.
+                var enabled = TryReadQuiet<bool?>(() =>
+                    Convert.ToSingle(evaluate.Invoke(value, null), CultureInfo.InvariantCulture) > 0f) ?? false;
                 var lambda = valueType
                     .GetField("_conditionalLambda", BindingFlags.NonPublic | BindingFlags.Instance)?
                     .GetValue(value) as Delegate;

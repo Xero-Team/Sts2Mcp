@@ -409,14 +409,14 @@ public static partial class McpMod
     {
         if (owner == null)
             return null;
-        try
-        {
-            if (_historyTurnNumbersField?.GetValue(entry) is Dictionary<ulong, int> turns
-                && turns.TryGetValue(owner.NetId, out var turn))
-                return turn;
-        }
-        catch { /* layout changed — the row still carries round/card id */ }
-        return null;
+
+        // A changed field layout only costs the turn number: the row still carries the
+        // round and the card id.
+        return TryReadQuiet<int?>(() =>
+            _historyTurnNumbersField?.GetValue(entry) is Dictionary<ulong, int> turns
+            && turns.TryGetValue(owner.NetId, out var turn)
+                ? turn
+                : null);
     }
 
     // The multiplayer synchronizer ids every mutable combat card; that identity
@@ -532,14 +532,12 @@ public static partial class McpMod
                 continue;
 
             var owner = CardOwner(card);
-            bool inScope;
-            try
-            {
-                inScope = entry.HappenedThisTurn(combatState)
-                          || (owner != null && entry.HappenedLastPlayerTurn(owner));
-            }
-            catch { continue; }
-            if (!inScope)
+            // An entry whose turn test throws cannot be placed in this window, so it is
+            // skipped rather than reported without its scope.
+            var inScope = TryReadQuiet<bool?>(() =>
+                entry.HappenedThisTurn(combatState)
+                || (owner != null && entry.HappenedLastPlayerTurn(owner)));
+            if (inScope != true)
                 continue;
 
             rows.Add(new Dictionary<string, object?>(StringComparer.Ordinal)
@@ -898,9 +896,9 @@ public static partial class McpMod
     /// constant-time generation value.</summary>
     private static void AddFullRunPlayerDetail(Dictionary<string, object?> entry, Player player)
     {
-        try
+        var deck = new List<Dictionary<string, object?>>();
+        var deckFailure = TryAction("multiplayer.master_deck", () =>
         {
-            var deck = new List<Dictionary<string, object?>>();
             int deckIndex = 0;
             foreach (var card in player.Deck.Cards)
             {
@@ -908,12 +906,11 @@ public static partial class McpMod
                 info["index"] = deckIndex++;
                 deck.Add(info);
             }
+        });
+        if (deckFailure == null)
             entry["deck"] = deck;
-        }
-        catch
-        {
+        else
             entry["detail_incomplete"] = "master deck unavailable";
-        }
 
         entry["status"] = BuildPowersState(player.Creature);
         entry["relics"] = BuildRelicsList(player);

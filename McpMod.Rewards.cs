@@ -79,14 +79,17 @@ public static partial class McpMod
 
     private static void RewardObservation(Action observe)
     {
-        try { observe(); }
-        catch (Exception ex) { GD.PrintErr($"[STS2 MCP] Reward observation failed: {ex.GetType().Name}: {ex.Message}"); }
+        // An observer must never change what the game does; the failure is reported here
+        // and recorded (with its type) by the read helpers.
+        var failure = TryAction("reward.observation", observe);
+        if (failure != null)
+            GD.PrintErr($"[STS2 MCP] Reward observation failed: {failure}");
     }
 
     private static void InstallRewardTracking()
     {
         var harmony = new Harmony("com.sts2mcp.rewards");
-        try
+        var failure = TryAction("rewards.tracking.install", () =>
         {
             void Patch(Type type, string name, string? prefix = null, string? postfix = null)
             {
@@ -104,14 +107,14 @@ public static partial class McpMod
             Patch(typeof(NRewardButton), "GetReward", prefix: nameof(RewardStarted), postfix: nameof(RewardExecutionTask));
             Patch(typeof(NCardRewardSelectionScreen), "OptionSelected", postfix: nameof(RewardChoiceTask));
             _rewardTrackingAvailable = true;
-        }
-        catch (Exception ex)
-        {
-            try { harmony.UnpatchAll("com.sts2mcp.rewards"); }
-            catch (Exception cleanupError) { GD.PrintErr($"[STS2 MCP] Reward tracking cleanup failed: {cleanupError.Message}"); }
-            _rewardTrackingAvailable = false;
-            GD.PrintErr($"[STS2 MCP] Reward tracking unavailable: {ex}");
-        }
+        });
+        if (failure == null)
+            return;
+
+        // A half-applied set must not stay installed: unpatching the owner is the cleanup.
+        TryDoQuiet(() => harmony.UnpatchAll("com.sts2mcp.rewards"));
+        _rewardTrackingAvailable = false;
+        GD.PrintErr($"[STS2 MCP] Reward tracking unavailable: {failure}");
     }
 
     private static void RewardMapOpened() => RewardObservation(() =>
@@ -176,16 +179,21 @@ public static partial class McpMod
     {
         // Wrap the UI's existing task so observation happens BEFORE CardReward.OnSelect resumes.
         // No choice, task result, exception or game reward is changed by this observer.
-        try
+        // The current task is copied out first: a ref parameter cannot be used in a lambda,
+        // and the observer only ever derives a new task from it.
+        var current = __result;
+        var observed = TryRead<Task<int?>?>("reward.choice.observation", () =>
         {
             var entry = GetCardRewardParent(__instance);
-            if (entry == null) return;
+            if (entry == null)
+                return null;
             _rewardSession.AwaitChoice(entry);
             var options = GetInstanceFieldValue(__instance, "_options") as System.Collections.ICollection;
             var alternatives = (GetInstanceFieldValue(__instance, "_extraOptions") as IEnumerable<CardRewardAlternative>)?.ToArray();
-            __result = ObserveRewardChoice(__result, entry, options?.Count, alternatives);
-        }
-        catch (Exception ex) { GD.PrintErr($"[STS2 MCP] Reward choice observation failed: {ex.Message}"); }
+            return ObserveRewardChoice(current, entry, options?.Count, alternatives);
+        });
+        if (observed != null)
+            __result = observed;
     }
 
     private static async Task<int?> ObserveRewardChoice(Task<int?> task, RewardSession.Entry entry,
