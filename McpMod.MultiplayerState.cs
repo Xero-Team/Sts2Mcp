@@ -94,27 +94,27 @@ public static partial class McpMod
         if (topOverlay is NCardGridSelectionScreen cardSelectScreen)
         {
             result["state_type"] = "card_select";
-            result["card_select"] = BuildCardSelectState(cardSelectScreen, runState);
+            result["card_select"] = BuildCardSelectState(cardSelectScreen);
         }
         else if (topOverlay is NChooseACardSelectionScreen chooseCardScreen)
         {
             result["state_type"] = "card_select";
-            result["card_select"] = BuildChooseCardState(chooseCardScreen, runState);
+            result["card_select"] = BuildChooseCardState(chooseCardScreen);
         }
         else if (topOverlay is NChooseABundleSelectionScreen bundleScreen)
         {
             result["state_type"] = "bundle_select";
-            result["bundle_select"] = BuildBundleSelectState(bundleScreen, runState);
+            result["bundle_select"] = BuildBundleSelectState(bundleScreen);
         }
         else if (topOverlay is NChooseARelicSelection relicSelectScreen)
         {
             result["state_type"] = "relic_select";
-            result["relic_select"] = BuildRelicSelectState(relicSelectScreen, runState);
+            result["relic_select"] = BuildRelicSelectState(relicSelectScreen);
         }
         else if (topOverlay is NCrystalSphereScreen crystalSphereScreen)
         {
             result["state_type"] = "crystal_sphere";
-            result["crystal_sphere"] = BuildCrystalSphereState(crystalSphereScreen, runState);
+            result["crystal_sphere"] = BuildCrystalSphereState(crystalSphereScreen);
         }
         else if (!mapIsOpen && topOverlay is NCardRewardSelectionScreen cardRewardScreen)
         {
@@ -129,7 +129,7 @@ public static partial class McpMod
             // inside a room action (Tiny Mailbox's rest-site potions) is masked
             // as the room it came from and nobody can act on it.
             result["state_type"] = "rewards";
-            result["rewards"] = BuildRewardsState(rewardsScreen, runState);
+            result["rewards"] = BuildRewardsState(rewardsScreen);
         }
         else if (topOverlay is NGameOverScreen)
         {
@@ -173,13 +173,13 @@ public static partial class McpMod
                 if (playerHand != null && playerHand.IsInCardSelection)
                 {
                     result["state_type"] = "hand_select";
-                    result["hand_select"] = BuildHandSelectState(playerHand, runState);
-                    result["battle"] = BuildMultiplayerBattleState(runState, combatRoom);
+                    result["hand_select"] = BuildHandSelectState(playerHand);
+                    result["battle"] = BuildMultiplayerBattleState(runState);
                 }
                 else
                 {
                     result["state_type"] = combatRoom.RoomType.ToString().ToLowerInvariant();
-                    result["battle"] = BuildMultiplayerBattleState(runState, combatRoom);
+                    result["battle"] = BuildMultiplayerBattleState(runState);
                 }
             }
             else
@@ -207,7 +207,7 @@ public static partial class McpMod
             else if (eventRoom.CanonicalEvent is FakeMerchant)
             {
                 result["state_type"] = "fake_merchant";
-                result["fake_merchant"] = BuildFakeMerchantState(eventRoom, runState);
+                result["fake_merchant"] = BuildFakeMerchantState(eventRoom);
             }
             else
             {
@@ -243,7 +243,7 @@ public static partial class McpMod
             else
             {
                 result["state_type"] = "rest_site";
-                result["rest_site"] = BuildRestSiteState(restSiteRoom, runState);
+                result["rest_site"] = BuildRestSiteState(restSiteRoom);
             }
         }
         else if (currentRoom is TreasureRoom treasureRoom)
@@ -256,7 +256,7 @@ public static partial class McpMod
             else
             {
                 result["state_type"] = "treasure";
-                result["treasure"] = BuildMultiplayerTreasureState(treasureRoom, runState);
+                result["treasure"] = BuildMultiplayerTreasureState(runState);
             }
         }
         else
@@ -271,7 +271,7 @@ public static partial class McpMod
             && overlayStateType is string overlayType
             && overlayType is "card_select" or "bundle_select")
         {
-            result["battle"] = BuildMultiplayerBattleState(runState, overlayCombat);
+            result["battle"] = BuildMultiplayerBattleState(runState);
         }
 
         // Common run info
@@ -328,7 +328,7 @@ public static partial class McpMod
         return result;
     }
 
-    private static Dictionary<string, object?> BuildMultiplayerBattleState(RunState runState, CombatRoom combatRoom)
+    private static Dictionary<string, object?> BuildMultiplayerBattleState(RunState runState)
     {
         var combatState = CombatManager.Instance.DebugOnlyGetState();
         var battle = new Dictionary<string, object?>(StringComparer.Ordinal);
@@ -707,7 +707,7 @@ public static partial class McpMod
     private static Dictionary<string, object?> BuildMultiplayerEventState(EventRoom eventRoom, RunState runState)
     {
         // Start with the standard event state
-        var state = BuildEventState(eventRoom, runState);
+        var state = BuildEventState(eventRoom);
 
         // Add multiplayer-specific event data
         try
@@ -749,13 +749,13 @@ public static partial class McpMod
         return state;
     }
 
-    private static Dictionary<string, object?> BuildMultiplayerTreasureState(TreasureRoom treasureRoom, RunState runState)
+    private static Dictionary<string, object?> BuildMultiplayerTreasureState(RunState runState)
     {
         // Auto-open chest same as singleplayer. BeginRelicPicking() runs during
         // TreasureRoom.Enter(), so relics are already generated. The chest click
         // just triggers the UI animation + gold via OneOffSynchronizer - same path
         // as a human click or the game's own AutoSlay handler.
-        var state = BuildTreasureState(treasureRoom, runState);
+        var state = BuildTreasureState();
 
         // Add per-player bid data
         try

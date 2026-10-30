@@ -497,22 +497,22 @@ public static partial class McpMod
         else if (topOverlay is NCardGridSelectionScreen cardSelectScreen)
         {
             result["state_type"] = "card_select";
-            result["card_select"] = BuildCardSelectState(cardSelectScreen, runState);
+            result["card_select"] = BuildCardSelectState(cardSelectScreen);
         }
         else if (topOverlay is NChooseACardSelectionScreen chooseCardScreen)
         {
             result["state_type"] = "card_select";
-            result["card_select"] = BuildChooseCardState(chooseCardScreen, runState);
+            result["card_select"] = BuildChooseCardState(chooseCardScreen);
         }
         else if (topOverlay is NChooseABundleSelectionScreen bundleScreen)
         {
             result["state_type"] = "bundle_select";
-            result["bundle_select"] = BuildBundleSelectState(bundleScreen, runState);
+            result["bundle_select"] = BuildBundleSelectState(bundleScreen);
         }
         else if (topOverlay is NChooseARelicSelection relicSelectScreen)
         {
             result["state_type"] = "relic_select";
-            result["relic_select"] = BuildRelicSelectState(relicSelectScreen, runState);
+            result["relic_select"] = BuildRelicSelectState(relicSelectScreen);
         }
         else if (topOverlay is NCrystalSphereScreen crystalSphereScreen
                  && (!mapIsOpen || CrystalSphereIsOutstanding(crystalSphereScreen)))
@@ -529,7 +529,7 @@ public static partial class McpMod
             // un-travellable map with nothing on it - the same deadlock Brain
             // Leech's card reward and Tiny Mailbox's potions produced.
             result["state_type"] = "crystal_sphere";
-            result["crystal_sphere"] = BuildCrystalSphereState(crystalSphereScreen, runState);
+            result["crystal_sphere"] = BuildCrystalSphereState(crystalSphereScreen);
         }
         else if (topOverlay is NCardRewardSelectionScreen cardRewardScreen
                  && (!mapIsOpen || CardRewardIsOutstanding(cardRewardScreen)))
@@ -560,7 +560,7 @@ public static partial class McpMod
             // nothing a client could act on - the run cannot proceed until the
             // potions are taken or skipped, so nothing ever changed again.
             result["state_type"] = "rewards";
-            result["rewards"] = BuildRewardsState(rewardsScreen, runState);
+            result["rewards"] = BuildRewardsState(rewardsScreen);
         }
         else if (topOverlay is NGameOverScreen gameOverScreen)
         {
@@ -602,7 +602,7 @@ public static partial class McpMod
             // options disable and we fall through to "map" so the next node can be
             // chosen. See handle_rest_site / handle_map in the bot.
             result["state_type"] = "rest_site";
-            result["rest_site"] = BuildRestSiteState(pendingRest, runState);
+            result["rest_site"] = BuildRestSiteState(pendingRest);
         }
         else if (currentRoom is EventRoom pendingEvent
                  && pendingEvent.CanonicalEvent is not FakeMerchant
@@ -616,7 +616,7 @@ public static partial class McpMod
             // choice or live dialogue; once it resolves (no pending action) we fall
             // through to "map" so the next node can be chosen (no deadlock).
             result["state_type"] = "event";
-            result["event"] = BuildEventState(pendingEvent, runState);
+            result["event"] = BuildEventState(pendingEvent);
         }
         else if (currentRoom is TreasureRoom pendingTreasure
                  && TreasureHasPendingAction())
@@ -628,7 +628,7 @@ public static partial class McpMod
             // while there is a chest still to open or a relic still to pick; once
             // the room is finished (nothing pending) we fall through to "map".
             result["state_type"] = "treasure";
-            result["treasure"] = BuildTreasureState(pendingTreasure, runState);
+            result["treasure"] = BuildTreasureState();
         }
         else if (currentRoom is MerchantRoom pendingShop
                  && NMerchantRoom.Instance != null
@@ -715,7 +715,7 @@ public static partial class McpMod
                 if (playerHand != null && playerHand.IsInCardSelection)
                 {
                     result["state_type"] = "hand_select";
-                    result["hand_select"] = BuildHandSelectState(playerHand, runState);
+                    result["hand_select"] = BuildHandSelectState(playerHand);
                     result["battle"] = BuildBattleState(runState, combatRoom);
                 }
                 else
@@ -750,12 +750,12 @@ public static partial class McpMod
             else if (eventRoom.CanonicalEvent is FakeMerchant)
             {
                 result["state_type"] = "fake_merchant";
-                result["fake_merchant"] = BuildFakeMerchantState(eventRoom, runState);
+                result["fake_merchant"] = BuildFakeMerchantState(eventRoom);
             }
             else
             {
                 result["state_type"] = "event";
-                result["event"] = BuildEventState(eventRoom, runState);
+                result["event"] = BuildEventState(eventRoom);
             }
         }
         else if (currentRoom is MapRoom)
@@ -794,7 +794,7 @@ public static partial class McpMod
             else
             {
                 result["state_type"] = "rest_site";
-                result["rest_site"] = BuildRestSiteState(restSiteRoom, runState);
+                result["rest_site"] = BuildRestSiteState(restSiteRoom);
             }
         }
         else if (currentRoom is TreasureRoom treasureRoom)
@@ -807,7 +807,7 @@ public static partial class McpMod
             else
             {
                 result["state_type"] = "treasure";
-                result["treasure"] = BuildTreasureState(treasureRoom, runState);
+                result["treasure"] = BuildTreasureState();
             }
         }
         else if (currentRoom == null && tree?.Root != null)
@@ -4065,7 +4065,7 @@ public static partial class McpMod
         return FindAll<NEventOptionButton>(uiRoom).Any(b => !b.Option.WasChosen);
     }
 
-    private static Dictionary<string, object?> BuildEventState(EventRoom eventRoom, RunState runState)
+    private static Dictionary<string, object?> BuildEventState(EventRoom eventRoom)
     {
         var state = new Dictionary<string, object?>(StringComparer.Ordinal);
 
@@ -4179,7 +4179,7 @@ public static partial class McpMod
         return state;
     }
 
-    private static Dictionary<string, object?> BuildFakeMerchantState(EventRoom eventRoom, RunState runState)
+    private static Dictionary<string, object?> BuildFakeMerchantState(EventRoom eventRoom)
     {
         var state = new Dictionary<string, object?>(StringComparer.Ordinal);
         // LocalMutableEvent holds the per-player mutable copy with populated inventory;
@@ -4295,7 +4295,7 @@ public static partial class McpMod
         return state;
     }
 
-    private static Dictionary<string, object?> BuildRestSiteState(RestSiteRoom restSiteRoom, RunState runState)
+    private static Dictionary<string, object?> BuildRestSiteState(RestSiteRoom restSiteRoom)
     {
         var state = new Dictionary<string, object?>(StringComparer.Ordinal);
 
@@ -5137,7 +5137,7 @@ public static partial class McpMod
         };
     }
 
-    private static Dictionary<string, object?> BuildRewardsState(NRewardsScreen rewardsScreen, RunState runState)
+    private static Dictionary<string, object?> BuildRewardsState(NRewardsScreen rewardsScreen)
     {
         var state = new Dictionary<string, object?>(StringComparer.Ordinal);
 
@@ -5314,7 +5314,7 @@ public static partial class McpMod
         return result;
     }
 
-    private static Dictionary<string, object?> BuildCardSelectState(NCardGridSelectionScreen screen, RunState runState)
+    private static Dictionary<string, object?> BuildCardSelectState(NCardGridSelectionScreen screen)
     {
         var state = new Dictionary<string, object?>(StringComparer.Ordinal);
 
@@ -5547,7 +5547,7 @@ public static partial class McpMod
         }
     }
 
-    private static Dictionary<string, object?> BuildChooseCardState(NChooseACardSelectionScreen screen, RunState runState)
+    private static Dictionary<string, object?> BuildChooseCardState(NChooseACardSelectionScreen screen)
     {
         var state = new Dictionary<string, object?>(StringComparer.Ordinal);
         state["screen_type"] = "choose";
@@ -5623,7 +5623,7 @@ public static partial class McpMod
     /// <summary>`NChooseACardSelectionScreen._noSelectionTimeMsec`.</summary>
     private const ulong ChooseCardScreenInputDeadzoneMsec = 350uL;
 
-    private static Dictionary<string, object?> BuildBundleSelectState(NChooseABundleSelectionScreen screen, RunState runState)
+    private static Dictionary<string, object?> BuildBundleSelectState(NChooseABundleSelectionScreen screen)
     {
         var state = new Dictionary<string, object?>(StringComparer.Ordinal);
         state["screen_type"] = "bundle";
@@ -5707,7 +5707,7 @@ public static partial class McpMod
         return state;
     }
 
-    private static Dictionary<string, object?> BuildHandSelectState(NPlayerHand hand, RunState runState)
+    private static Dictionary<string, object?> BuildHandSelectState(NPlayerHand hand)
     {
         var state = new Dictionary<string, object?>(StringComparer.Ordinal);
 
@@ -5828,7 +5828,7 @@ public static partial class McpMod
         return state;
     }
 
-    private static Dictionary<string, object?> BuildRelicSelectState(NChooseARelicSelection screen, RunState runState)
+    private static Dictionary<string, object?> BuildRelicSelectState(NChooseARelicSelection screen)
     {
         var state = new Dictionary<string, object?>(StringComparer.Ordinal);
 
@@ -5865,7 +5865,7 @@ public static partial class McpMod
         return state;
     }
 
-    private static Dictionary<string, object?> BuildCrystalSphereState(NCrystalSphereScreen screen, RunState runState)
+    private static Dictionary<string, object?> BuildCrystalSphereState(NCrystalSphereScreen screen)
     {
         var state = new Dictionary<string, object?>(StringComparer.Ordinal);
 
@@ -5997,7 +5997,7 @@ public static partial class McpMod
         return false;
     }
 
-    private static Dictionary<string, object?> BuildTreasureState(TreasureRoom treasureRoom, RunState runState)
+    private static Dictionary<string, object?> BuildTreasureState()
     {
         var state = new Dictionary<string, object?>(StringComparer.Ordinal);
 
