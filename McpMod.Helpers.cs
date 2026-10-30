@@ -907,7 +907,7 @@ public static partial class McpMod
             .Where(mp => mp.Point != null
                          && (mapScreen.IsDebugTravelEnabled
                              || (mapScreen.IsTravelEnabled && mp.State == MapPointState.Travelable)))
-            .OrderBy(mp => mp.Point!.coord.col)
+            .OrderBy(mp => mp.Point.coord.col)
             .ToList();
     }
 

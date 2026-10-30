@@ -82,7 +82,7 @@ internal static class RecordObserve
                 ["max_energy"] = pcs?.MaxEnergy,
                 ["gold"] = player.Gold,
                 ["powers"] = Powers(player.Creature),
-                ["relics"] = new JsonArray(player.Relics.Select(r => (JsonNode)JsonValue.Create(r.Id.Entry)!).ToArray()),
+                ["relics"] = new JsonArray(player.Relics.Select(r => (JsonNode)JsonValue.Create(r.Id.Entry)).ToArray()),
                 ["potions"] = new JsonArray(player.Potions.Select(p => (JsonNode?)JsonValue.Create(p?.Id.Entry)).ToArray()),
             },
             ["enemies"] = new JsonArray((state?.Enemies ?? []).Select(Enemy).ToArray()),
@@ -158,7 +158,7 @@ internal static class RecordObserve
         ["block"] = c.Block,
         ["alive"] = c.IsAlive,
         ["powers"] = Powers(c),
-        ["intents"] = new JsonArray((c.Monster?.NextMove.Intents ?? []).Select(i => (JsonNode)JsonValue.Create(i.IntentType.ToString())!).ToArray()),
+        ["intents"] = new JsonArray((c.Monster?.NextMove.Intents ?? []).Select(i => (JsonNode)JsonValue.Create(i.IntentType.ToString())).ToArray()),
     };
 
     /// <summary>

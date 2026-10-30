@@ -1337,7 +1337,7 @@ internal static class CombatRecorder
             ["self_check"] = selfCheck,
             ["sentry_captures"] = _sentryCaptures - rec.SentryAtOpen,
             ["main_thread_us"] = Timing(rec.HookMicros),
-            ["faults"] = new JsonArray(rec.Faults.Select(f => (JsonNode)JsonValue.Create(f)!).ToArray()),
+            ["faults"] = new JsonArray(rec.Faults.Select(f => (JsonNode)JsonValue.Create(f)).ToArray()),
         });
         Writer.CloseFile(rec.PublicPath);
         Writer.CloseFile(rec.HiddenPath);

@@ -348,7 +348,7 @@ public static partial class McpMod
         {
             return Error(
                 $"{SafeGetText(() => card.Id.Entry)} already carries "
-                + $"{SafeGetText(() => card.Enchantment!.Id.Entry)}");
+                + $"{SafeGetText(() => card.Enchantment.Id.Entry)}");
         }
 
         CardCmd.Enchant(enchantment, card, amount);

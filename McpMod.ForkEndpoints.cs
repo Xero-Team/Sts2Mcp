@@ -513,7 +513,7 @@ public static partial class McpMod
 
                 var title = SafeGetText(() => ht.Title);
                 if (!string.IsNullOrEmpty(title))
-                    keywords.TryAdd(title!, SafeGetText(() => ht.Description) ?? "");
+                    keywords.TryAdd(title, SafeGetText(() => ht.Description) ?? "");
             }
             catch
             {

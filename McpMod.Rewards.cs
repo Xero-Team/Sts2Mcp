@@ -201,7 +201,7 @@ public static partial class McpMod
                 _rewardSession.Choice(entry, "card");
             else if (cardCount.HasValue && alternatives != null && choice - cardCount >= 0 && choice - cardCount < alternatives.Length)
             {
-                var alternative = alternatives[(choice - cardCount)!.Value];
+                var alternative = alternatives[(choice - cardCount).Value];
                 bool skip = alternative.OptionId.Equals("Skip", StringComparison.OrdinalIgnoreCase)
                     && alternative.AfterSelected == PostAlternateCardRewardAction.EndSelectionAndDoNotCompleteReward;
                 _rewardSession.Choice(entry, skip ? "skip" : "alternative", alternative.OptionId);

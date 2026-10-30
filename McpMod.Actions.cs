@@ -1014,11 +1014,11 @@ public static partial class McpMod
         if (hasCol && hasRow)
         {
             target = travelable.FirstOrDefault(mp =>
-                mp.Point!.coord.col == col && mp.Point!.coord.row == row)!;
+                mp.Point.coord.col == col && mp.Point.coord.row == row)!;
             if (target == null)
                 return Error(
                     $"No travelable node at ({col},{row}). Travelable: "
-                    + string.Join(", ", travelable.Select(mp => $"{mp.Point!.PointType} ({mp.Point!.coord.col},{mp.Point!.coord.row})")));
+                    + string.Join(", ", travelable.Select(mp => $"{mp.Point.PointType} ({mp.Point.coord.col},{mp.Point.coord.row})")));
         }
         else if (hasCol || hasRow)
         {
@@ -1033,7 +1033,7 @@ public static partial class McpMod
             target = travelable[index];
         }
 
-        var pt = target.Point!;
+        var pt = target.Point;
         mapScreen.OnMapPointSelectedLocally(target);
 
         return new Dictionary<string, object?>(StringComparer.Ordinal)

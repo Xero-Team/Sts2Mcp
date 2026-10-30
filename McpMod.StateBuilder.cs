@@ -1329,7 +1329,7 @@ public static partial class McpMod
         // SeedChanged -> _seedInput.Text, and a human submitting the field -> SetSeed),
         // so read it from there rather than off the LineEdit.
         if (GetInstanceFieldValue(screen, "_seedInput") != null && !string.IsNullOrWhiteSpace(lobby?.Seed))
-            result["seed"] = lobby!.Seed;
+            result["seed"] = lobby.Seed;
 
         // Run modifiers — custom run only. Each is a tickbox; surface it as read info
         // (id, title, description, ticked) plus a toggle option named "modifier_<key>",

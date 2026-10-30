@@ -75,7 +75,7 @@ public static partial class McpMod
             // PotionPoolModel has no Title (unlike CardPoolModel), so the
             // ModelId entry is the stable key — "SHARED_POTION_POOL" and so on.
             var title = SafeGet(() => (object?)pool.Id?.Entry) as string;
-            if (string.IsNullOrWhiteSpace(title) || pools.ContainsKey(title!))
+            if (string.IsNullOrWhiteSpace(title) || pools.ContainsKey(title))
                 continue;
 
             List<PotionModel> potions;
@@ -89,7 +89,7 @@ public static partial class McpMod
                 continue;
             }
 
-            pools[title!] = new Dictionary<string, object?>(StringComparer.Ordinal)
+            pools[title] = new Dictionary<string, object?>(StringComparer.Ordinal)
             {
                 ["potions"] = potions.Select(BuildPotionPoolEntry).ToList()
             };
@@ -103,7 +103,7 @@ public static partial class McpMod
         {
             var name = SafeGetText(() => character.Title);
             if (!string.IsNullOrWhiteSpace(name))
-                characters[name!] = SafeGet(() => (object?)character.PotionPool?.Id?.Entry);
+                characters[name] = SafeGet(() => (object?)character.PotionPool?.Id?.Entry);
         }
 
         var result = new Dictionary<string, object?>(StringComparer.Ordinal)

@@ -235,7 +235,7 @@ public static partial class McpMod
             var name = entry.Key?.ToString();
             if (string.IsNullOrEmpty(name))
                 continue;
-            into[SnakeCase(name!)] = coords;
+            into[SnakeCase(name)] = coords;
         }
     }
 
