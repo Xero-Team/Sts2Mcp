@@ -60,15 +60,6 @@ internal static class CombatRecorder
     internal static readonly string s_sessionId = Guid.NewGuid().ToString("N");
     private static readonly DateTimeOffset s_sessionStarted = DateTimeOffset.UtcNow;
 
-    // --- configuration / installation -------------------------------------------------------
-
-    internal static bool ConfigEnabled { get; private set; } = true;
-    internal static string Root { get; private set; } = DefaultRoot();
-
-    /// <summary>"not_installed" / "installed" / "failed". Patches are only applied when asked to.</summary>
-    internal static string InstallState { get; private set; } = "not_installed";
-    internal static string? InstallError { get; private set; }
-
     /// <summary>Runtime switch. Off means every hook returns at its first line.</summary>
     private static volatile bool s_active;
 
@@ -85,6 +76,56 @@ internal static class CombatRecorder
     private static readonly ConditionalWeakTable<GameAction, StrongBox<long>> s_apiActions = new();
     /// <summary>The first id each action got. Resuming after a choice gives it a new id.</summary>
     private static readonly ConditionalWeakTable<GameAction, StrongBox<uint>> s_actionKeys = new();
+
+    private static PendingInitial? s_pending;
+    private static OpenRecord? s_rec;
+    private static bool s_inCleanup;
+    private static int s_faultsTotal;
+    private static string? s_lastFault;
+    private static int s_recordsOpened;
+    private static int s_sentryCaptures;
+    /// <summary>
+    /// Directories handed out in this process. The writer thread creates a directory only when it
+    /// writes the first line, so numbering from the disk alone could give a name out twice.
+    /// </summary>
+    private static readonly HashSet<string> s_reservedDirs = new(StringComparer.Ordinal);
+
+    private static RoomTracker s_track = new();
+
+    /// <summary>
+    /// "startup": installed by the mod's initializer (StartIfConfigured), before the game has run a
+    /// single console command, API request or run - the tracking layer has seen the whole process.
+    /// "runtime": installed later by set_recording, at the menu or mid-run. Whatever happened in the
+    /// process before that (a console command at the menu, an action requested and held back by the
+    /// game) was not seen, and the game can hand such things back later looking new - a held-back
+    /// action comes through RequestEnqueue again at the next player turn. So in a "runtime"
+    /// process the recorder guarantees neither provenance nor the absence of outside inputs: every
+    /// untagged player-driven action is "unknown" and inputs_outside_replay is "unknown".
+    /// Supported scope: complete records come only from a process that started with "record": true.
+    /// </summary>
+    private static string s_installedAt = "not_installed";
+
+    /// <summary>Every action seen at ActionQueueSynchronizer.RequestEnqueue since install.</summary>
+    private static readonly ConditionalWeakTable<GameAction, object> s_seenRequests = new();
+
+    /// <summary>
+    /// Console commands run in this process since install that bypassed the action queue. Their
+    /// effects need not stay in one room nor in the save (GodModeConsoleCmd keeps static state and a
+    /// CombatManager.CombatSetUp subscription that acts in every later combat), so every record
+    /// opened after one in the same process carries the list and a fault. A new process starts clean.
+    /// </summary>
+    private static readonly JsonArray s_consoleInProcess = new();
+
+    private static readonly PacketWriter s_packetWriterInstance = new() { WarnOnGrow = false };
+
+    // --- configuration / installation -------------------------------------------------------
+
+    internal static bool ConfigEnabled { get; private set; } = true;
+    internal static string Root { get; private set; } = DefaultRoot();
+
+    /// <summary>"not_installed" / "installed" / "failed". Patches are only applied when asked to.</summary>
+    internal static string InstallState { get; private set; } = "not_installed";
+    internal static string? InstallError { get; private set; }
 
     // --- records -----------------------------------------------------------------------------
 
@@ -125,19 +166,6 @@ internal static class CombatRecorder
         internal string HiddenPath => Path.Combine(Dir, "hidden.jsonl");
     }
 
-    private static PendingInitial? s_pending;
-    private static OpenRecord? s_rec;
-    private static bool s_inCleanup;
-    private static int s_faultsTotal;
-    private static string? s_lastFault;
-    private static int s_recordsOpened;
-    private static int s_sentryCaptures;
-    /// <summary>
-    /// Directories handed out in this process. The writer thread creates a directory only when it
-    /// writes the first line, so numbering from the disk alone could give a name out twice.
-    /// </summary>
-    private static readonly HashSet<string> s_reservedDirs = new(StringComparer.Ordinal);
-
     // --- the tracking layer ------------------------------------------------------------------
     //
     // Two layers. The tracking layer follows the game from the moment the recorder is installed,
@@ -163,32 +191,6 @@ internal static class CombatRecorder
         /// <summary>Per slot, the next choice id when tracking started inside a room: smaller ids were reserved unseen.</summary>
         internal readonly Dictionary<int, uint> ChoiceFloor = new();
     }
-
-    private static RoomTracker s_track = new();
-
-    /// <summary>
-    /// "startup": installed by the mod's initializer (StartIfConfigured), before the game has run a
-    /// single console command, API request or run - the tracking layer has seen the whole process.
-    /// "runtime": installed later by set_recording, at the menu or mid-run. Whatever happened in the
-    /// process before that (a console command at the menu, an action requested and held back by the
-    /// game) was not seen, and the game can hand such things back later looking new - a held-back
-    /// action comes through RequestEnqueue again at the next player turn. So in a "runtime"
-    /// process the recorder guarantees neither provenance nor the absence of outside inputs: every
-    /// untagged player-driven action is "unknown" and inputs_outside_replay is "unknown".
-    /// Supported scope: complete records come only from a process that started with "record": true.
-    /// </summary>
-    private static string s_installedAt = "not_installed";
-
-    /// <summary>Every action seen at ActionQueueSynchronizer.RequestEnqueue since install.</summary>
-    private static readonly ConditionalWeakTable<GameAction, object> s_seenRequests = new();
-
-    /// <summary>
-    /// Console commands run in this process since install that bypassed the action queue. Their
-    /// effects need not stay in one room nor in the save (GodModeConsoleCmd keeps static state and a
-    /// CombatManager.CombatSetUp subscription that acts in every later combat), so every record
-    /// opened after one in the same process carries the list and a fault. A new process starts clean.
-    /// </summary>
-    private static readonly JsonArray s_consoleInProcess = new();
 
     private static bool Installed => string.Equals(InstallState, "installed", StringComparison.Ordinal);
 
@@ -1781,8 +1783,6 @@ internal static class CombatRecorder
     // ========================================================================================
     // Small readers
     // ========================================================================================
-
-    private static readonly PacketWriter s_packetWriterInstance = new() { WarnOnGrow = false };
 
     /// <summary>The game's own serializer (a writer of our own), into a fresh array.</summary>
     private static byte[] Packet<T>(T value) where T : IPacketSerializable

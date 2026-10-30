@@ -7,6 +7,14 @@ namespace Sts2Mcp.Rewards;
 // UI-independent registry. Keys are object identities, never serialized or hashed into IDs.
 internal sealed class RewardSession
 {
+    private readonly string _epoch = Guid.NewGuid().ToString("N");
+    private long _serial;
+    private long _revision;
+    private object? _screen;
+    private object? _run;
+    private readonly Dictionary<object, Entry> _entries = new(ReferenceEqualityComparer.Instance);
+    private List<Entry> _claimable = new();
+
     internal sealed class Entry(object key, string id, bool fresh)
     {
         internal object Key { get; } = key;
@@ -35,13 +43,6 @@ internal sealed class RewardSession
         }
     }
 
-    private readonly string _epoch = Guid.NewGuid().ToString("N");
-    private long _serial;
-    private long _revision;
-    private object? _screen;
-    private object? _run;
-    private readonly Dictionary<object, Entry> _entries = new(ReferenceEqualityComparer.Instance);
-    private List<Entry> _claimable = new();
     internal IEnumerable<Entry> Entries => _entries.Values;
     internal IReadOnlyList<Entry> Claimable => _claimable;
     internal string Revision => $"{_epoch}:{_revision}";

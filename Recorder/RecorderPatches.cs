@@ -33,6 +33,12 @@ internal static class RecorderPatches
     private static readonly AccessTools.FieldRef<RunManager, long> s_startTimeField =
         AccessTools.FieldRefAccess<RunManager, long>("_startTime");
 
+    private static readonly FieldInfo? s_commandsField =
+        AccessTools.Field(typeof(MegaCrit.Sts2.Core.DevConsole.DevConsole), "_commands");
+
+    private static readonly System.Reflection.FieldInfo? s_queuesField =
+        AccessTools.Field(typeof(ActionQueueSet), "_actionQueues");
+
     internal static IReadOnlyList<string> Applied => s_appliedList;
 
     internal static CombatReplay? ReplayOf(CombatReplayWriter writer) => s_replayField(writer);
@@ -156,9 +162,6 @@ internal static class RecorderPatches
     private static void ConsolePrefix(MegaCrit.Sts2.Core.DevConsole.DevConsole __instance, string inputValue)
         => CombatRecorder.OnConsoleCommand(inputValue, () => GoesThroughQueue(__instance, inputValue));
 
-    private static readonly FieldInfo? s_commandsField =
-        AccessTools.Field(typeof(MegaCrit.Sts2.Core.DevConsole.DevConsole), "_commands");
-
     /// <summary>
     /// The same test DevConsole.ProcessCommand makes before enqueueing a ConsoleCmdGameAction:
     /// not single player (IsSingleplayerOrFakeMultiplayer is false with no run too), the command
@@ -178,9 +181,6 @@ internal static class RecorderPatches
             return false;
         return commands[name] is MegaCrit.Sts2.Core.DevConsole.ConsoleCommands.AbstractConsoleCmd cmd && cmd.IsNetworked;
     }
-
-    private static readonly System.Reflection.FieldInfo? s_queuesField =
-        AccessTools.Field(typeof(ActionQueueSet), "_actionQueues");
 
     /// <summary>Every action in the player queues (read through the private list; nothing is changed).</summary>
     internal static IEnumerable<GameAction> QueuedActions(ActionQueueSet? set)

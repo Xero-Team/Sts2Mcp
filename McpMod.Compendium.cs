@@ -19,6 +19,8 @@ public static partial class McpMod
     private static Type? s_runHistoryMembersType;
     private static MemberInfo[]? s_runHistoryMembers;
 
+    private static MethodInfo? s_progressPathForProfile;
+
     private static void HandleGetCompendium(HttpListenerRequest request, HttpListenerResponse response)
     {
         // Main's dispatch shape: the snapshot needs the game's main thread, and
@@ -588,8 +590,6 @@ public static partial class McpMod
             return steamId;
         });
     }
-
-    private static MethodInfo? s_progressPathForProfile;
 
     /// <summary>
     /// `ProgressSaveManager.GetProgressPathForProfile`, called across game

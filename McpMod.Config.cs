@@ -17,6 +17,8 @@ public static partial class McpMod
     private const string DotEnvFileName = ".env";
     private const string PortEnvVar = "STS2_PORT";
 
+    private static ModConfig s_config = new();
+
     /// <summary>
     /// Values read from Sts2Mcp.conf. Every field has a safe default so a
     /// missing/partial/corrupt file never prevents the mod from starting.
@@ -33,8 +35,6 @@ public static partial class McpMod
         /// </summary>
         public bool InstantMode;
     }
-
-    private static ModConfig s_config = new();
 
     /// <summary>
     /// Loads Sts2Mcp.conf from the mod directory, creating it with defaults if

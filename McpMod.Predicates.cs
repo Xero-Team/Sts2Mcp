@@ -7,6 +7,13 @@ namespace Sts2Mcp;
 
 public static partial class McpMod
 {
+    /// <summary>
+    /// Scans keyed by method. A method body never changes, and the intent
+    /// machine is rebuilt on every state poll, so without this the same
+    /// predicates would be re-decoded several times a second.
+    /// </summary>
+    private static readonly Dictionary<MethodBase, PredicateScan> s_predicateScanCache = new();
+
     // Intent-predicate translation.
     //
     // A ConditionalBranchState branch holds a `Func<bool>` closure over the
@@ -54,13 +61,6 @@ public static partial class McpMod
     /// </remarks>
     private static bool ReadsAny(PredicateScan scan, params string[] suffixes) =>
         scan.Members.Any(member => suffixes.Any(member.EndsWith));
-
-    /// <summary>
-    /// Scans keyed by method. A method body never changes, and the intent
-    /// machine is rebuilt on every state poll, so without this the same
-    /// predicates would be re-decoded several times a second.
-    /// </summary>
-    private static readonly Dictionary<MethodBase, PredicateScan> s_predicateScanCache = new();
 
     /// <summary>Reads one method body into a <see cref="PredicateScan"/>.</summary>
     /// <remarks>

@@ -19,17 +19,17 @@ public static partial class McpMod
     // an earlier run cannot accidentally match a later run in this process.
     private static long s_relicBagGeneration = 1;
 
+    private static readonly FieldInfo? s_relicDequesField =
+        typeof(RelicGrabBag).GetField("_deques", BindingFlags.Instance | BindingFlags.NonPublic);
+    private static readonly FieldInfo? s_relicFallbackField =
+        typeof(RelicGrabBag).GetField("_mpFallbackDequeue", BindingFlags.Instance | BindingFlags.NonPublic);
+
     private static long RelicBagGeneration => Interlocked.Read(ref s_relicBagGeneration);
 
     private static void MarkRelicBagsChanged()
     {
         Interlocked.Increment(ref s_relicBagGeneration);
     }
-
-    private static readonly FieldInfo? s_relicDequesField =
-        typeof(RelicGrabBag).GetField("_deques", BindingFlags.Instance | BindingFlags.NonPublic);
-    private static readonly FieldInfo? s_relicFallbackField =
-        typeof(RelicGrabBag).GetField("_mpFallbackDequeue", BindingFlags.Instance | BindingFlags.NonPublic);
 
     private static int RelicBagCount(RelicGrabBag bag)
     {

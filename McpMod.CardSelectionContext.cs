@@ -14,6 +14,9 @@ namespace Sts2Mcp;
 
 public static partial class McpMod
 {
+    private static ActiveCardSelection? s_activeCardSelection;
+    private static long s_nextCardSelectionId;
+
     private sealed record ActiveCardSelection(
         long Id,
         string EntryPoint,
@@ -28,9 +31,6 @@ public static partial class McpMod
         string? OriginKind,
         bool OriginUpgraded,
         string Effect);
-
-    private static ActiveCardSelection? s_activeCardSelection;
-    private static long s_nextCardSelectionId;
 
     private static void AddCardSelectionContext(Dictionary<string, object?> state)
     {

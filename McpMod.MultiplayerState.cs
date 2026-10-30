@@ -31,6 +31,21 @@ namespace Sts2Mcp;
 
 public static partial class McpMod
 {
+    // CombatHistoryEntry.RoundNumber is private; read it via cached reflection.
+    private static readonly PropertyInfo? s_historyRoundProp =
+        typeof(CombatHistoryEntry).GetProperty("RoundNumber",
+            BindingFlags.NonPublic | BindingFlags.Instance);
+
+    // CombatHistoryEntry._playerTurnNumbers is private; read it via cached
+    // reflection so each row can carry the card OWNER's turn number. The public
+    // RoundNumber is not enough: an extra turn carries the same RoundNumber as
+    // the turn before it, so a consumer grouping rows into turns would merge the
+    // two. PlayerCombatState.TurnNumber counts extra turns, and this dictionary
+    // is the snapshot of it taken when the entry was logged.
+    private static readonly FieldInfo? s_historyTurnNumbersField =
+        typeof(CombatHistoryEntry).GetField("_playerTurnNumbers",
+            BindingFlags.NonPublic | BindingFlags.Instance);
+
     /// <summary>Called through BuildMultiplayerGameState(), which brackets it with the warning collector.</summary>
     private static Dictionary<string, object?> BuildMultiplayerGameStateCore(bool fullDetail = false)
     {
@@ -522,25 +537,10 @@ public static partial class McpMod
         return battle;
     }
 
-    // CombatHistoryEntry.RoundNumber is private; read it via cached reflection.
-    private static readonly PropertyInfo? s_historyRoundProp =
-        typeof(CombatHistoryEntry).GetProperty("RoundNumber",
-            BindingFlags.NonPublic | BindingFlags.Instance);
-
     private static int GetEntryRound(CombatHistoryEntry entry)
     {
         return TryRead<int?>(() => s_historyRoundProp?.GetValue(entry) is int r ? r : 0) ?? 0;
     }
-
-    // CombatHistoryEntry._playerTurnNumbers is private; read it via cached
-    // reflection so each row can carry the card OWNER's turn number. The public
-    // RoundNumber is not enough: an extra turn carries the same RoundNumber as
-    // the turn before it, so a consumer grouping rows into turns would merge the
-    // two. PlayerCombatState.TurnNumber counts extra turns, and this dictionary
-    // is the snapshot of it taken when the entry was logged.
-    private static readonly FieldInfo? s_historyTurnNumbersField =
-        typeof(CombatHistoryEntry).GetField("_playerTurnNumbers",
-            BindingFlags.NonPublic | BindingFlags.Instance);
 
     private static int? GetEntryPlayerTurn(CombatHistoryEntry entry, Player? owner)
     {

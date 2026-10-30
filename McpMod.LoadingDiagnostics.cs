@@ -34,13 +34,6 @@ namespace Sts2Mcp;
 /// </remarks>
 public static partial class McpMod
 {
-    private sealed class LoadingHandleInfo
-    {
-        public int Id;
-        public ulong OpenedMs;
-        public string Origin = "";
-    }
-
     /// <summary>
     /// How long the flag must stay held before the open handles are dumped. A
     /// real room entry holds it for about a second (two 0.8s room fades under
@@ -55,6 +48,13 @@ public static partial class McpMod
     private static int s_loadingHandleSeq;
     private static ulong s_loadingHeldSinceMs;
     private static bool s_loadingStuckReported;
+
+    private sealed class LoadingHandleInfo
+    {
+        public int Id;
+        public ulong OpenedMs;
+        public string Origin = "";
+    }
 
     private static string CaptureLoadingOrigin()
     {

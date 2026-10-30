@@ -28,21 +28,6 @@ public static partial class McpMod
     // place to bump the version.
     public static readonly string Version = ResolveVersion();
 
-    private static string ResolveVersion()
-    {
-        var attr = (System.Reflection.AssemblyInformationalVersionAttribute?)
-            System.Attribute.GetCustomAttribute(
-                typeof(McpMod).Assembly,
-                typeof(System.Reflection.AssemblyInformationalVersionAttribute));
-        string? info = attr?.InformationalVersion;
-        if (!string.IsNullOrEmpty(info))
-        {
-            int plus = info.IndexOf('+');
-            return plus >= 0 ? info.Substring(0, plus) : info;
-        }
-        return typeof(McpMod).Assembly.GetName().Version?.ToString(3) ?? "0.0.0";
-    }
-
     /// <summary>
     /// Version of the state/action contract, reported as `schema_version` on every payload.
     ///
@@ -63,8 +48,6 @@ public static partial class McpMod
     ///    what the map's own hover tips show for travelled nodes.
     /// </summary>
     public const int StateSchemaVersion = 3;
-
-    // DefaultPort and ConfigFileName live in McpMod.Config.cs.
 
     /// <summary>
     /// How long an HTTP request waits for the game's main thread before giving up (503).
@@ -111,6 +94,35 @@ public static partial class McpMod
     private static string? s_buildCommit;
     private static bool s_buildCommitResolved;
 
+    private static HttpListener? s_listener;
+    private static Thread? s_serverThread;
+    private static string[] s_boundPrefixes = Array.Empty<string>();
+    private static readonly ConcurrentQueue<Action> s_mainThreadQueue = new();
+
+    // The game's own release version, from the release_info.json shipped next to the executable.
+    // Fixed for the process, so it is read once — and only from the main thread (the manager is a
+    // lazily-constructed singleton that touches Godot file IO). Null when the build ships without
+    // a release_info.json, in which case the key is omitted from the state.
+    private static string? s_gameVersion;
+    private static bool s_gameVersionRead;
+
+    private static string ResolveVersion()
+    {
+        var attr = (System.Reflection.AssemblyInformationalVersionAttribute?)
+            System.Attribute.GetCustomAttribute(
+                typeof(McpMod).Assembly,
+                typeof(System.Reflection.AssemblyInformationalVersionAttribute));
+        string? info = attr?.InformationalVersion;
+        if (!string.IsNullOrEmpty(info))
+        {
+            int plus = info.IndexOf('+');
+            return plus >= 0 ? info.Substring(0, plus) : info;
+        }
+        return typeof(McpMod).Assembly.GetName().Version?.ToString(3) ?? "0.0.0";
+    }
+
+    // DefaultPort and ConfigFileName live in McpMod.Config.cs.
+
     /// <summary>
     /// The git revision this assembly was built from (the part after '+' in
     /// InformationalVersion), or null when the build could not determine one.
@@ -144,18 +156,6 @@ public static partial class McpMod
     /// <summary>Version with the build commit appended when known: "0.4.0+abc1234".</summary>
     internal static string VersionString =>
         BuildCommit is { Length: > 0 } commit ? $"{Version}+{commit}" : Version;
-
-    private static HttpListener? s_listener;
-    private static Thread? s_serverThread;
-    private static string[] s_boundPrefixes = Array.Empty<string>();
-    private static readonly ConcurrentQueue<Action> s_mainThreadQueue = new();
-
-    // The game's own release version, from the release_info.json shipped next to the executable.
-    // Fixed for the process, so it is read once — and only from the main thread (the manager is a
-    // lazily-constructed singleton that touches Godot file IO). Null when the build ships without
-    // a release_info.json, in which case the key is omitted from the state.
-    private static string? s_gameVersion;
-    private static bool s_gameVersionRead;
 
     internal static string? GameVersion()
     {

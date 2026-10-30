@@ -32,6 +32,28 @@ namespace Sts2Mcp;
 
 public static partial class McpMod
 {
+    /// <summary>
+    /// A regex runs on the game's main thread, so a pattern over a game-supplied
+    /// identifier must be bounded. Every pattern the mod uses is linear in the
+    /// input; 250 ms is generous for a name and short enough that a pathological
+    /// string cannot freeze a frame.
+    /// </summary>
+    internal static readonly TimeSpan s_regexTimeout = TimeSpan.FromMilliseconds(250);
+
+    /// <summary>
+    /// Preview container node names across the NCardGridSelectionScreen subclasses:
+    /// upgrade uses %Upgrade*PreviewContainer, enchant %Enchant*PreviewContainer, and
+    /// remove/transform the generic %PreviewContainer. Only one is ever visible.
+    /// </summary>
+    private static readonly string[] s_cardSelectPreviewContainerNames =
+    {
+        "%UpgradeSinglePreviewContainer",
+        "%UpgradeMultiPreviewContainer",
+        "%EnchantSinglePreviewContainer",
+        "%EnchantMultiPreviewContainer",
+        "%PreviewContainer",
+    };
+
     // STS2 v0.107 removed CombatManager.IsPlayPhase. The turn phase now lives per-player on
     // PlayerCombatState.Phase, so these helpers rebuild the old semantics: we're in the play
     // phase when combat is running, it's the player side's turn, and the player is in Play.
@@ -676,28 +698,6 @@ public static partial class McpMod
     // Confirm, which on these screens means "open the preview" (PreviewSelection), not
     // "apply". Pressing it while the preview was already open re-ran PreviewSelection and
     // appended a second copy of every selected card to the preview row.
-
-    /// <summary>
-    /// Preview container node names across the NCardGridSelectionScreen subclasses:
-    /// upgrade uses %Upgrade*PreviewContainer, enchant %Enchant*PreviewContainer, and
-    /// remove/transform the generic %PreviewContainer. Only one is ever visible.
-    /// </summary>
-    /// <summary>
-    /// A regex runs on the game's main thread, so a pattern over a game-supplied
-    /// identifier must be bounded. Every pattern the mod uses is linear in the
-    /// input; 250 ms is generous for a name and short enough that a pathological
-    /// string cannot freeze a frame.
-    /// </summary>
-    internal static readonly TimeSpan s_regexTimeout = TimeSpan.FromMilliseconds(250);
-
-    private static readonly string[] s_cardSelectPreviewContainerNames =
-    {
-        "%UpgradeSinglePreviewContainer",
-        "%UpgradeMultiPreviewContainer",
-        "%EnchantSinglePreviewContainer",
-        "%EnchantMultiPreviewContainer",
-        "%PreviewContainer",
-    };
 
     /// <summary>The preview panel currently covering the grid, or null when the screen is
     /// still in its card-picking step.</summary>

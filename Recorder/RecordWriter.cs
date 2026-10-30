@@ -22,13 +22,6 @@ namespace Sts2Mcp.Recorder;
     Justification = "One writer is created for the life of the process and never torn down; the OS reclaims the queue and the open streams at exit, and every line is flushed as it is written.")]
 internal sealed class RecordWriter
 {
-    // The queue carries one of four shapes, and the writer thread switches on the type.
-    private interface Item;
-    private sealed record Line(string Path, JsonObject Json) : Item;
-    private sealed record Raw(string Path, byte[] Bytes) : Item;
-    private sealed record Close(string Path) : Item;
-    private sealed record Barrier(ManualResetEventSlim Done) : Item;
-
     private static readonly JsonSerializerOptions s_lineOptions = new()
     {
         WriteIndented = false,
@@ -41,6 +34,13 @@ internal sealed class RecordWriter
 
     private int _failures;
     private string? _lastError;
+
+    // The queue carries one of four shapes, and the writer thread switches on the type.
+    private interface Item;
+    private sealed record Line(string Path, JsonObject Json) : Item;
+    private sealed record Raw(string Path, byte[] Bytes) : Item;
+    private sealed record Close(string Path) : Item;
+    private sealed record Barrier(ManualResetEventSlim Done) : Item;
 
     /// <summary>Write failures so far (disk full, permissions...). Surfaced on the status endpoint.</summary>
     internal int Failures => Volatile.Read(ref _failures);

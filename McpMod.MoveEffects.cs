@@ -62,11 +62,11 @@ public static partial class McpMod
     private static readonly FieldInfo? s_moveOnPerformField =
         typeof(MoveState).GetField("_onPerform", BindingFlags.NonPublic | BindingFlags.Instance);
 
-    // (concrete monster type, move id) -> effects dict (null = nothing found)
-    private static readonly Dictionary<(Type, string), Dictionary<string, object?>?> _moveFxCache = new();
-
     /// <summary>The combat the cached scans resolved their amounts against.</summary>
     private static object? s_moveFxScope;
+
+    // (concrete monster type, move id) -> effects dict (null = nothing found)
+    private static readonly Dictionary<(Type, string), Dictionary<string, object?>?> s_moveFxCache = new();
 
     internal static Dictionary<string, object?>? GetMoveEffects(MonsterModel monster, MoveState move)
         => TryRead("move.effects", () => GetMoveEffectsCore(monster, move));
@@ -86,11 +86,11 @@ public static partial class McpMod
         object? scope = TryReadQuiet<object>(() => monster.CombatState);
         if (!ReferenceEquals(scope, s_moveFxScope))
         {
-            _moveFxCache.Clear();
+            s_moveFxCache.Clear();
             s_moveFxScope = scope;
         }
         (Type, string Id) key = (monster.GetType(), move.Id);
-        if (_moveFxCache.TryGetValue(key, out Dictionary<string, object?>? cached))
+        if (s_moveFxCache.TryGetValue(key, out Dictionary<string, object?>? cached))
         {
             if (cached == null)
                 return null;
@@ -102,7 +102,7 @@ public static partial class McpMod
             return current;
         }
         Dictionary<string, object?>? fx = ScanMoveEffects(monster, move);
-        _moveFxCache[key] = fx;
+        s_moveFxCache[key] = fx;
         return fx;
     }
 

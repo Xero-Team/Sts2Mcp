@@ -85,6 +85,139 @@ namespace Sts2Mcp;
 public static partial class McpMod
 {
     /// <summary>
+    /// Screens that exist to take a decision from the player. The game is parked on
+    /// them, not working - reporting "still resolving" here deadlocks any caller that
+    /// waits for it to clear, because only the caller can clear it.
+    /// </summary>
+    private static readonly HashSet<string> s_playerInputStates = new(StringComparer.Ordinal)
+    {
+        "card_select", "hand_select", "bundle_select", "relic_select", "card_reward",
+        "rewards", "event", "rest_site", "shop", "fake_merchant", "treasure",
+        "crystal_sphere", "map", "menu", "game_over"
+    };
+
+    private static readonly FieldInfo s_nextCreatureIdField = typeof(CombatState)
+        .GetField("_nextCreatureId", BindingFlags.Instance | BindingFlags.NonPublic)
+        ?? throw new MissingFieldException(typeof(CombatState).FullName, "_nextCreatureId");
+
+    private static readonly FieldInfo s_ownerEffectDepthField = typeof(CombatManager)
+        .GetField("_cardOrPotionEffectDepth", BindingFlags.Instance | BindingFlags.NonPublic)
+        ?? throw new MissingFieldException(typeof(CombatManager).FullName, "_cardOrPotionEffectDepth");
+
+    // Cached reflection handles for ActModel._rooms and the RoomSet fields.
+    // RoomSet's lists are protected, but they are the only place the act's room
+    // ORDER lives, and re-deriving it would mean replaying GenerateRooms.
+    private static FieldInfo? s_actRoomsField;
+    private static readonly Dictionary<string, FieldInfo?> s_roomSetFields = new(StringComparer.Ordinal);
+
+    private static long s_nextCardObjectIdentity;
+    private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<CardModel, CardObjectIdentity> s_cardObjectIdentities = new();
+
+    private static long s_nextCardPlayIdentity;
+    private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<CardPlay, CardPlayIdentity> s_cardPlayIdentities = new();
+
+    // Cost display alone loses ordering, intrinsic upgrades, and independent
+    // expiration flags. Reflection is required because this source list is private.
+    private static readonly FieldInfo s_energyLocalModifiersField =
+        typeof(CardEnergyCost).GetField("_localModifiers", BindingFlags.Instance | BindingFlags.NonPublic)
+        ?? throw new MissingFieldException(typeof(CardEnergyCost).FullName, "_localModifiers");
+
+    private static readonly FieldInfo s_starCostModifiersField =
+        typeof(CardModel).GetField("_temporaryStarCosts", BindingFlags.Instance | BindingFlags.NonPublic)
+        ?? throw new MissingFieldException(typeof(CardModel).FullName, "_temporaryStarCosts");
+
+    private static readonly FieldInfo s_glassOrbPassiveValueField = typeof(GlassOrb)
+        .GetField("_passiveVal", BindingFlags.Instance | BindingFlags.NonPublic)
+        ?? throw new MissingFieldException(typeof(GlassOrb).FullName, "_passiveVal");
+
+    private static readonly FieldInfo s_singleTurnRetainField =
+        typeof(CardModel).GetField("_hasSingleTurnRetain", BindingFlags.Instance | BindingFlags.NonPublic)
+        ?? throw new MissingFieldException(typeof(CardModel).FullName, "_hasSingleTurnRetain");
+
+    private static readonly FieldInfo s_singleTurnSlyField =
+        typeof(CardModel).GetField("_hasSingleTurnSly", BindingFlags.Instance | BindingFlags.NonPublic)
+        ?? throw new MissingFieldException(typeof(CardModel).FullName, "_hasSingleTurnSly");
+
+    /// <summary>
+    /// Card and potion ids that upgrade cards already in hand, mid-combat: Armaments
+    /// (one or all of the hand), Apotheosis (every card) and Blessing of the Forge (the
+    /// whole hand). Cards that create upgraded copies (Begone, Primal Force...) are not
+    /// here: the copies arrive already upgraded and read correctly without a preview.
+    /// </summary>
+    private static readonly HashSet<string> s_handUpgradeCardIds = new(StringComparer.Ordinal) { "ARMAMENTS", "APOTHEOSIS" };
+    private static readonly HashSet<string> s_handUpgradePotionIds = new(StringComparer.Ordinal) { "BLESSING_OF_THE_FORGE" };
+
+    /// <summary>
+    /// Powers that cap how much HP a creature can lose, per hit. Damage modifiers do not
+    /// see these — they are applied when the damage lands — so a 18-damage card against
+    /// Slippery takes the enemy down by 1, and reporting 18 sends the caller into a
+    /// fight it cannot win. Keyed by power type because that survives an id rename.
+    /// </summary>
+    private static readonly Dictionary<string, string> s_perHitDamageCaps = new(StringComparer.Ordinal)
+    {
+        ["SlipperyPower"] = "next hit reduced to 1",
+        ["IntangiblePower"] = "all damage reduced to 1",
+        ["HardToKillPower"] = "all damage reduced to the power's amount"
+    };
+
+    private const string HardenedShellPowerName = "HardenedShellPower";
+
+    // entity_id registry
+    //
+    // entity_ids used to be generated by counting the *alive* enemies each time state
+    // was built (and again, independently, when resolving a target). That made the same
+    // string point at a different creature as soon as one died between the read and the
+    // action, so "attack EXOSKELETON_1" silently hit the wrong bug or failed outright.
+    //
+    // Ids are now assigned once per creature, on first sight, and keyed by the stable
+    // CombatId. A creature keeps its id for the whole fight, even after its neighbours die.
+    private static readonly Dictionary<uint, string> s_entityIdByCombatId = new();
+    private static readonly Dictionary<string, int> s_entityIdNextIndex = new(StringComparer.Ordinal);
+    private static ICombatState? s_entityIdCombatToken;
+
+    // card uid registry
+    //
+    // card_index is a position in the hand, so playing one card renumbers every card
+    // behind it. A plan built from one state read ("play 4, then 2, then 0") therefore
+    // has to be recomputed after every single play, and getting the arithmetic wrong
+    // plays the wrong card without any error.
+    //
+    // Each card instance gets a uid on first sight that stays with it for the whole
+    // combat, wherever it moves between hand, draw, discard and exhaust.
+    private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<CardModel, string> s_cardUids = new();
+    private static readonly Dictionary<string, int> s_cardUidNextIndex = new(StringComparer.Ordinal);
+    private static object? s_cardUidCombatToken;
+
+    private static readonly Dictionary<Type, PropertyInfo[]> s_monsterStatProps = new();
+
+    // AbstractIntent.IntentLabelFormat is protected, so reach it once by reflection
+    // and cache it. There is no public unpowered label renderer to call instead.
+    private static readonly PropertyInfo? s_intentLabelFormat =
+        typeof(AbstractIntent).GetProperty(
+            "IntentLabelFormat",
+            BindingFlags.Instance
+                | BindingFlags.NonPublic
+                | BindingFlags.Public);
+
+    /// <summary>
+    /// True while a GET /api/v1/singleplayer?passive=1 is building the state: the screens that
+    /// normally nudge the UI while being read (merchant inventory, fake merchant, treasure chest)
+    /// leave it alone. Only touched on the main thread (inside RunOnMainThreadBlocking).
+    /// </summary>
+    private static bool s_passiveRead;
+
+    private static FieldInfo? s_rewardsSetField;
+    private static FieldInfo? s_crystalSphereEntityField;
+    private static FieldInfo? s_crystalSphereCompletionField;
+    private static FieldInfo? s_cardRewardCompletionField;
+    private static FieldInfo? s_rewardsIsTerminalField;
+
+    private static readonly FieldInfo? s_specialRewardCardField = typeof(SpecialCardReward).GetField("_card", BindingFlags.NonPublic | BindingFlags.Instance);
+
+    /// <summary>`NChooseACardSelectionScreen._noSelectionTimeMsec`.</summary>
+    private const ulong ChooseCardScreenInputDeadzoneMsec = 350uL;
+
+    /// <summary>
     /// A top-level state dictionary already carrying the build stamp every payload must report.
     ///
     /// Seeded at creation rather than stamped on the way out because the state builders have
@@ -1050,18 +1183,6 @@ public static partial class McpMod
     /// is_resolving is false only when the action queue is empty and nothing is
     /// blocking player input. resolving_reasons names what is outstanding.
     /// </summary>
-    /// <summary>
-    /// Screens that exist to take a decision from the player. The game is parked on
-    /// them, not working - reporting "still resolving" here deadlocks any caller that
-    /// waits for it to clear, because only the caller can clear it.
-    /// </summary>
-    private static readonly HashSet<string> s_playerInputStates = new(StringComparer.Ordinal)
-    {
-        "card_select", "hand_select", "bundle_select", "relic_select", "card_reward",
-        "rewards", "event", "rest_site", "shop", "fake_merchant", "treasure",
-        "crystal_sphere", "map", "menu", "game_over"
-    };
-
     private static void AddResolvingState(Dictionary<string, object?> result, string? stateType)
     {
         var reasons = new List<string>();
@@ -1304,7 +1425,7 @@ public static partial class McpMod
     /// <summary>
     /// The six NPauseMenu button fields, in the order NPauseMenu.Buttons declares them.
     /// </summary>
-    private static readonly (string Field, string Name)[] _pauseMenuButtons =
+    private static readonly (string Field, string Name)[] s_pauseMenuButtons =
     {
         ("_resumeButton", "resume"),
         ("_settingsButton", "settings"),
@@ -1317,7 +1438,7 @@ public static partial class McpMod
     private static List<Dictionary<string, object?>> BuildPauseMenuOptions(NPauseMenu pauseMenu)
     {
         var options = new List<Dictionary<string, object?>>();
-        foreach ((string? field, string? name) in _pauseMenuButtons)
+        foreach ((string? field, string? name) in s_pauseMenuButtons)
         {
             // Only the button's own Visible flag is read. NPauseMenu._Ready and
             // Initialize set it per game mode (give_up / save_and_quit are hidden
@@ -2309,18 +2430,10 @@ public static partial class McpMod
         }) ?? false;
     }
 
-    private static readonly FieldInfo s_nextCreatureIdField = typeof(CombatState)
-        .GetField("_nextCreatureId", BindingFlags.Instance | BindingFlags.NonPublic)
-        ?? throw new MissingFieldException(typeof(CombatState).FullName, "_nextCreatureId");
-
     private static uint NextCreatureId(object combatState) =>
         s_nextCreatureIdField.GetValue(combatState) is uint value
             ? value
             : throw new InvalidOperationException("CombatState next creature identity is unavailable");
-
-    private static readonly FieldInfo s_ownerEffectDepthField = typeof(CombatManager)
-        .GetField("_cardOrPotionEffectDepth", BindingFlags.Instance | BindingFlags.NonPublic)
-        ?? throw new MissingFieldException(typeof(CombatManager).FullName, "_cardOrPotionEffectDepth");
 
     private static int OwnerEffectDepth(Player player)
     {
@@ -2614,12 +2727,6 @@ public static partial class McpMod
         state["exhaust_pile_ordered"] = BuildOrderedPileList(combatState.ExhaustPile.Cards);
     }
 
-    // Cached reflection handles for ActModel._rooms and the RoomSet fields.
-    // RoomSet's lists are protected, but they are the only place the act's room
-    // ORDER lives, and re-deriving it would mean replaying GenerateRooms.
-    private static FieldInfo? s_actRoomsField;
-    private static readonly Dictionary<string, FieldInfo?> s_roomSetFields = new(StringComparer.Ordinal);
-
     /// <summary>The act's pre-rolled encounter and event queues plus their
     /// consumed counters, or null when the run has not finished act setup.</summary>
     /// <remarks>
@@ -2806,18 +2913,12 @@ public static partial class McpMod
         public readonly long Value = System.Threading.Interlocked.Increment(ref s_nextCardObjectIdentity);
     }
 
-    private static long s_nextCardObjectIdentity;
-    private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<CardModel, CardObjectIdentity> s_cardObjectIdentities = new();
-
     private static long GetCardObjectIdentity(CardModel card) => s_cardObjectIdentities.GetValue(card, _ => new CardObjectIdentity()).Value;
 
     private sealed class CardPlayIdentity
     {
         public readonly long Value = System.Threading.Interlocked.Increment(ref s_nextCardPlayIdentity);
     }
-
-    private static long s_nextCardPlayIdentity;
-    private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<CardPlay, CardPlayIdentity> s_cardPlayIdentities = new();
 
     private static long GetCardPlayIdentity(CardPlay play) => s_cardPlayIdentities.GetValue(play, _ => new CardPlayIdentity()).Value;
 
@@ -3055,12 +3156,6 @@ public static partial class McpMod
     private static string GetCostDisplay(CardModel card)
         => card.EnergyCost.CostsX ? "X" : card.EnergyCost.GetAmountToSpend().ToString(CultureInfo.InvariantCulture);
 
-    // Cost display alone loses ordering, intrinsic upgrades, and independent
-    // expiration flags. Reflection is required because this source list is private.
-    private static readonly FieldInfo s_energyLocalModifiersField =
-        typeof(CardEnergyCost).GetField("_localModifiers", BindingFlags.Instance | BindingFlags.NonPublic)
-        ?? throw new MissingFieldException(typeof(CardEnergyCost).FullName, "_localModifiers");
-
     private static Dictionary<string, object?> BuildEnergyCostState(CardModel card)
     {
         CardEnergyCost energy = card.EnergyCost;
@@ -3081,10 +3176,6 @@ public static partial class McpMod
             }).ToArray()
         };
     }
-
-    private static readonly FieldInfo s_starCostModifiersField =
-        typeof(CardModel).GetField("_temporaryStarCosts", BindingFlags.Instance | BindingFlags.NonPublic)
-        ?? throw new MissingFieldException(typeof(CardModel).FullName, "_temporaryStarCosts");
 
     private static Dictionary<string, object?> BuildStarCostState(CardModel card)
     {
@@ -3111,10 +3202,6 @@ public static partial class McpMod
         if (card.CurrentStarCost >= 0) return card.GetStarCostWithModifiers().ToString(CultureInfo.InvariantCulture);
         return null;
     }
-
-    private static readonly FieldInfo s_glassOrbPassiveValueField = typeof(GlassOrb)
-        .GetField("_passiveVal", BindingFlags.Instance | BindingFlags.NonPublic)
-        ?? throw new MissingFieldException(typeof(GlassOrb).FullName, "_passiveVal");
 
     // Writes "orbs"/"orb_slots"/"orb_empty_slots" into `state` for a player's
     // orb queue (Defect). Shared by the local player (BuildPlayerState) and the
@@ -3333,14 +3420,6 @@ public static partial class McpMod
         return state;
     }
 
-    private static readonly FieldInfo s_singleTurnRetainField =
-        typeof(CardModel).GetField("_hasSingleTurnRetain", BindingFlags.Instance | BindingFlags.NonPublic)
-        ?? throw new MissingFieldException(typeof(CardModel).FullName, "_hasSingleTurnRetain");
-
-    private static readonly FieldInfo s_singleTurnSlyField =
-        typeof(CardModel).GetField("_hasSingleTurnSly", BindingFlags.Instance | BindingFlags.NonPublic)
-        ?? throw new MissingFieldException(typeof(CardModel).FullName, "_hasSingleTurnSly");
-
     private static bool GetSingleTurnSly(CardModel card)
     {
         if (s_singleTurnSlyField.GetValue(card) is not bool temporarySly)
@@ -3390,15 +3469,6 @@ public static partial class McpMod
         Dictionary<string, object?>? preview = BuildUpgradePreviewInfo(card);
         if (preview != null) cardInfo["upgrade_preview"] = preview;
     }
-
-    /// <summary>
-    /// Card and potion ids that upgrade cards already in hand, mid-combat: Armaments
-    /// (one or all of the hand), Apotheosis (every card) and Blessing of the Forge (the
-    /// whole hand). Cards that create upgraded copies (Begone, Primal Force...) are not
-    /// here: the copies arrive already upgraded and read correctly without a preview.
-    /// </summary>
-    private static readonly HashSet<string> s_handUpgradeCardIds = new(StringComparer.Ordinal) { "ARMAMENTS", "APOTHEOSIS" };
-    private static readonly HashSet<string> s_handUpgradePotionIds = new(StringComparer.Ordinal) { "BLESSING_OF_THE_FORGE" };
 
     private static bool CanUpgradeHandThisTurn(Player player, IEnumerable<CardModel> hand)
     {
@@ -3503,21 +3573,6 @@ public static partial class McpMod
         });
         return values;
     }
-
-    /// <summary>
-    /// Powers that cap how much HP a creature can lose, per hit. Damage modifiers do not
-    /// see these — they are applied when the damage lands — so a 18-damage card against
-    /// Slippery takes the enemy down by 1, and reporting 18 sends the caller into a
-    /// fight it cannot win. Keyed by power type because that survives an id rename.
-    /// </summary>
-    private static readonly Dictionary<string, string> s_perHitDamageCaps = new(StringComparer.Ordinal)
-    {
-        ["SlipperyPower"] = "next hit reduced to 1",
-        ["IntangiblePower"] = "all damage reduced to 1",
-        ["HardToKillPower"] = "all damage reduced to the power's amount"
-    };
-
-    private const string HardenedShellPowerName = "HardenedShellPower";
 
     /// <summary>
     /// Describes any cap on what this target can actually lose from one hit, and the
@@ -3635,32 +3690,6 @@ public static partial class McpMod
         }
         return list;
     }
-
-    // entity_id registry
-    //
-    // entity_ids used to be generated by counting the *alive* enemies each time state
-    // was built (and again, independently, when resolving a target). That made the same
-    // string point at a different creature as soon as one died between the read and the
-    // action, so "attack EXOSKELETON_1" silently hit the wrong bug or failed outright.
-    //
-    // Ids are now assigned once per creature, on first sight, and keyed by the stable
-    // CombatId. A creature keeps its id for the whole fight, even after its neighbours die.
-    private static readonly Dictionary<uint, string> s_entityIdByCombatId = new();
-    private static readonly Dictionary<string, int> s_entityIdNextIndex = new(StringComparer.Ordinal);
-    private static ICombatState? s_entityIdCombatToken;
-
-    // card uid registry
-    //
-    // card_index is a position in the hand, so playing one card renumbers every card
-    // behind it. A plan built from one state read ("play 4, then 2, then 0") therefore
-    // has to be recomputed after every single play, and getting the arithmetic wrong
-    // plays the wrong card without any error.
-    //
-    // Each card instance gets a uid on first sight that stays with it for the whole
-    // combat, wherever it moves between hand, draw, discard and exhaust.
-    private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<CardModel, string> s_cardUids = new();
-    private static readonly Dictionary<string, int> s_cardUidNextIndex = new(StringComparer.Ordinal);
-    private static object? s_cardUidCombatToken;
 
     /// <summary>
     /// Returns this card instance's uid, assigning one on first sight.
@@ -4116,8 +4145,6 @@ public static partial class McpMod
         return null;
     }
 
-    private static readonly Dictionary<Type, PropertyInfo[]> s_monsterStatProps = new();
-
     private static Dictionary<string, object?>? BuildMonsterStats(MonsterModel monster)
     {
         // No readable stats is a normal shape for a move-less or state-dependent
@@ -4150,15 +4177,6 @@ public static partial class McpMod
             return stats.Count > 0 ? stats : null;
         });
     }
-
-    // AbstractIntent.IntentLabelFormat is protected, so reach it once by reflection
-    // and cache it. There is no public unpowered label renderer to call instead.
-    private static readonly PropertyInfo? s_intentLabelFormat =
-        typeof(AbstractIntent).GetProperty(
-            "IntentLabelFormat",
-            BindingFlags.Instance
-                | BindingFlags.NonPublic
-                | BindingFlags.Public);
 
     /// <summary>
     /// Reproduces SingleAttackIntent.GetIntentLabel / MultiAttackIntent.GetIntentLabel
@@ -4653,13 +4671,6 @@ public static partial class McpMod
 
         return state;
     }
-
-    /// <summary>
-    /// True while a GET /api/v1/singleplayer?passive=1 is building the state: the screens that
-    /// normally nudge the UI while being read (merchant inventory, fake merchant, treasure chest)
-    /// leave it alone. Only touched on the main thread (inside RunOnMainThreadBlocking).
-    /// </summary>
-    private static bool s_passiveRead;
 
     private static Dictionary<string, object?> BuildShopState(MerchantRoom merchantRoom, RunState runState)
     {
@@ -5248,12 +5259,6 @@ public static partial class McpMod
         }
     }
 
-    private static FieldInfo? s_rewardsSetField;
-    private static FieldInfo? s_crystalSphereEntityField;
-    private static FieldInfo? s_crystalSphereCompletionField;
-    private static FieldInfo? s_cardRewardCompletionField;
-    private static FieldInfo? s_rewardsIsTerminalField;
-
     /// <summary>
     /// True while the run is still blocked on this rewards screen's set.
     /// </summary>
@@ -5396,8 +5401,6 @@ public static partial class McpMod
             return !completion.Task.IsCompleted;
         }) ?? false;
     }
-
-    private static readonly FieldInfo? s_specialRewardCardField = typeof(SpecialCardReward).GetField("_card", BindingFlags.NonPublic | BindingFlags.Instance);
 
     private static Dictionary<string, object?> BuildSpecialCardReward(SpecialCardReward reward)
     {
@@ -5991,9 +5994,6 @@ public static partial class McpMod
             return Godot.Time.GetTicksMsec() - openedTicks > ChooseCardScreenInputDeadzoneMsec;
         }) ?? true;
     }
-
-    /// <summary>`NChooseACardSelectionScreen._noSelectionTimeMsec`.</summary>
-    private const ulong ChooseCardScreenInputDeadzoneMsec = 350uL;
 
     private static Dictionary<string, object?> BuildBundleSelectState(NChooseABundleSelectionScreen screen)
     {

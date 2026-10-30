@@ -12,6 +12,11 @@ namespace Sts2Mcp;
 
 public static partial class McpMod
 {
+    private static readonly ConditionalWeakTable<object, CrystalSphereTrace> s_crystalSphereTraces = new();
+
+    private const string CrystalSphereMinigameType =
+        "MegaCrit.Sts2.Core.Events.Custom.CrystalSphereEvent.CrystalSphereMinigame";
+
     [System.Diagnostics.CodeAnalysis.SuppressMessage("Performance", "CA1812:Avoid uninstantiated internal classes",
         Justification = "Constructed by ConditionalWeakTable.GetOrCreateValue, which the analyzer cannot see.")]
     private sealed class CrystalSphereTrace
@@ -20,11 +25,6 @@ public static partial class McpMod
         public readonly List<Dictionary<string, object?>> Clicks = new();
         public int InFlight;
     }
-
-    private static readonly ConditionalWeakTable<object, CrystalSphereTrace> s_crystalSphereTraces = new();
-
-    private const string CrystalSphereMinigameType =
-        "MegaCrit.Sts2.Core.Events.Custom.CrystalSphereEvent.CrystalSphereMinigame";
 
     /// <summary>
     /// Records the event Rng a minigame is built from, before placement spends it.

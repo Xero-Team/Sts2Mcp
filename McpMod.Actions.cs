@@ -60,6 +60,10 @@ namespace Sts2Mcp;
 
 public static partial class McpMod
 {
+    // Option-name prefix for a custom-run run modifier toggle: "modifier_<id>".
+    // The state advertises modifiers under their bare id plus this option name.
+    internal const string ModifierOptionPrefix = "modifier_";
+
     private static Dictionary<string, object?> ExecuteAction(string action, Dictionary<string, JsonElement> data)
     {
         Dictionary<string, object?>? guard = TryBeginRunAction(action, out RunState? runState, out Player? player);
@@ -3097,10 +3101,6 @@ public static partial class McpMod
 
         return Error($"Unknown load lobby option: {option}. Use: confirm, embark, unready, back");
     }
-
-    // Option-name prefix for a custom-run run modifier toggle: "modifier_<id>".
-    // The state advertises modifiers under their bare id plus this option name.
-    internal const string ModifierOptionPrefix = "modifier_";
 
     /// <summary>
     /// Sets the ascension level on the character select screen.

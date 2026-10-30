@@ -9,6 +9,20 @@ namespace Sts2Mcp;
 
 public static partial class McpMod
 {
+    private static Exception? s_unpoweredCardFailure;
+
+    // Card descriptions arrive multi-line; the JSON export keeps them on one line.
+    private const char NewLine = '\n';
+
+    // Whether the current state build renders card and intent numbers WITHOUT the
+    // player's standing powers and relics applied. Set for the duration of one
+    // main-thread build by HandleGetState/HandleGetMultiplayerState; see the
+    // `values=powered|unpowered` query parameter.
+    //
+    // A plain static is safe: every build runs inside RunOnMainThread, so
+    // concurrent HTTP requests serialize onto the one Godot main thread.
+    private static bool s_unpoweredValues;
+
     // Each state build owns its value mode on the serialized Godot main thread.
     // A best-effort DTO catch cannot hide a failed unpowered card preview.
     private static T WithCardValues<T>(bool unpowered, Func<T> build)
@@ -31,26 +45,12 @@ public static partial class McpMod
         }
     }
 
-    private static Exception? s_unpoweredCardFailure;
-
     private static Exception RefuseUnpoweredCardValues(CardModel card, Exception error)
     {
         s_unpoweredCardFailure ??= new InvalidOperationException(
             $"Failed to render unpowered values for card {card.Id.Entry}: {error.Message}", error);
         return s_unpoweredCardFailure;
     }
-
-    // Card descriptions arrive multi-line; the JSON export keeps them on one line.
-    private const char NewLine = '\n';
-
-    // Whether the current state build renders card and intent numbers WITHOUT the
-    // player's standing powers and relics applied. Set for the duration of one
-    // main-thread build by HandleGetState/HandleGetMultiplayerState; see the
-    // `values=powered|unpowered` query parameter.
-    //
-    // A plain static is safe: every build runs inside RunOnMainThread, so
-    // concurrent HTTP requests serialize onto the one Godot main thread.
-    private static bool s_unpoweredValues;
 
     private static string? SafeGetCardDescription(CardModel card, PileType pile = PileType.Hand)
     {
