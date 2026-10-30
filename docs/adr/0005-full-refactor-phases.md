@@ -22,10 +22,26 @@
 - Consequences: every phase ends on a clean build and an exercised in-game path,
   so a phase can be reverted alone. The strict analyzer gate stays off until
   phase 2 finishes, which means a new warning can still reach the branch.
-- Debt: Phase 2 is not finished. 860 warnings remain at `a08495a`
-  (`CA1031` 282, `ERP022` 167, `MA0051` 74, `S108` 51, `S2486` 46, `EPC12` 45,
-  `S1144` 31, the rest single-digit). Two findings need a decision recorded
-  below before phase 2 can proceed.
+- Debt: Phase 2 is not finished. 592 warnings remain at `c401b2b`
+  (`CA1031` 216, `ERP022` 103, `MA0051` 73, `EPC12` 44, `S3358` 25, `S108` 25,
+  `S2486` 21, `S3267` 20, the rest single-digit). Two findings need a decision
+  recorded below before phase 2 can proceed.
+
+## Orphans found while clearing `S1144`
+
+Two symbols had lost their only caller in the fork merge, which means a code path
+lost its wiring and the audit script no longer proves what it claims:
+
+- `SendActionResultJson` maps `error_code` to a non-2xx status for action
+  dispatch. Nothing calls it; the action paths send plain `SendJson`.
+  `scripts/audit_endpoints.py` still asserts the symbol exists, so the check
+  passes on a dead method. Re-wiring it would change the HTTP status of action
+  errors (400/409 instead of 200), which is a contract change and needs its own
+  decision. Until then the method stays, with a justification on the suppression.
+- `GetLoadLobbyPlayers` returned connected ids and readiness, but its only
+  consumer assigned the result to a local and never read it. The method is
+  deleted and the per-player breakdown still derives readiness its own way.
+
 
 ## Decisions taken during phase 2
 
