@@ -209,7 +209,7 @@ ready states, and ascension.
 
 `GET /api/v1/profile` returns persistent progress for the active profile, including character stats, discoveries, achievements, epochs, and global run totals.
 
-`GET /api/v1/settings` returns `status: "ok"`, `kind: "settings"`, display, audio, gameplay, language, and mod-loading preferences.
+`GET /api/v1/settings` returns the saved preferences: `display` (`fullscreen`, `resolution`, `fps_limit`, `vsync`, `msaa`, `aspect_ratio`, `target_display`, `limit_fps_background`), `audio` (`master`, `bgm`, `sfx`, `ambience`), `gameplay` (`fast_mode`, `screen_shake`, `show_run_timer`, `show_card_indices`, `text_effects`, `long_press`), `mods.enabled`, `language`, and `skip_intro`, under `status: "ok"` / `kind: "settings"`. Missing saves answer `503` with `save_manager_unavailable` or `settings_data_unavailable`.
 
 `GET /api/v1/bestiary` returns deterministic reflected monster and encounter metadata with `status`, `kind`, `monster_count`, `encounter_count`, `monsters`, and `encounters`. Profile-specific fight stats are also summarized under `/api/v1/compendium`.
 

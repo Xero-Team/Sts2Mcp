@@ -12,6 +12,7 @@ using MegaCrit.Sts2.Core.Models.PotionPools;
 using MegaCrit.Sts2.Core.Models.RelicPools;
 using MegaCrit.Sts2.Core.Runs;
 using MegaCrit.Sts2.Core.Saves;
+using STS2_MCP.Core.Contracts;
 
 namespace STS2_MCP;
 
@@ -24,54 +25,53 @@ public static partial class McpMod
         => RunHandler(response, () => SendReadResultJson(response, RunOnMainThreadBlocking(BuildSettings)),
             "Failed to read settings", "settings_read_failed");
 
+    /// <summary>
+    /// Reads the saved settings into <see cref="SettingsResponse"/>. Returns <see cref="ErrorResponse"/>
+    /// when the save manager or either save object is missing; the transport maps that to a status.
+    /// </summary>
     internal static object BuildSettings()
     {
         var sm = SaveManager.Instance;
         if (sm == null)
-            return Error("Save manager is not available", "save_manager_unavailable");
+            return new ErrorResponse { Error = "Save manager is not available", ErrorCode = "save_manager_unavailable" };
 
         var settings = sm.SettingsSave;
         var prefs = sm.PrefsSave;
         if (settings == null || prefs == null)
-            return Error("Settings data is not available", "settings_data_unavailable");
+            return new ErrorResponse { Error = "Settings data is not available", ErrorCode = "settings_data_unavailable" };
 
-        return new Dictionary<string, object?>(StringComparer.Ordinal)
+        return new SettingsResponse
         {
-            ["status"] = "ok",
-            ["kind"] = "settings",
-            ["display"] = new Dictionary<string, object?>(StringComparer.Ordinal)
+            Display = new SettingsDisplay
             {
-                ["fullscreen"] = settings.Fullscreen,
-                ["resolution"] = $"{settings.WindowSize.X}x{settings.WindowSize.Y}",
-                ["fps_limit"] = settings.FpsLimit,
-                ["vsync"] = settings.VSync.ToString(),
-                ["msaa"] = settings.Msaa,
-                ["aspect_ratio"] = settings.AspectRatioSetting.ToString(),
-                ["target_display"] = settings.TargetDisplay,
-                ["limit_fps_background"] = settings.LimitFpsInBackground,
+                Fullscreen = settings.Fullscreen,
+                Resolution = $"{settings.WindowSize.X}x{settings.WindowSize.Y}",
+                FpsLimit = settings.FpsLimit,
+                Vsync = settings.VSync.ToString(),
+                Msaa = settings.Msaa,
+                AspectRatio = settings.AspectRatioSetting.ToString(),
+                TargetDisplay = settings.TargetDisplay,
+                LimitFpsBackground = settings.LimitFpsInBackground,
             },
-            ["audio"] = new Dictionary<string, object?>(StringComparer.Ordinal)
+            Audio = new SettingsAudio
             {
-                ["master"] = settings.VolumeMaster,
-                ["bgm"] = settings.VolumeBgm,
-                ["sfx"] = settings.VolumeSfx,
-                ["ambience"] = settings.VolumeAmbience,
+                Master = settings.VolumeMaster,
+                Bgm = settings.VolumeBgm,
+                Sfx = settings.VolumeSfx,
+                Ambience = settings.VolumeAmbience,
             },
-            ["gameplay"] = new Dictionary<string, object?>(StringComparer.Ordinal)
+            Gameplay = new SettingsGameplay
             {
-                ["fast_mode"] = prefs.FastMode.ToString(),
-                ["screen_shake"] = prefs.ScreenShakeOptionIndex,
-                ["show_run_timer"] = prefs.ShowRunTimer,
-                ["show_card_indices"] = prefs.ShowCardIndices,
-                ["text_effects"] = prefs.TextEffectsEnabled,
-                ["long_press"] = prefs.IsLongPressEnabled,
+                FastMode = prefs.FastMode.ToString(),
+                ScreenShake = prefs.ScreenShakeOptionIndex,
+                ShowRunTimer = prefs.ShowRunTimer,
+                ShowCardIndices = prefs.ShowCardIndices,
+                TextEffects = prefs.TextEffectsEnabled,
+                LongPress = prefs.IsLongPressEnabled,
             },
-            ["mods"] = new Dictionary<string, object?>(StringComparer.Ordinal)
-            {
-                ["enabled"] = settings.ModSettings?.PlayerAgreedToModLoading ?? false,
-            },
-            ["language"] = settings.Language,
-            ["skip_intro"] = settings.SkipIntroLogo,
+            Mods = new SettingsMods { Enabled = settings.ModSettings?.PlayerAgreedToModLoading ?? false },
+            Language = settings.Language,
+            SkipIntro = settings.SkipIntroLogo,
         };
     }
 

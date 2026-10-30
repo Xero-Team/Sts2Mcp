@@ -1745,7 +1745,46 @@ Profile endpoints are independent of the singleplayer and multiplayer run endpoi
 
 ### `GET /api/v1/settings`
 
-Returns current settings and preferences as a structured object with `status: "ok"`, `kind: "settings"`, display, audio, gameplay, language, skip-intro, and mod-loading status.
+Returns the game's saved settings and preferences. Values come from the save manager's settings and prefs objects; the API does not change them.
+
+- `status`, `kind`: response envelope fields. `kind` is `settings`.
+- `display`: `fullscreen` (bool), `resolution` (`WIDTHxHEIGHT` from the saved window size), `fps_limit` (int), `vsync` (string, the game's vsync mode name), `msaa` (int), `aspect_ratio` (string, the game's aspect-ratio setting name), `target_display` (int, monitor index), `limit_fps_background` (bool, whether the cap also applies while unfocused).
+- `audio`: `master`, `bgm`, `sfx`, `ambience` — channel volumes as the game stores them.
+- `gameplay`: `fast_mode` (string, `Normal` / `Fast` / `Instant`), `screen_shake` (int, the settings screen's option index), `show_run_timer` (bool), `show_card_indices` (bool), `text_effects` (bool), `long_press` (bool, whether long-press input is enabled).
+- `mods`: `enabled` (bool, whether the player agreed to mod loading).
+- `language`: the selected language, omitted when the save has none.
+- `skip_intro`: whether the intro logo is skipped.
+
+```jsonc
+{
+  "status": "ok",
+  "kind": "settings",
+  "display": {
+    "fullscreen": true,
+    "resolution": "2560x1440",
+    "fps_limit": 60,
+    "vsync": "Enabled",
+    "msaa": 4,
+    "aspect_ratio": "Auto",
+    "target_display": 0,
+    "limit_fps_background": true
+  },
+  "audio": { "master": 0.8, "bgm": 0.7, "sfx": 0.9, "ambience": 0.5 },
+  "gameplay": {
+    "fast_mode": "Instant",
+    "screen_shake": 1,
+    "show_run_timer": true,
+    "show_card_indices": false,
+    "text_effects": true,
+    "long_press": false
+  },
+  "mods": { "enabled": true },
+  "language": "en",
+  "skip_intro": false
+}
+```
+
+When the save manager or either save object is missing, the endpoint answers `503` with `error_code` `save_manager_unavailable` or `settings_data_unavailable`; an unexpected read failure answers `500` with `settings_read_failed`.
 
 ### `GET /api/v1/profile`
 

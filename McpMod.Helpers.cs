@@ -467,21 +467,27 @@ public static partial class McpMod
 
     internal static void SendReadResultJson(HttpListenerResponse response, object result, bool pretty = false)
     {
-        if (result is Dictionary<string, object?> data
+        if (result is ErrorResponse error)
+        {
+            response.StatusCode = ReadErrorStatus(error.ErrorCode);
+        }
+        else if (result is Dictionary<string, object?> data
             && data.TryGetValue("status", out var status)
             && string.Equals(status as string, "error", StringComparison.Ordinal))
         {
-            response.StatusCode = data.TryGetValue("error_code", out var errorCode)
-                ? (errorCode as string) switch
-                {
-                    "save_manager_unavailable" or "settings_data_unavailable" or "profile_data_unavailable" => 503,
-                    _ => 500
-                }
-                : 500;
+            response.StatusCode = ReadErrorStatus(
+                data.TryGetValue("error_code", out var errorCode) ? errorCode as string : null);
         }
 
         SendJson(response, result, pretty);
     }
+
+    /// <summary>The status for a read-endpoint failure: unavailable data is 503, anything else 500.</summary>
+    private static int ReadErrorStatus(string? errorCode) => errorCode switch
+    {
+        "save_manager_unavailable" or "settings_data_unavailable" or "profile_data_unavailable" => 503,
+        _ => 500
+    };
 
     private static bool IsCombatPlayPhase()
     {

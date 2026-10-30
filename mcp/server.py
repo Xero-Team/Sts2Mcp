@@ -523,8 +523,9 @@ async def get_playtest_metrics(
 async def get_settings() -> str:
     """Get current game settings and preferences.
 
-    Includes status/kind, display, audio, gameplay preferences, language, and
-    mod-loading status as exposed by the STS2_MCP HTTP settings endpoint.
+    Returns status/kind plus the saved display, audio, gameplay, and mod-loading
+    preferences, the selected language, and whether the intro is skipped, as
+    exposed by the STS2_MCP HTTP settings endpoint.
     """
     try:
         return await _settings_get()

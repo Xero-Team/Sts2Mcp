@@ -20,13 +20,15 @@
      captured and compared. This is the first slice ADR 0004 named. Started:
      the serializer settings and the two failure bodies live there, pinned by
      `tests/ContractShape` without the game; the payloads follow one endpoint at
-     a time, each needing a live capture to compare against.
+     a time, each needing a live capture to compare against. `/api/v1/settings`
+     is the first payload (see below).
   4. **Layer migration** — `UseCases`, `Infrastructure`, `Transport` folders
      and namespaces inside the single assembly; project split still deferred.
 - Consequences: every phase ends on a clean build and an exercised in-game path,
   so a phase can be reverted alone. From phase 2 on the gate is unconditional, so
   a warning cannot reach the branch at all.
-- Debt: Phase 3 has its first slice (the wire format and the failure bodies) and
+- Debt: Phase 3 has the wire format, the failure bodies, and one payload
+  (`/api/v1/settings`; the remaining payloads have no contract type yet) and
   phase 4 is not started. The analyzer baseline (1538 findings) is closed: the
   catches whose bodies contained `return`/`continue` got a named wrapper instead
   of a lambda, and the 74 long methods were split one at a time. What remains is
@@ -48,6 +50,38 @@ lost its wiring and the audit script no longer proves what it claims:
   consumer assigned the result to a local and never read it. The method is
   deleted and the per-player breakdown still derives readiness its own way.
 
+
+## Decisions taken during phase 3
+
+### `/api/v1/settings` is pinned by the documented shape, not by a live capture
+
+The endpoint was the last read route still built as a `Dictionary<string, object?>`.
+It now returns `SettingsResponse` plus four nested records in
+`Core/Contracts/`. There was no live capture to compare against: the game is not
+running, and starting it is not something this pass can do headlessly. The two
+things a payload refactor must preserve - key order, nesting, and the exact value
+types - are static properties of the old dictionary literal, so they were pinned
+instead by `tests/ContractShape`, which serializes the new record with the shipped
+`ContractJson` options and compares it to the documented body byte for byte. That
+test is the substitute for the capture and is stronger where it matters: it also
+catches the class of mistake a capture hides, such as a `double` volume widening
+`0.8f` to `0.800000011920929`, or `VSync` becoming `v_sync` under the snake_case
+policy.
+
+Two contract decisions came out of writing it down:
+
+- The volumes stay `float`, because that is how the game stores them; `double`
+  would change the emitted JSON.
+- `language` is optional: the game's property is nullable, and the old
+  dictionary emitted an explicit `null`. It is now omitted when absent, matching
+  the rule `error_code` already follows, and the docs say so.
+
+Layer debt, recorded rather than fixed here: the mapping from `SettingsSave` /
+`PrefsSave` to the record still lives in the transport partial
+(`McpMod.ForkEndpoints.cs`), because `Core` must not reference `MegaCrit` and the
+`Infrastructure` folder does not exist until phase 4. When the game runs, the
+remaining proof is one `GET /api/v1/settings` before and after: same body except
+for an absent `language` when the save has none.
 
 ## Decisions taken during phase 2
 

@@ -73,4 +73,46 @@ var bag = new Dictionary<string, object?>(StringComparer.Ordinal)
 };
 CheckWire("""{"commit":null,"status":"ok"}""", bag, "null dictionary values are kept");
 
+// GET /api/v1/settings was a Dictionary<string, object?>; the contract type must be byte-identical
+// to that shape so a client cannot tell the two apart. Field order, nesting, and the snake_case
+// names are the contract, and 0.5f must stay "0.5" (which is why the volumes are float, not double).
+SettingsResponse Settings(string? language = "en") => new()
+{
+    Display = new SettingsDisplay
+    {
+        Fullscreen = true,
+        Resolution = "2560x1440",
+        FpsLimit = 60,
+        Vsync = "Enabled",
+        Msaa = 4,
+        AspectRatio = "Auto",
+        TargetDisplay = 0,
+        LimitFpsBackground = true,
+    },
+    Audio = new SettingsAudio { Master = 0.8f, Bgm = 0.7f, Sfx = 0.9f, Ambience = 0.5f },
+    Gameplay = new SettingsGameplay
+    {
+        FastMode = "Instant",
+        ScreenShake = 1,
+        ShowRunTimer = true,
+        ShowCardIndices = false,
+        TextEffects = true,
+        LongPress = false,
+    },
+    Mods = new SettingsMods { Enabled = true },
+    Language = language,
+    SkipIntro = false,
+};
+
+CheckWire(
+    """{"status":"ok","kind":"settings","display":{"fullscreen":true,"resolution":"2560x1440","fps_limit":60,"vsync":"Enabled","msaa":4,"aspect_ratio":"Auto","target_display":0,"limit_fps_background":true},"audio":{"master":0.8,"bgm":0.7,"sfx":0.9,"ambience":0.5},"gameplay":{"fast_mode":"Instant","screen_shake":1,"show_run_timer":true,"show_card_indices":false,"text_effects":true,"long_press":false},"mods":{"enabled":true},"language":"en","skip_intro":false}""",
+    Settings(),
+    "settings payload");
+
+// A save with no language omits the key instead of writing null, the same rule error_code follows.
+Check(
+    !JsonSerializer.Serialize(Settings(language: null), ContractJson.Options)
+        .Contains("\"language\"", StringComparison.Ordinal),
+    "settings omits a null language");
+
 Console.WriteLine($"PASS: {checks} contract wire checks (no game dependencies)");
