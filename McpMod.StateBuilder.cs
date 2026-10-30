@@ -1928,10 +1928,29 @@ public static partial class McpMod
         battle["round"] = combatState.RoundNumber;
         battle["turn"] = combatState.CurrentSide.ToString().ToLowerInvariant();
         battle["is_play_phase"] = IsCombatPlayPhase();
+        ApplyBattleReadiness(battle);
+
+        battle["enemies"] = BuildEnemyList(combatState);
+        battle["allies"] = BuildBattleAllies(combatState);
+        AppendBattleExtras(battle, runState, combatState);
+
+        return battle;
+    }
+
+    /// <summary>
+    /// Whether the game will accept an action right now: turn phase, the action queue and
+    /// the hand UI all have to agree, and a scripted moment can still refuse input.
+    /// </summary>
+    private static void ApplyBattleReadiness(Dictionary<string, object?> battle)
+    {
         // Scripted combat moments disable player input while turn/is_play_phase still
         // look actionable; clients must wait on this instead of hammering errors.
         bool actionsDisabled = false;
-        TryDo(() => { actionsDisabled = CombatManager.Instance.PlayerActionsDisabled; battle["actions_disabled"] = actionsDisabled; });
+        TryDo(() =>
+        {
+            actionsDisabled = CombatManager.Instance.PlayerActionsDisabled;
+            battle["actions_disabled"] = actionsDisabled;
+        });
 
         // Fork addition: name the first blocker so a controller can see why it cannot end the turn.
         var endTurnBlockedReason = GetEndTurnBlockedReason();
@@ -1950,26 +1969,33 @@ public static partial class McpMod
             && !actionsDisabled
             && handUi != null && !handUi.InCardPlay
             && handUi.CurrentMode == NPlayerHand.Mode.Play;
+    }
 
-        battle["enemies"] = BuildEnemyList(combatState);
-
-        // FORK ADDITION — the player's side of the board. Only `enemies` was reported, so
-        // Osty was invisible to anything reading this: a Necrobinder capture could not see
-        // the pet at all, and the character's whole mechanic could not be verified. Built
-        // with the same shape as an enemy so a consumer can treat them alike.
+    /// <summary>
+    /// The player's side of the board. Only `enemies` was reported, so Osty was invisible
+    /// to anything reading this: a Necrobinder capture could not see the pet at all. Built
+    /// with the same shape as an enemy so a consumer can treat them alike.
+    /// </summary>
+    private static List<Dictionary<string, object?>> BuildBattleAllies(CombatState combatState)
+    {
         var allies = new List<Dictionary<string, object?>>();
         foreach (var creature in combatState.Allies)
         {
             // The player's own creature is already reported under `player`; what is new
             // here is the pets, which nothing else exposes.
             if (creature.IsAlive && !creature.IsPlayer)
-            {
                 allies.Add(BuildEnemyState(creature));
-            }
         }
+        return allies;
+    }
 
-        battle["allies"] = allies;
-
+    /// <summary>
+    /// The encounter, RNG and card-history blocks, each of which the game can refuse to
+    /// produce while combat is tearing down.
+    /// </summary>
+    private static void AppendBattleExtras(
+        Dictionary<string, object?> battle, RunState runState, CombatState combatState)
+    {
         // The encounter's slot list, in declaration order. `EncounterModel
         // .GetNextSlot` is `Slots.FirstOrDefault(s => Enemies.All(c => c.SlotName
         // != s), "")`, so a consumer holding this plus each enemy's own slot can
@@ -1991,15 +2017,9 @@ public static partial class McpMod
 
         // Gold Axe and other combat-wide counters include every player's card
         // plays. Singleplayer now exposes the same history shape as MP.
-        TryDo(() => { battle["card_plays"] = BuildCardPlaysState(combatState); });
-        /* history unavailable while combat is tearing down */
-
-        // Where every card went this turn and last — drawn/discarded/exhausted/
-        // generated, not just played. See BuildCardHistoryState.
-        TryDo(() => { battle["card_history"] = BuildCardHistoryState(combatState); });
-        /* history unavailable while combat is tearing down */
-
-        return battle;
+        TryDo(() => battle["card_plays"] = BuildCardPlaysState(combatState));
+        TryDo(() => battle["card_history"] = BuildCardHistoryState(combatState));
+        /* both are unavailable while combat is tearing down */
     }
 
     /// <summary>
@@ -5555,55 +5575,12 @@ public static partial class McpMod
 
         state["prompt"] = "Choose a bundle.";
 
-        var bundles = new List<Dictionary<string, object?>>();
-        int index = 0;
-        foreach (var bundle in FindAll<NCardBundle>(screen)
-                     .Where(bundle => bundle.Visible && bundle.IsVisibleInTree()))
-        {
-            var cards = new List<Dictionary<string, object?>>();
-            int cardIndex = 0;
-            foreach (var card in bundle.Bundle)
-            {
-                var cardInfo = BuildCardInfo(card);
-                cardInfo["index"] = cardIndex;
-                cards.Add(cardInfo);
-                cardIndex++;
-            }
-
-            bundles.Add(new Dictionary<string, object?>(StringComparer.Ordinal)
-            {
-                ["index"] = index,
-                ["card_count"] = cards.Count,
-                ["cards"] = cards,
-                ["is_visible"] = true,
-                ["can_select"] = bundle.Hitbox.IsEnabled && IsNodeVisible(bundle.Hitbox)
-            });
-            index++;
-        }
-        state["bundles"] = bundles;
+        state["bundles"] = BuildBundleEntries(screen);
         AddCardSelectionContext(state);
 
         var previewContainer = screen.GetNodeOrNull<Godot.Control>("%BundlePreviewContainer");
-        bool previewShowing = previewContainer?.Visible == true;
-        state["preview_showing"] = previewShowing;
-
-        var previewCards = new List<Dictionary<string, object?>>();
-        var previewCardsContainer = screen.GetNodeOrNull<Godot.Control>("%Cards");
-        if (previewCardsContainer != null)
-        {
-            int previewIndex = 0;
-            foreach (var card in FindAll<NPreviewCardHolder>(previewCardsContainer)
-                         .Where(holder => IsNodeVisible(holder))
-                         .Select(holder => holder.CardModel)
-                         .OfType<CardModel>())
-            {
-                var cardInfo = BuildCardInfo(card);
-                cardInfo["index"] = previewIndex;
-                previewCards.Add(cardInfo);
-                previewIndex++;
-            }
-        }
-        state["preview_cards"] = previewCards;
+        state["preview_showing"] = previewContainer?.Visible == true;
+        state["preview_cards"] = BuildBundlePreviewCards(screen);
 
         var cancelButton = screen.GetNodeOrNull<NBackButton>("%Cancel");
         var confirmButton = screen.GetNodeOrNull<NConfirmButton>("%Confirm");
@@ -5629,6 +5606,58 @@ public static partial class McpMod
         state["available_actions"] = chooseActions;
 
         return state;
+    }
+
+    private static List<Dictionary<string, object?>> BuildBundleEntries(NChooseABundleSelectionScreen screen)
+    {
+        var bundles = new List<Dictionary<string, object?>>();
+        int index = 0;
+        foreach (var bundle in FindAll<NCardBundle>(screen)
+                     .Where(bundle => bundle.Visible && bundle.IsVisibleInTree()))
+        {
+            var cards = new List<Dictionary<string, object?>>();
+            int cardIndex = 0;
+            foreach (var card in bundle.Bundle)
+            {
+                var cardInfo = BuildCardInfo(card);
+                cardInfo["index"] = cardIndex;
+                cards.Add(cardInfo);
+                cardIndex++;
+            }
+
+            bundles.Add(new Dictionary<string, object?>(StringComparer.Ordinal)
+            {
+                ["index"] = index,
+                ["card_count"] = cards.Count,
+                ["cards"] = cards,
+                ["is_visible"] = true,
+                ["can_select"] = bundle.Hitbox.IsEnabled && IsNodeVisible(bundle.Hitbox)
+            });
+            index++;
+        }
+        return bundles;
+    }
+
+    private static List<Dictionary<string, object?>> BuildBundlePreviewCards(
+        NChooseABundleSelectionScreen screen)
+    {
+        var previewCards = new List<Dictionary<string, object?>>();
+        var previewCardsContainer = screen.GetNodeOrNull<Godot.Control>("%Cards");
+        if (previewCardsContainer == null)
+            return previewCards;
+
+        int previewIndex = 0;
+        foreach (var card in FindAll<NPreviewCardHolder>(previewCardsContainer)
+                     .Where(holder => IsNodeVisible(holder))
+                     .Select(holder => holder.CardModel)
+                     .OfType<CardModel>())
+        {
+            var cardInfo = BuildCardInfo(card);
+            cardInfo["index"] = previewIndex;
+            previewCards.Add(cardInfo);
+            previewIndex++;
+        }
+        return previewCards;
     }
 
     private static Dictionary<string, object?> BuildHandSelectState(NPlayerHand hand)
