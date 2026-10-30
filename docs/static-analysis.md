@@ -9,7 +9,8 @@ nothing here changes the mod's runtime behaviour.
 | File | Holds |
 | --- | --- |
 | `Directory.Build.props` | Machine-local configuration: game install resolution (`-p:STS2GameDir` / `STS2_GAME_DIR` / `build.local.props`) and the platform data directory |
-| `Directory.Build.targets` | Analyzer packages, `AnalysisMode`/`AnalysisLevel`, the strict gate, the banned-API list registration |
+| `Directory.Build.targets` | Analyzer references, `AnalysisMode`/`AnalysisLevel`, the strict gate, the banned-API list registration |
+| `Directory.Packages.props` | Central NuGet versions (analyzers only; game DLLs stay direct `Reference` items) |
 | `tests/Directory.Build.targets` | Turns the gate off for the standalone test harnesses, which compile production sources next to test-only stubs |
 | `.editorconfig` | Formatting conventions the tree already follows, plus the handful of rules that cannot apply to this project |
 | `BannedSymbols.txt` | API allow/deny list enforced by `Microsoft.CodeAnalysis.BannedApiAnalyzers` (rule RS0030) |

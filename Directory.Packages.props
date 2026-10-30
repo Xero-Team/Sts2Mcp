@@ -1,0 +1,25 @@
+<Project>
+
+  <!--
+    Central package versions. Every PackageReference in this repo names only the package;
+    the version lives here, once. Pinned by ADR 0007: analyzer changes are a build change,
+    not something to smuggle into a feature PR.
+
+    Game assemblies are not NuGet packages: sts2.dll, GodotSharp.dll and 0Harmony.dll stay
+    direct <Reference> items with Private=false in Sts2Mcp.csproj.
+  -->
+
+  <PropertyGroup>
+    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+  </PropertyGroup>
+
+  <ItemGroup Label="Analyzers">
+    <PackageVersion Include="AsyncFixer" Version="2.1.0" />
+    <PackageVersion Include="ErrorProne.NET.CoreAnalyzers" Version="0.1.2" />
+    <PackageVersion Include="Meziantou.Analyzer" Version="3.0.318" />
+    <PackageVersion Include="Microsoft.CodeAnalysis.BannedApiAnalyzers" Version="5.6.0" />
+    <PackageVersion Include="Microsoft.VisualStudio.Threading.Analyzers" Version="18.12.1" />
+    <PackageVersion Include="SonarAnalyzer.CSharp" Version="10.35.0.4138" />
+  </ItemGroup>
+
+</Project>

@@ -35,13 +35,13 @@
   <ItemGroup Label="Analyzers">
     <!-- Microsoft.CodeAnalysis.NetAnalyzers (CAxxxx) ships with the SDK - no package needed.
          StyleCop.Analyzers is deliberately absent: SA1201 throws (AD0001) on this codebase and
-         the package has been unmaintained since 2019. -->
-    <PackageReference Include="Meziantou.Analyzer" Version="3.0.318" PrivateAssets="all" />
-    <PackageReference Include="Microsoft.VisualStudio.Threading.Analyzers" Version="18.12.1" PrivateAssets="all" />
-    <PackageReference Include="SonarAnalyzer.CSharp" Version="10.35.0.4138" PrivateAssets="all" />
-    <PackageReference Include="ErrorProne.NET.CoreAnalyzers" Version="0.1.2" PrivateAssets="all" />
-    <PackageReference Include="AsyncFixer" Version="2.1.0" PrivateAssets="all" />
-    <PackageReference Include="Microsoft.CodeAnalysis.BannedApiAnalyzers" Version="5.6.0" PrivateAssets="all" />
+         the package has been unmaintained since 2019. Versions are in Directory.Packages.props. -->
+    <PackageReference Include="Meziantou.Analyzer" PrivateAssets="all" />
+    <PackageReference Include="Microsoft.VisualStudio.Threading.Analyzers" PrivateAssets="all" />
+    <PackageReference Include="SonarAnalyzer.CSharp" PrivateAssets="all" />
+    <PackageReference Include="ErrorProne.NET.CoreAnalyzers" PrivateAssets="all" />
+    <PackageReference Include="AsyncFixer" PrivateAssets="all" />
+    <PackageReference Include="Microsoft.CodeAnalysis.BannedApiAnalyzers" PrivateAssets="all" />
   </ItemGroup>
 
   <ItemGroup Label="Banned API list">
