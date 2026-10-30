@@ -15,18 +15,21 @@ var cases = new (bool Expected, Player[] Players)[] {
     (false, [new(null, null)]),
 };
 foreach (var (expected, players) in cases)
-    if (McpMod.TestFirstRunIronclad(new Run(players)) != expected)
+    if (McpMod.TestFirstRunIronclad(new RunState(players)) != expected)
         throw new Exception("Party eligibility must inspect each Ironclad's own run count");
 Console.WriteLine($"{cases.Length} production relic eligibility checks passed.");
 
-sealed record Run(IReadOnlyList<Player> Players) : IRunState;
 namespace STS2_MCP {
     public static partial class McpMod {
-        public static bool TestFirstRunIronclad(IRunState run) => HasFirstRunIronclad(run);
+        public static bool TestFirstRunIronclad(RunState run) => HasFirstRunIronclad(run);
     }
 }
 namespace MegaCrit.Sts2.Core.Runs {
     public interface IRunState { IReadOnlyList<Player> Players { get; } }
+    public sealed class RunState : IRunState {
+        public RunState(IReadOnlyList<Player> players) => Players = players;
+        public IReadOnlyList<Player> Players { get; }
+    }
 }
 namespace MegaCrit.Sts2.Core.Entities.Players {
     public sealed record UnlockState(int NumberOfRuns);

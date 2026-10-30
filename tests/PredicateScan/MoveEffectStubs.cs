@@ -126,3 +126,52 @@ namespace MegaCrit.Sts2.Core.MonsterMoves.MonsterMoveStateMachine
         public string Id { get; }
     }
 }
+
+namespace STS2_MCP
+{
+    public static partial class McpMod
+    {
+        // The production boundary helpers live in McpMod.Helpers.cs, which needs the
+        // game DLLs. The scanner only needs their contract: a failed read is absent,
+        // a failed action reports false, and the quiet variants record nothing.
+        private static T? TryRead<T>(Func<T> read,
+            [System.Runtime.CompilerServices.CallerMemberName] string member = "",
+            [System.Runtime.CompilerServices.CallerLineNumber] int line = 0)
+        {
+            try { return read(); }
+            catch { return default; }
+        }
+
+        private static T? TryRead<T>(string context, Func<T> read)
+        {
+            try { return read(); }
+            catch { return default; }
+        }
+
+        private static bool TryDo(Action action,
+            [System.Runtime.CompilerServices.CallerMemberName] string member = "",
+            [System.Runtime.CompilerServices.CallerLineNumber] int line = 0)
+        {
+            try { action(); return true; }
+            catch { return false; }
+        }
+
+        private static bool TryDo(string context, Action action)
+        {
+            try { action(); return true; }
+            catch { return false; }
+        }
+
+        private static T? TryReadQuiet<T>(Func<T> read)
+        {
+            try { return read(); }
+            catch { return default; }
+        }
+
+        private static void TryDoQuiet(Action action)
+        {
+            try { action(); }
+            catch { }
+        }
+    }
+}

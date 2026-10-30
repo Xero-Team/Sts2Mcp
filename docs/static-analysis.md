@@ -9,12 +9,19 @@ nothing here changes the mod's runtime behaviour.
 | File | Holds |
 | --- | --- |
 | `Directory.Build.targets` | Analyzer packages, `AnalysisMode`/`AnalysisLevel`, the strict gate, the banned-API list registration |
+| `tests/Directory.Build.targets` | Turns the gate off for the standalone test harnesses, which compile production sources next to test-only stubs |
 | `.editorconfig` | Formatting conventions the tree already follows, plus the handful of rules that cannot apply to this project |
 | `BannedSymbols.txt` | API allow/deny list enforced by `Microsoft.CodeAnalysis.BannedApiAnalyzers` (rule RS0030) |
 
 `Directory.Build.props` is **not** used and must stay that way: it is gitignored because it holds
 each developer's local `STS2GameDir`. `Directory.Build.targets` is the other MSBuild convention
 file, is imported for every project in the repo, and is where shared settings can be committed.
+
+`tests/Directory.Build.targets` imports those settings and then switches the gate off
+(`RunAnalyzersDuringBuild`, `EnforceCodeStyleInBuild` and both warnings-as-errors properties). The
+harnesses are console programs that compile production sources together with fake game types and
+fake Roslyn shapes; the analyzer would grade the stubs, not the code under test. `STS2_MCP.csproj`,
+the project that ships, keeps the full gate.
 
 ## What is enabled
 

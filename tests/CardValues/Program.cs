@@ -183,5 +183,13 @@ namespace STS2_MCP
         private static string? SafeGetText(Func<object?> get) => get()?.ToString();
         private static void Warn(string context, Exception ex) { }
         internal static string StripRichTextTags(string text) => text;
+
+        // The production TryRead lives in McpMod.Helpers.cs, which needs the game; the
+        // harness keeps the same "a failed read is absent, not fatal" contract here.
+        private static T? TryRead<T>(string context, Func<T> read)
+        {
+            try { return read(); }
+            catch { return default; }
+        }
     }
 }
