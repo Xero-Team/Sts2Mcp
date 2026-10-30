@@ -51,6 +51,50 @@ public static partial class McpMod
         if (_msmPerformedFirstMoveField?.GetValue(machine) is not bool performedFirstMove)
             return null;
 
+        var states = BuildMachineStates(monster, creature, machine, initial, current);
+        if (states.States.Count == 0)
+            return null;
+
+        var rng = monster.RunRng.MonsterAi;
+        var rngCoords = RngCoords(rng);
+        if (rngCoords == null)
+            return null;
+        var stateLog = new List<string>(machine.StateLog.Count);
+        foreach (var logged in machine.StateLog)
+            stateLog.Add(logged.Id);
+
+        var result = new Dictionary<string, object?>(StringComparer.Ordinal)
+        {
+            ["initial_state"] = initial.Id,
+            ["current_state"] = current.Id,
+            ["can_transition_away"] = current.CanTransitionAway,
+            ["performed_first_move"] = performedFirstMove,
+            ["state_log"] = stateLog,
+            ["rng_counter"] = rngCoords["counter"],
+            ["conditional_values_are_snapshots"] = states.ConditionalSnapshots,
+            // Set when a weight lambda was seen to read live state, rather
+            // than for a named monster: any shipped or modded machine whose
+            // weights move is detected the same way.
+            ["random_weights_are_snapshots"] = states.WeightSnapshots,
+            ["states"] = states.States,
+        };
+        ApplyDynamicMachineExtras(result, monster, rngCoords);
+        return result;
+    }
+
+    /// <summary>The serialized machine nodes, plus whether either kind of value was a snapshot.</summary>
+    private sealed record MachineStates(
+        List<Dictionary<string, object?>> States,
+        bool ConditionalSnapshots,
+        bool WeightSnapshots);
+
+    private static MachineStates BuildMachineStates(
+        MegaCrit.Sts2.Core.Models.MonsterModel monster,
+        Creature creature,
+        MonsterMoveStateMachine machine,
+        MonsterState initial,
+        MonsterState current)
+    {
         var states = new List<Dictionary<string, object?>>();
         bool hasConditionalSnapshots = false;
         bool hasWeightSnapshots = false;
@@ -87,32 +131,18 @@ public static partial class McpMod
             states.Add(serialized);
         }
 
-        if (states.Count == 0)
-            return null;
+        return new MachineStates(states, hasConditionalSnapshots, hasWeightSnapshots);
+    }
 
-        var rng = monster.RunRng.MonsterAi;
-        var rngCoords = RngCoords(rng);
-        if (rngCoords == null)
-            return null;
-        var stateLog = new List<string>(machine.StateLog.Count);
-        foreach (var logged in machine.StateLog)
-            stateLog.Add(logged.Id);
-
-        var result = new Dictionary<string, object?>(StringComparer.Ordinal)
-        {
-            ["initial_state"] = initial.Id,
-            ["current_state"] = current.Id,
-            ["can_transition_away"] = current.CanTransitionAway,
-            ["performed_first_move"] = performedFirstMove,
-            ["state_log"] = stateLog,
-            ["rng_counter"] = rngCoords["counter"],
-            ["conditional_values_are_snapshots"] = hasConditionalSnapshots,
-            // Set when a weight lambda was seen to read live state, rather
-            // than for a named monster: any shipped or modded machine whose
-            // weights move is detected the same way.
-            ["random_weights_are_snapshots"] = hasWeightSnapshots,
-            ["states"] = states,
-        };
+    /// <summary>
+    /// Adds the fields only some monsters have: a named dynamic-weight counter, an
+    /// off-balance flag, and the raw RNG stream.
+    /// </summary>
+    private static void ApplyDynamicMachineExtras(
+        Dictionary<string, object?> result,
+        MegaCrit.Sts2.Core.Models.MonsterModel monster,
+        Dictionary<string, object?> rngCoords)
+    {
         if (string.Equals(monster.GetType().Name, "TwoTailedRat", StringComparison.Ordinal))
         {
             result["dynamic_weight_state"] = new Dictionary<string, object?>(StringComparer.Ordinal)
@@ -127,7 +157,6 @@ public static partial class McpMod
             result["rng_seed"] = seed;
         if (rngCoords.TryGetValue("state", out var rngState))
             result["rng_state"] = rngState;
-        return result;
     }
 
     private static Dictionary<string, object?> BuildMoveMachineState(

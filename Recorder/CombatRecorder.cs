@@ -630,19 +630,24 @@ internal static class CombatRecorder
                 // The writer returns early outside combat / when disabled: nothing was appended.
                 if (replay == null || countBefore < 0 || replay.events.Count != countBefore + 1)
                     return;
-                var ev = replay.events[^1];
-                // Tracking layer: a choice result settles its choice, recording or not.
-                JsonObject? parent = ev.eventType == CombatReplayEventType.PlayerChoice
-                    ? SettleChoice(SlotOf(ev.playerId), ev.choiceId) : null;
-                if (!_active)
-                    return;
-                if (_rec == null)
-                    TryOpen("game_event");
-                if (_rec == null || !ReferenceEquals(_rec.Replay, replay))
-                    return;
-                JournalEvent(replay, replay.events.Count - 1, action, backfilled: false, parent);
+                RecordGameEvent(replay, action);
             }
         });
+    }
+
+    private static void RecordGameEvent(CombatReplay replay, GameAction? action)
+    {
+        var ev = replay.events[^1];
+        // Tracking layer: a choice result settles its choice, recording or not.
+        JsonObject? parent = ev.eventType == CombatReplayEventType.PlayerChoice
+            ? SettleChoice(SlotOf(ev.playerId), ev.choiceId) : null;
+        if (!_active)
+            return;
+        if (_rec == null)
+            TryOpen("game_event");
+        if (_rec == null || !ReferenceEquals(_rec.Replay, replay))
+            return;
+        JournalEvent(replay, replay.events.Count - 1, action, backfilled: false, parent);
     }
 
     private static void JournalEvent(CombatReplay replay, int index, GameAction? action, bool backfilled,
@@ -661,64 +666,97 @@ internal static class CombatRecorder
         };
         if (backfilled)
             data["backfilled"] = true;
-        switch (ev.eventType)
-        {
-            case CombatReplayEventType.GameAction:
-                if (action != null)
-                {
-                    uint? key = action.Id;
-                    if (key != null)
-                        ActionKeys.AddOrUpdate(action, new StrongBox<uint>(key.Value));
-                    foreach (var (k, v) in RecordObserve.DescribeAction(action, key))
-                        data[k] = v?.DeepClone();
-                    data["origin"] = OriginOf(action);
-                    data["cause_action_id"] = RunManager.Instance.ActionExecutor.CurrentlyRunningAction?.Id;
-                    rec.JournaledActions.Add(action);
-                    // BeforeCancelled, not a patch on the small GameAction.Cancel (see RecorderPatches).
-                    action.BeforeCancelled += OnCancelled;
-                }
-                data["action"] = RecordObserve.DescribeNetAction(ev.action, SlotOf);
-                break;
-            case CombatReplayEventType.HookAction:
-                data["hook_id"] = ev.hookId;
-                data["game_action_type"] = ev.gameActionType?.ToString();
-                if (action != null)
-                {
-                    uint? key = action.Id;
-                    if (key != null)
-                        ActionKeys.AddOrUpdate(action, new StrongBox<uint>(key.Value));
-                    data["action_id"] = action.Id;
-                    data["action_key"] = key;
-                    data["cause_action_id"] = RunManager.Instance.ActionExecutor.CurrentlyRunningAction?.Id;
-                    rec.JournaledActions.Add(action);
-                    action.BeforeCancelled += OnCancelled;
-                }
-                break;
-            case CombatReplayEventType.ResumeAction:
-                data["resumed_action_id"] = ev.actionId;
-                break;
-            case CombatReplayEventType.PlayerChoice:
-                data["choice_id"] = ev.choiceId;
-                data["result"] = RecordObserve.DescribeChoiceResult(ev.playerChoiceResult, SlotOf);
-                data["origin"] = WindowOrigin();
-                if (choiceParent != null)
-                {
-                    foreach (var (k, v) in choiceParent.ToList())
-                    {
-                        choiceParent.Remove(k);
-                        data[k] = v;
-                    }
-                    if (data["patch_missed"]?.GetValue<bool>() == true)
-                        rec.Faults.Add($"patch_missed:reserve:{ev.choiceId}");
-                }
-                break;
-        }
+        AppendEventDetails(rec, data, ev, action, choiceParent);
+
         long seq = Emit("game_event", data, hidden: true, noAt: backfilled);
         EmitHidden(seq, "game_event", new JsonObject
         {
             ["index"] = index,
             ["packet"] = Convert.ToBase64String(packet),
         });
+    }
+
+    /// <summary>Adds the fields that depend on which kind of replay event this is.</summary>
+    private static void AppendEventDetails(
+        OpenRecord rec,
+        JsonObject data,
+        CombatReplayEvent ev,
+        GameAction? action,
+        JsonObject? choiceParent)
+    {
+        switch (ev.eventType)
+        {
+            case CombatReplayEventType.GameAction:
+                AppendGameActionDetails(rec, data, ev, action);
+                break;
+            case CombatReplayEventType.HookAction:
+                AppendHookActionDetails(rec, data, ev, action);
+                break;
+            case CombatReplayEventType.ResumeAction:
+                data["resumed_action_id"] = ev.actionId;
+                break;
+            case CombatReplayEventType.PlayerChoice:
+                AppendChoiceDetails(rec, data, ev, choiceParent);
+                break;
+        }
+    }
+
+    private static void AppendGameActionDetails(
+        OpenRecord rec, JsonObject data, CombatReplayEvent ev, GameAction? action)
+    {
+        if (action != null)
+        {
+            uint? key = action.Id;
+            foreach (var (k, v) in RecordObserve.DescribeAction(action, key))
+                data[k] = v?.DeepClone();
+            data["origin"] = OriginOf(action);
+            data["cause_action_id"] = RunManager.Instance.ActionExecutor.CurrentlyRunningAction?.Id;
+            TrackJournaledAction(rec, action);
+        }
+        data["action"] = RecordObserve.DescribeNetAction(ev.action, SlotOf);
+    }
+
+    private static void AppendHookActionDetails(
+        OpenRecord rec, JsonObject data, CombatReplayEvent ev, GameAction? action)
+    {
+        data["hook_id"] = ev.hookId;
+        data["game_action_type"] = ev.gameActionType?.ToString();
+        if (action == null)
+            return;
+        TrackJournaledAction(rec, action);
+        data["action_id"] = action.Id;
+        data["action_key"] = action.Id;
+        data["cause_action_id"] = RunManager.Instance.ActionExecutor.CurrentlyRunningAction?.Id;
+    }
+
+    private static void AppendChoiceDetails(
+        OpenRecord rec, JsonObject data, CombatReplayEvent ev, JsonObject? choiceParent)
+    {
+        data["choice_id"] = ev.choiceId;
+        data["result"] = RecordObserve.DescribeChoiceResult(ev.playerChoiceResult, SlotOf);
+        data["origin"] = WindowOrigin();
+        if (choiceParent == null)
+            return;
+        foreach (var (k, v) in choiceParent.ToList())
+        {
+            choiceParent.Remove(k);
+            data[k] = v;
+        }
+        if (data["patch_missed"]?.GetValue<bool>() == true)
+            rec.Faults.Add($"patch_missed:reserve:{ev.choiceId}");
+    }
+
+    /// <summary>
+    /// Remembers an action that appears in the replay, so a later cancel can be attributed to it.
+    /// </summary>
+    private static void TrackJournaledAction(OpenRecord rec, GameAction action)
+    {
+        uint? key = action.Id;
+        if (key != null)
+            ActionKeys.AddOrUpdate(action, new StrongBox<uint>(key.Value));
+        rec.JournaledActions.Add(action);
+        // BeforeCancelled, not a patch on the small GameAction.Cancel (see RecorderPatches).
+        action.BeforeCancelled += OnCancelled;
     }
 
     /// <summary>
@@ -1200,16 +1238,57 @@ internal static class CombatRecorder
         int checksBefore = replay?.checksumData.Count ?? 0;
         var room = run.CurrentRoom;
         bool eventRoom = (room as CombatRoom)?.ParentEventId != null || run.CurrentRoomCount > 1;
-        string boundary;
-        if (eventRoom)
-            boundary = "event_room";
-        else if (pending != null && eventsBefore == 0 && checksBefore == 0)
-            boundary = "room_entry";
-        else if (CombatManager.Instance.IsInProgress)
-            boundary = "mid_combat";
-        else
-            boundary = "mid_room";
+        string boundary = ResolveOpenBoundary(eventRoom, pending, eventsBefore, checksBefore);
+        var facts = BeginOpenRecord(
+            trigger, run, writer, replay, pending, boundary, eventRoom, eventsBefore, checksBefore);
 
+        Emit("record_open", BuildRecordOpenEvent(facts));
+        if (string.Equals(facts.Inputs, "tainted", StringComparison.Ordinal))
+            facts.Record.Faults.Add("console_command_in_process");
+
+        if (replay != null)
+        {
+            EmitOpenInitialState(replay, pending);
+            BackfillExistingEvents(replay, eventsBefore, checksBefore);
+        }
+        _pending = null;
+    }
+
+    /// <summary>What the record-open line reports, gathered while opening.</summary>
+    private sealed record OpenFacts
+    {
+        internal required OpenRecord Record { get; init; }
+        internal required RunState ActiveRun { get; init; }
+        internal required string Trigger { get; init; }
+        internal required int Attempt { get; init; }
+        internal required CombatReplayWriter? GameWriter { get; init; }
+        internal required CombatReplay? Replay { get; init; }
+        internal required PendingInitial? Pending { get; init; }
+        internal required string Boundary { get; init; }
+        internal required bool EventRoom { get; init; }
+        internal required string InitialState { get; init; }
+        internal required int EventsBefore { get; init; }
+        internal required int ChecksBefore { get; init; }
+        internal required string Inputs { get; init; }
+        internal required bool RoomTracked { get; init; }
+        internal required System.Collections.Generic.IReadOnlyList<uint>? ChoiceIdsAtOpen { get; init; }
+        internal required GameAction? PausedAtOpen { get; init; }
+    }
+
+    /// <summary>
+    /// Creates the record for this room and gathers what the open line reports.
+    /// </summary>
+    private static OpenFacts BeginOpenRecord(
+        string trigger,
+        RunState run,
+        CombatReplayWriter? writer,
+        CombatReplay? replay,
+        PendingInitial? pending,
+        string boundary,
+        bool eventRoom,
+        int eventsBefore,
+        int checksBefore)
+    {
         long startTime = pending?.StartTime ?? RecorderPatches.RunStartTime();
         int act = pending?.Act ?? run.CurrentActIndex;
         int floor = pending?.Floor ?? run.ActFloor;
@@ -1217,44 +1296,79 @@ internal static class CombatRecorder
         string runDir = Path.Combine(Root, startTime.ToString(CultureInfo.InvariantCulture));
         (int number, int attempt) = NextNumbers(runDir, act, floor);
         string name = $"{number:D3}-a{act}f{floor:D2}";
-        _rec = new OpenRecord
+        string dir = Path.Combine(runDir, name);
+        var record = new OpenRecord
         {
             Id = $"{startTime}/{name}",
-            Dir = Path.Combine(runDir, name),
+            Dir = dir,
             GameWriter = writer,
             Replay = replay,
             OpenedMs = Clock.ElapsedMilliseconds,
             GameEventsBeforeOpen = eventsBefore,
             ChecksumsBeforeOpen = checksBefore,
             SentryAtOpen = _sentryCaptures,
+            FirstRequest = Interlocked.Read(ref _apiSeq) + 1,
         };
+        _rec = record;
         _recordsOpened++;
-        ReservedDirs.Add(_rec.Dir);
+        ReservedDirs.Add(dir);
+        return new OpenFacts
+        {
+            Record = record,
+            ActiveRun = run,
+            Trigger = trigger,
+            Attempt = attempt,
+            GameWriter = writer,
+            Replay = replay,
+            Pending = pending,
+            Boundary = boundary,
+            EventRoom = eventRoom,
+            InitialState = DescribeInitialState(replay, pending),
+            EventsBefore = eventsBefore,
+            ChecksBefore = checksBefore,
+            Inputs = DescribeReplayInputs(),
+            RoomTracked = replay != null && ReferenceEquals(_track.Replay, replay),
+            ChoiceIdsAtOpen = RunManager.Instance.PlayerChoiceSynchronizer?.ChoiceIds,
+            PausedAtOpen = _track.Paused,
+        };
+    }
 
-        _rec.FirstRequest = Interlocked.Read(ref _apiSeq) + 1;
-        bool roomTracked = replay != null && ReferenceEquals(_track.Replay, replay);
-        var choiceIdsAtOpen = RunManager.Instance.PlayerChoiceSynchronizer?.ChoiceIds;
-        var pausedAtOpen = _track.Paused;
-        // Inputs the game's replay cannot reproduce: "complete" only when the recorder was installed
-        // before any run (it saw every console command of this process) and there were none.
-        string inputs;
+    /// <summary>Whether the record copied the room's start itself, read it back, or has none.</summary>
+    private static string DescribeInitialState(CombatReplay? replay, PendingInitial? pending)
+    {
+        if (replay == null)
+            return "missing";
+        return pending != null ? "room_entry" : "read_back";
+    }
+
+    private static string ResolveOpenBoundary(
+        bool eventRoom, PendingInitial? pending, int eventsBefore, int checksBefore)
+    {
+        if (eventRoom)
+            return "event_room";
+        if (pending != null && eventsBefore == 0 && checksBefore == 0)
+            return "room_entry";
+        return CombatManager.Instance.IsInProgress ? "mid_combat" : "mid_room";
+    }
+
+    /// <summary>
+    /// Where this process's inputs came from. The game's replay cannot reproduce a console
+    /// command, so a record is only "complete" when the recorder saw the whole run.
+    /// </summary>
+    private static string DescribeReplayInputs()
+    {
         if (ConsoleInProcess.Count > 0)
-            inputs = "tainted";
-        else if (string.Equals(_installedAt, "startup", StringComparison.Ordinal))
-            inputs = "complete";
-        else
-            inputs = "unknown";
+            return "tainted";
+        return string.Equals(_installedAt, "startup", StringComparison.Ordinal) ? "complete" : "unknown";
+    }
 
-        string initialState = "missing";
-        if (replay != null)
-            initialState = pending != null ? "room_entry" : "read_back";
-
-        Emit("record_open", new JsonObject
+    private static JsonObject BuildRecordOpenEvent(OpenFacts facts)
+        => new()
         {
             ["schema"] = Schema,
-            ["record_id"] = _rec.Id,
-            ["trigger"] = trigger,
-            ["attempt"] = attempt,
+            ["record_id"] = _rec!.Id,
+            ["trigger"] = facts.Trigger,
+            ["attempt"] = facts.Attempt,
             ["session"] = new JsonObject
             {
                 ["id"] = SessionId,
@@ -1275,56 +1389,64 @@ internal static class CombatRecorder
                 ["sts2_dll_sha256"] = _dllSha256,
             },
             ["profile_id"] = SafeProfileId(),
-            ["run"] = pending?.Run.DeepClone() ?? RunInfo(run, null),
-            ["start"] = new JsonObject
-            {
-                ["boundary"] = boundary,
-                // The game's replay starts at the room's entry either way; whether this record
-                // copied that start itself (room_entry) or read it back from the game later.
-                ["initial_state"] = initialState,
-                ["game_events_before_open"] = eventsBefore,
-                ["checksums_before_open"] = checksBefore,
-                ["game_writer_enabled"] = writer?.IsEnabled,
-                ["game_writer_recording"] = replay != null,
-                ["reproducible_from_start"] = string.Equals(boundary, "room_entry", StringComparison.Ordinal),
-                ["pre_combat_requests"] = eventRoom ? pending?.Requests.DeepClone() : null,
-                // "room_entry": the tracking layer saw this room's entry (it knows every reservation,
-                // pause and request since). "inside_room": it started inside the room (installed by
-                // set_recording): what came before is marked unseen where it matters.
-                ["tracking"] = roomTracked ? "room_entry" : "inside_room",
-                ["recorder_installed"] = _installedAt,
-                ["choice_ids_at_open"] = choiceIdsAtOpen == null ? null
-                    : new JsonArray(choiceIdsAtOpen.Select(c => (JsonNode)JsonValue.Create(c)).ToArray()),
-                ["paused_at_open"] = pausedAtOpen == null ? null : RecordObserve.DescribeAction(pausedAtOpen, KeyOf(pausedAtOpen)),
-                ["inputs_outside_replay"] = inputs,
-                ["console_in_process"] = ConsoleInProcess.Count > 0 ? ConsoleInProcess.DeepClone() : null,
-            },
-        });
-        if (string.Equals(inputs, "tainted", StringComparison.Ordinal))
-            _rec.Faults.Add("console_command_in_process");
+            ["run"] = facts.Pending?.Run.DeepClone() ?? RunInfo(facts.ActiveRun, null),
+            ["start"] = BuildRecordStartSection(facts),
+        };
 
-        if (replay != null)
+    private static JsonObject BuildRecordStartSection(OpenFacts facts)
+        => new()
         {
-            // Counters as the game holds them now; the header's are from the room entry. They
-            // differ when something ran in between (an event before its fight).
-            var idsNow = IdsNow();
-            var ids = pending?.Ids.DeepClone() ?? IdsOf(replay);
-            long seq = Emit("initial_state", new JsonObject { ["ids"] = ids, ["ids_at_open"] = idsNow }, hidden: true);
-            EmitHidden(seq, "initial_state", new JsonObject
-            {
-                ["format"] = "CombatReplay packet (events and checksums empty), game PacketWriter; player ids as the game holds them",
-                ["packet"] = Convert.ToBase64String(pending?.HeaderPacket ?? Packet(HeaderOf(replay))),
-            });
+            ["boundary"] = facts.Boundary,
+            // The game's replay starts at the room's entry either way; whether this record
+            // copied that start itself (room_entry) or read it back from the game later.
+            ["initial_state"] = facts.InitialState,
+            ["game_events_before_open"] = facts.EventsBefore,
+            ["checksums_before_open"] = facts.ChecksBefore,
+            ["game_writer_enabled"] = facts.GameWriter?.IsEnabled,
+            ["game_writer_recording"] = facts.Replay != null,
+            ["reproducible_from_start"] = string.Equals(facts.Boundary, "room_entry", StringComparison.Ordinal),
+            ["pre_combat_requests"] = facts.EventRoom ? facts.Pending?.Requests.DeepClone() : null,
+            // "room_entry": the tracking layer saw this room's entry (it knows every reservation,
+            // pause and request since). "inside_room": it started inside the room (installed by
+            // set_recording): what came before is marked unseen where it matters.
+            ["tracking"] = facts.RoomTracked ? "room_entry" : "inside_room",
+            ["recorder_installed"] = _installedAt,
+            ["choice_ids_at_open"] = facts.ChoiceIdsAtOpen == null ? null
+                : new JsonArray(facts.ChoiceIdsAtOpen.Select(c => (JsonNode)JsonValue.Create(c)).ToArray()),
+            ["paused_at_open"] = facts.PausedAtOpen == null
+                ? null : RecordObserve.DescribeAction(facts.PausedAtOpen, KeyOf(facts.PausedAtOpen)),
+            ["inputs_outside_replay"] = facts.Inputs,
+            ["console_in_process"] = ConsoleInProcess.Count > 0 ? ConsoleInProcess.DeepClone() : null,
+        };
 
-            // Enabled mid-combat: copy what the game already holds, marked as such. The MOD's own
-            // lines (origin, turn context, observations) for that stretch do not exist.
-            for (int i = 0; i < eventsBefore; i++)
-                JournalEvent(replay, i, null, backfilled: true);
-            for (int i = 0; i < checksBefore; i++)
-                JournalChecksum(replay, i, backfilled: true);
-            _rec.Backfilled = eventsBefore + checksBefore;
-        }
-        _pending = null;
+    /// <summary>
+    /// Copies the game's own start-of-room replay state into the record: counters as the game
+    /// holds them now, since the header's are from the room entry and something may have run
+    /// in between (an event before its fight).
+    /// </summary>
+    private static void EmitOpenInitialState(CombatReplay replay, PendingInitial? pending)
+    {
+        var idsNow = IdsNow();
+        var ids = pending?.Ids.DeepClone() ?? IdsOf(replay);
+        long seq = Emit("initial_state", new JsonObject { ["ids"] = ids, ["ids_at_open"] = idsNow }, hidden: true);
+        EmitHidden(seq, "initial_state", new JsonObject
+        {
+            ["format"] = "CombatReplay packet (events and checksums empty), game PacketWriter; player ids as the game holds them",
+            ["packet"] = Convert.ToBase64String(pending?.HeaderPacket ?? Packet(HeaderOf(replay))),
+        });
+    }
+
+    /// <summary>
+    /// Enabled mid-combat: copy what the game already holds, marked as such. The MOD's own
+    /// lines (origin, turn context, observations) for that stretch do not exist.
+    /// </summary>
+    private static void BackfillExistingEvents(CombatReplay replay, int eventsBefore, int checksBefore)
+    {
+        for (int i = 0; i < eventsBefore; i++)
+            JournalEvent(replay, i, null, backfilled: true);
+        for (int i = 0; i < checksBefore; i++)
+            JournalChecksum(replay, i, backfilled: true);
+        _rec!.Backfilled = eventsBefore + checksBefore;
     }
 
     [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1031:Do not catch general exception types",
