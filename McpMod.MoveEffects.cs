@@ -993,7 +993,10 @@ public static partial class McpMod
             case 0x72:                  // ldstr: a summon's literal slot name
                 {
                     int tok = BitConverter.ToInt32(il, i + 1);
-                    TryDo(() => { scan.LastString = module.ResolveString(tok); });
+                    TryDo(() =>
+                    {
+                        scan.LastString = module.ResolveString(tok);
+                    });
                     return i + 5;
                 }
             case 0x7D:                  // stfld: the async rewrite's hoisted local
@@ -1075,7 +1078,10 @@ public static partial class McpMod
 
         int tok = BitConverter.ToInt32(il, i + 1);
         MethodBase? mm = null;
-        TryDo(() => { mm = module.ResolveMethod(tok); });
+        TryDo(() =>
+        {
+            mm = module.ResolveMethod(tok);
+        });
         if (mm != null)
             HandleCall(mm, monster, scan);
         return i + 5;

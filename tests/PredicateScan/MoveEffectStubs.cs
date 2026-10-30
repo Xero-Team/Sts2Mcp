@@ -138,39 +138,74 @@ namespace Sts2Mcp
             [System.Runtime.CompilerServices.CallerMemberName] string member = "",
             [System.Runtime.CompilerServices.CallerLineNumber] int line = 0)
         {
-            try { return read(); }
-            catch { return default; }
+            try
+            {
+                return read();
+            }
+            catch
+            {
+                return default;
+            }
         }
 
         private static T? TryRead<T>(string context, Func<T> read)
         {
-            try { return read(); }
-            catch { return default; }
+            try
+            {
+                return read();
+            }
+            catch
+            {
+                return default;
+            }
         }
 
         private static bool TryDo(Action action,
             [System.Runtime.CompilerServices.CallerMemberName] string member = "",
             [System.Runtime.CompilerServices.CallerLineNumber] int line = 0)
         {
-            try { action(); return true; }
-            catch { return false; }
+            try
+            {
+                action();
+                return true;
+            }
+            catch
+            {
+                return false;
+            }
         }
 
         private static bool TryDo(string context, Action action)
         {
-            try { action(); return true; }
-            catch { return false; }
+            try
+            {
+                action();
+                return true;
+            }
+            catch
+            {
+                return false;
+            }
         }
 
         private static T? TryReadQuiet<T>(Func<T> read)
         {
-            try { return read(); }
-            catch { return default; }
+            try
+            {
+                return read();
+            }
+            catch
+            {
+                return default;
+            }
         }
 
         private static void TryDoQuiet(Action action)
         {
-            try { action(); }
+            try
+            {
+                action();
+            }
             catch { }
         }
     }

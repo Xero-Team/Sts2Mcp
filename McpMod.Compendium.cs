@@ -710,7 +710,10 @@ public static partial class McpMod
         {
             if (property.GetIndexParameters().Length != 0)
                 continue;
-            TryDo(() => { obj[property.Name] = ToJsonSafe(property.GetValue(value), depth + 1, maxItems); });
+            TryDo(() =>
+            {
+                obj[property.Name] = ToJsonSafe(property.GetValue(value), depth + 1, maxItems);
+            });
         }
         return obj.Count > 0 ? obj : value.ToString();
     }

@@ -3562,8 +3562,14 @@ public static partial class McpMod
         finally
         {
             // Always hand the card back the way it was found.
-            TryDo("card.vs_targets.clear_preview", () => { card.DynamicVars.ClearPreview(); });
-            TryDo("card.vs_targets.restore_preview", () => { card.UpdateDynamicVarPreview(CardPreviewMode.Normal, null, card.DynamicVars); });
+            TryDo("card.vs_targets.clear_preview", () =>
+            {
+                card.DynamicVars.ClearPreview();
+            });
+            TryDo("card.vs_targets.restore_preview", () =>
+            {
+                card.UpdateDynamicVarPreview(CardPreviewMode.Normal, null, card.DynamicVars);
+            });
         }
 
         return previews;
@@ -5042,7 +5048,10 @@ public static partial class McpMod
             nodes.Add(BuildMapNode(pt, marks, drawingNodePositions));
 
         EncounterModel? bossEncounter = null;
-        TryDo("map.boss", () => { bossEncounter = runState.Act.BossEncounter; });
+        TryDo("map.boss", () =>
+        {
+            bossEncounter = runState.Act.BossEncounter;
+        });
         EncounterModel? secondBossEncounter = runState.Act.SecondBossEncounter;
 
         string? primaryBossId = bossEncounter?.Id?.Entry;

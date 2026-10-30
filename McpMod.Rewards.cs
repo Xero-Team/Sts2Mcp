@@ -140,7 +140,11 @@ public static partial class McpMod
         // A human can return from the map and click before any GET. Re-establish the
         // displayed parent session from its UI ancestry, with unknown prior history.
         for (Node? node = __instance.GetParent(); node != null; node = node.GetParent())
-            if (node is NRewardsScreen screen) { GetRewardButtons(screen); break; }
+            if (node is NRewardsScreen screen)
+            {
+                GetRewardButtons(screen);
+                break;
+            }
         RewardSession.Entry? entry = s_rewardSession.Find(__instance.Reward);
         if (entry != null)
             s_rewardSession.Begin(entry);
@@ -163,7 +167,10 @@ public static partial class McpMod
         Justification = "Same as CA2007: the observer must resume on the main thread.")]
     private static async Task ObserveRewardExecutionAsync(Task task, RewardSession.Entry entry)
     {
-        try { await task; }
+        try
+        {
+            await task;
+        }
         catch
         {
             RewardObservation(() => s_rewardSession.Interrupt(entry));
@@ -225,7 +232,10 @@ public static partial class McpMod
         int? cardCount, CardRewardAlternative[]? alternatives)
     {
         int? choice;
-        try { choice = await task; }
+        try
+        {
+            choice = await task;
+        }
         catch
         {
             RewardObservation(() => s_rewardSession.Interrupt(entry));

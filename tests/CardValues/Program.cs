@@ -38,11 +38,20 @@ internal static class Program
             {
                 if (!swallowInner)
                     return McpMod.TestDescription(card);
-                try { return McpMod.TestDescription(card); }
-                catch { return "partial state from a best-effort DTO builder"; }
+                try
+                {
+                    return McpMod.TestDescription(card);
+                }
+                catch
+                {
+                    return "partial state from a best-effort DTO builder";
+                }
             });
         }
-        catch (Exception caught) { error = caught; }
+        catch (Exception caught)
+        {
+            error = caught;
+        }
         Restored(card);
         Equal(McpMod.TestValueMode, false, "request value mode restored on failure");
         Equal(card.FallbackReads, 0, "unpowered request never reads powered fallback description");
@@ -65,32 +74,44 @@ internal static class Program
             }),
             ("partial card preview failure refuses state", () =>
             {
-                var card = Card(); card.DynamicVars.Values[1].ThrowPreview = true; Refuses(card);
+                var card = Card();
+                card.DynamicVars.Values[1].ThrowPreview = true;
+                Refuses(card);
             }),
             ("enchantment preview failure restores both sets", () =>
             {
-                var card = Card(); card.Enchantment = new EnchantmentModel(new DynamicVar(2, 4, 10) { ThrowPreview = true }); Refuses(card);
+                var card = Card();
+                card.Enchantment = new EnchantmentModel(new DynamicVar(2, 4, 10) { ThrowPreview = true });
+                Refuses(card);
             }),
             ("formatting failure has no powered fallback", () =>
             {
-                var card = Card(); card.ThrowDescription = true; Refuses(card);
+                var card = Card();
+                card.ThrowDescription = true;
+                Refuses(card);
             }),
             ("DTO catch cannot publish an invalid state", () =>
             {
-                var card = Card(); card.DynamicVars.Values[1].ThrowPreview = true; Refuses(card, true);
+                var card = Card();
+                card.DynamicVars.Values[1].ThrowPreview = true;
+                Refuses(card, true);
             }),
             ("later request has no stale failure", () =>
             {
-                var broken = Card(); broken.DynamicVars.Values[1].ThrowPreview = true; Refuses(broken);
+                var broken = Card();
+                broken.DynamicVars.Values[1].ThrowPreview = true;
+                Refuses(broken);
                 var card = Card();
                 Equal(McpMod.TestBuild(true, () => McpMod.TestDescription(card)), "7,11", "next request renders normally");
                 Restored(card);
             }),
             ("powered request keeps existing formatting fallback", () =>
             {
-                var card = Card(); card.ThrowDescription = true;
+                var card = Card();
+                card.ThrowDescription = true;
                 Equal(McpMod.TestBuild(false, () => McpMod.TestDescription(card)), "powered fallback", "powered display fallback");
-                Equal(card.FallbackReads, 1, "powered fallback read once"); Restored(card);
+                Equal(card.FallbackReads, 1, "powered fallback read once");
+                Restored(card);
             }),
             ("nested render scopes restore their immediate parent values", () =>
             {
@@ -108,8 +129,16 @@ internal static class Program
         int failures = 0;
         foreach (var (name, run) in cases)
         {
-            try { run(); Console.WriteLine($"PASS {name}"); }
-            catch (Exception error) { failures++; Console.WriteLine($"FAIL {name}: {error.Message}"); }
+            try
+            {
+                run();
+                Console.WriteLine($"PASS {name}");
+            }
+            catch (Exception error)
+            {
+                failures++;
+                Console.WriteLine($"FAIL {name}: {error.Message}");
+            }
         }
         Console.WriteLine($"{cases.Length - failures} passed, {failures} failed");
         return failures == 0 ? 0 : 1;
@@ -133,12 +162,17 @@ namespace MegaCrit.Sts2.Core.Localization.DynamicVars
         public decimal PreviewValue { get; set; }
         public bool ThrowPreview { get; set; }
         public DynamicVar(decimal basis, decimal enchanted, decimal preview)
-        { _intrinsic = enchanted; EnchantedValue = enchanted; PreviewValue = preview; }
+        {
+            _intrinsic = enchanted;
+            EnchantedValue = enchanted;
+            PreviewValue = preview;
+        }
         public void UpdateCardPreview(CardModel card, CardPreviewMode mode, object? target, bool runGlobalHooks)
         {
             if (runGlobalHooks)
                 throw new InvalidOperationException("global hooks must be disabled");
-            EnchantedValue = _intrinsic; PreviewValue = _intrinsic;
+            EnchantedValue = _intrinsic;
+            PreviewValue = _intrinsic;
             if (ThrowPreview)
                 throw new InvalidOperationException("injected dynamic variable failure");
         }
@@ -147,13 +181,19 @@ namespace MegaCrit.Sts2.Core.Localization.DynamicVars
     {
         public List<DynamicVar> Values { get; }
         public DynamicVarSet(params DynamicVar[] values) => Values = values.ToList();
-        public void ClearPreview() { foreach (var variable in Values) variable.PreviewValue = 0; }
+        public void ClearPreview()
+        {
+            foreach (var variable in Values) variable.PreviewValue = 0;
+        }
     }
 }
 
 namespace MegaCrit.Sts2.Core.Models
 {
-    public class ModelId { public string Entry => "TEST_CARD"; }
+    public class ModelId
+    {
+        public string Entry => "TEST_CARD";
+    }
     public class CardModel
     {
         public ModelId Id { get; } = new ModelId();
@@ -194,8 +234,14 @@ namespace Sts2Mcp
         // harness keeps the same "a failed read is absent, not fatal" contract here.
         private static T? TryRead<T>(string context, Func<T> read)
         {
-            try { return read(); }
-            catch { return default; }
+            try
+            {
+                return read();
+            }
+            catch
+            {
+                return default;
+            }
         }
     }
 }

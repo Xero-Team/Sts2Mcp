@@ -61,7 +61,10 @@ public static partial class McpMod
                 using UnpoweredCardVars scope = UnpoweredCardVars.Apply(card);
                 return CleanCardDescription(card.GetDescriptionForPile(pile));
             }
-            catch (Exception error) { throw RefuseUnpoweredCardValues(card, error); }
+            catch (Exception error)
+            {
+                throw RefuseUnpoweredCardValues(card, error);
+            }
         }
         // A rendered description that cannot be produced falls back to the model's own text.
         return TryRead("card.description",

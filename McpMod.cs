@@ -347,8 +347,14 @@ public static partial class McpMod
                 // Handle each request asynchronously so we don't block the listener
                 ThreadPool.QueueUserWorkItem(_ => HandleRequest(context));
             }
-            catch (HttpListenerException) { break; }
-            catch (ObjectDisposedException) { break; }
+            catch (HttpListenerException)
+            {
+                break;
+            }
+            catch (ObjectDisposedException)
+            {
+                break;
+            }
         }
     }
 
@@ -788,7 +794,10 @@ public static partial class McpMod
                         return s;
                     });
                 }
-                finally { s_passiveRead = false; }
+                finally
+                {
+                    s_passiveRead = false;
+                }
             });
 
             if (string.Equals(format, "markdown", StringComparison.Ordinal))
@@ -1071,8 +1080,18 @@ public static partial class McpMod
             AppendSettleResult(result, before, timeoutMs, includeState);
             if (result.ContainsKey("reward_id") || result.ContainsKey("parent_reward_id"))
             {
-                try { RunOnMainThreadBlocking(() => { AppendRewardActionOutcome(result); return true; }); }
-                catch (MainThreadUnavailableException) { result["outcome_observed"] = false; }
+                try
+                {
+                    RunOnMainThreadBlocking(() =>
+                    {
+                        AppendRewardActionOutcome(result);
+                        return true;
+                    });
+                }
+                catch (MainThreadUnavailableException)
+                {
+                    result["outcome_observed"] = false;
+                }
             }
         }
 

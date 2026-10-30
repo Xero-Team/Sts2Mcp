@@ -132,7 +132,11 @@ public static partial class McpMod
                 return StripRichTextTags(locString.GetFormattedText());
             return result.ToString();
         }
-        catch (Exception ex) { Warn($"text in {caller}", ex); return null; }
+        catch (Exception ex)
+        {
+            Warn($"text in {caller}", ex);
+            return null;
+        }
     }
 
     /// <summary>
@@ -346,7 +350,11 @@ public static partial class McpMod
                 }
 
                 int end = text.IndexOf(']', i);
-                if (end >= 0) { i = end + 1; continue; }
+                if (end >= 0)
+                {
+                    i = end + 1;
+                    continue;
+                }
             }
             sb.Append(text[i]);
             i++;

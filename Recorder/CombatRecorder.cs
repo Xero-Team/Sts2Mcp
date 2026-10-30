@@ -413,8 +413,14 @@ internal static class CombatRecorder
     {
         long outer = t_handlerRequest;
         t_handlerRequest = id;
-        try { return body(); }
-        finally { t_handlerRequest = outer; }
+        try
+        {
+            return body();
+        }
+        finally
+        {
+            t_handlerRequest = outer;
+        }
     };
 
     /// <summary>

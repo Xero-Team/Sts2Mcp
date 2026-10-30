@@ -838,7 +838,10 @@ public static partial class McpMod
             bool isShared = false;
             // Left silent: IsShared throws whenever no event is in progress, which is the
             // normal reading on every other screen - a warning here would fire constantly.
-            TryDo(() => { isShared = eventSync.IsShared; });
+            TryDo(() =>
+            {
+                isShared = eventSync.IsShared;
+            });
             state["is_shared"] = isShared;
 
             if (isShared)

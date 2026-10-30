@@ -81,7 +81,10 @@ public static partial class McpMod
     {
         var scan = new PredicateScan();
         byte[]? il = null;
-        TryDo(() => { il = method?.GetMethodBody()?.GetILAsByteArray(); });
+        TryDo(() =>
+        {
+            il = method?.GetMethodBody()?.GetILAsByteArray();
+        });
         if (il == null || method == null)
             return scan;
         Module module = method.Module;

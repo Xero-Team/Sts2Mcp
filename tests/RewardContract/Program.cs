@@ -133,7 +133,18 @@ namespace Sts2Mcp
 {
     public static partial class McpMod
     {
-        internal static string RewardsMarkdown(Dictionary<string, object?> state) { var sb = new StringBuilder(); FormatRewardsMarkdown(sb, state); return sb.ToString(); }
-        internal static string CardMarkdown(Dictionary<string, object?> state) { var sb = new StringBuilder(); FormatCardRewardMarkdown(sb, state); return sb.ToString(); }
+        internal static string RewardsMarkdown(Dictionary<string, object?> state)
+        {
+            var sb = new StringBuilder();
+            FormatRewardsMarkdown(sb, state);
+            return sb.ToString();
+        }
+
+        internal static string CardMarkdown(Dictionary<string, object?> state)
+        {
+            var sb = new StringBuilder();
+            FormatCardRewardMarkdown(sb, state);
+            return sb.ToString();
+        }
     }
 }

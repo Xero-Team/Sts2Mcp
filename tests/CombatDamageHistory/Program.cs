@@ -24,7 +24,8 @@ proxy.Owner = owner;
 var export = typeof(McpMod).GetMethod("DamageNotFullyBlockedThisOwnerTurn", BindingFlags.Static | BindingFlags.NonPublic)!;
 bool Export(params DamageReceivedEntry[] entries) => (bool)export.Invoke(null, new object[] { owner, entries })!;
 
-foreach (var (name, props, fullyBlocked, damage) in new[] {
+foreach (var (name, props, fullyBlocked, damage) in new[]
+{
     ("Buffer prevented unblockable Bloodletting", ValueProp.Unblockable | ValueProp.Unpowered | ValueProp.Move, false, 0),
     ("Buffer prevented attack with no Block", ValueProp.Move, false, 0),
     ("Fully blocked attack", ValueProp.Move, true, 0),
@@ -77,7 +78,8 @@ public class HistoryState : DispatchProxy
 {
     public Player Owner = null!;
     public CombatSide Side;
-    protected override object? Invoke(MethodInfo? method, object?[]? args) => method?.Name switch {
+    protected override object? Invoke(MethodInfo? method, object?[]? args) => method?.Name switch
+    {
         "get_RoundNumber" => 1,
         "get_CurrentSide" => Side,
         "GetPlayer" => (ulong)args![0]! == Owner.NetId ? Owner : null,
