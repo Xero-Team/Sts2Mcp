@@ -93,16 +93,7 @@ public static partial class McpMod
             int length = InstructionLength(il, i);
             if (op == 0xFE && i + 1 < il.Length)
             {
-                switch (il[i + 1])
-                {
-                    case 0x01: scan.Comparisons.Add("ceq"); break;
-                    case 0x02: case 0x03: scan.Comparisons.Add("cgt"); break;
-                    case 0x04: case 0x05: scan.Comparisons.Add("clt"); break;
-                    case 0x06:
-                    case 0x07:   // ldftn / ldvirtftn
-                        AddFunctionPointer(module, il, i + 2, scan);
-                        break;
-                }
+                ScanTwoByteOpcode(il[i + 1], module, il, i, scan);
                 i += length;
                 continue;
             }
@@ -124,6 +115,22 @@ public static partial class McpMod
             i += length;
         }
         return scan;
+    }
+
+    /// <summary>Records what one <c>0xFE</c>-prefixed opcode says about the predicate.</summary>
+    private static void ScanTwoByteOpcode(
+        byte opcode, Module module, byte[] il, int offset, PredicateScan scan)
+    {
+        switch (opcode)
+        {
+            case 0x01: scan.Comparisons.Add("ceq"); break;
+            case 0x02: case 0x03: scan.Comparisons.Add("cgt"); break;
+            case 0x04: case 0x05: scan.Comparisons.Add("clt"); break;
+            case 0x06:
+            case 0x07:   // ldftn / ldvirtftn
+                AddFunctionPointer(module, il, offset + 2, scan);
+                break;
+        }
     }
 
     private static void AddMember(Module module, byte[] il, int tokenOffset, PredicateScan scan, bool isField)
@@ -341,20 +348,32 @@ public static partial class McpMod
         var scan = ScanPredicate(lambda?.Method);
         bool negated = IsNegated(scan);
 
+        var known = MatchKnownCondition(scan, branchIndex, enabled, negated, placementSampled, ref isSnapshot);
+        if (known != null)
+            return known;
+
+        isSnapshot = true;
+        return Condition("snapshot", ("value", enabled));
+    }
+
+    /// <summary>
+    /// The condition for a predicate this mod recognises, or null when the shape is unknown
+    /// and the caller should fall back to a snapshot.
+    /// </summary>
+    private static Dictionary<string, object?>? MatchKnownCondition(
+        PredicateScan scan,
+        int branchIndex,
+        bool enabled,
+        bool negated,
+        bool placementSampled,
+        ref bool isSnapshot)
+    {
         // Encounter-fixed placement: the slot a creature occupies, and the
         // `IsFront` / `IsAlone` flags the encounter sets before combat, never
         // change once the monster exists. The sampled value is therefore exact
         // for the whole search rather than a snapshot of moving state.
         if (ReadsAny(scan, ".get_SlotName", ".get_IsFront", ".get_IsAlone"))
-        {
-            if (placementSampled)
-                return Condition("constant", ("value", enabled));
-            var placement = PlacementCondition(scan, negated);
-            if (placement != null)
-                return placement;
-            isSnapshot = true;
-            return Condition("snapshot", ("value", enabled));
-        }
+            return placementSampled ? Condition("constant", ("value", enabled)) : PlacementCondition(scan, negated);
 
         // `Creature.HasPower<T>()`: the generic argument names the power.
         if (scan.Reads("Creature.HasPower") && scan.GenericArgs.Count > 0)
@@ -367,16 +386,7 @@ public static partial class McpMod
         // short-circuit into branch opcodes. C# integer division floors, so the
         // threshold is floor(MaxHp/denominator), not the exact rational.
         if (scan.Reads("FrogKnight.get_HasBeetleCharged"))
-        {
-            int denominator = scan.Ints.FirstOrDefault(value => value > 1);
-            if (denominator <= 1)
-                denominator = 2;
-            var charged = Condition("move_seen", ("move_id", "BEETLE_CHARGE"));
-            var half = Condition("owner_hp_fraction",
-                ("cmp", "ge"), ("numerator", 1), ("denominator", denominator), ("floor", true));
-            var either = Condition("or", ("args", new[] { charged, half }));
-            return branchIndex == 0 ? either : Condition("not", ("arg", either));
-        }
+            return BuildBeetleChargeCondition(scan, branchIndex);
 
         // Living-teammate counts. `GetTeammatesOf` returns the whole side, so a
         // count includes the owner unless its LINQ predicate rejects it; the
@@ -413,8 +423,21 @@ public static partial class McpMod
         if (scan.Reads("BowlbugRock.get_IsOffBalance"))
             return Negate(Condition("owner_power", ("power_id", "IMBALANCED_STUN")), negated);
 
-        isSnapshot = true;
-        return Condition("snapshot", ("value", enabled));
+        return null;
+    }
+
+    private static Dictionary<string, object?> BuildBeetleChargeCondition(
+        PredicateScan scan,
+        int branchIndex)
+    {
+        int denominator = scan.Ints.FirstOrDefault(value => value > 1);
+        if (denominator <= 1)
+            denominator = 2;
+        var charged = Condition("move_seen", ("move_id", "BEETLE_CHARGE"));
+        var half = Condition("owner_hp_fraction",
+            ("cmp", "ge"), ("numerator", 1), ("denominator", denominator), ("floor", true));
+        var either = Condition("or", ("args", new[] { charged, half }));
+        return branchIndex == 0 ? either : Condition("not", ("arg", either));
     }
 
     /// <summary>

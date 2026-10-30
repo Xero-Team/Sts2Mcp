@@ -107,46 +107,106 @@ public static partial class McpMod
                 ? Convert.ToHexString(SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(d))).ToLowerInvariant() : d;
         }
         // The history of the current act, entry by entry and field by field (the save rewrites it).
-        var history = new JsonArray();
-        if (run.MapPointHistory.Count > 0)
-        {
-            foreach (var entry in run.MapPointHistory[^1])
-            {
-                var e = new JsonObject
-                {
-                    ["type"] = entry.MapPointType.ToString(),
-                    ["rooms"] = string.Join(";", entry.Rooms.Cast<object?>().Select(x => x is IPacketSerializable xp ? digest(xp)[..12] : x?.ToString())),
-                };
-                var stats = new JsonArray();
-                foreach (var stat in entry.PlayerStats)
-                {
-                    var o = new JsonObject();
-                    foreach (var sp in stat.GetType().GetProperties(System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Public))
-                    {
-                        if (sp.GetIndexParameters().Length != 0 || sp.GetMethod == null)
-                            continue;
-                        var (statReadable, sv) = TryReadQuiet<(bool Readable, object? Value)>(
-                            () => (true, sp.GetValue(stat)));
-                        if (!statReadable)
-                            continue;
-                        o[sp.Name] = sv switch
-                        {
-                            null => null,
-                            string str => str,
-                            System.Collections.ICollection c => string.Join(";", c.Cast<object?>().Select(x =>
-                                x is IPacketSerializable xp ? digest(xp)[..12] : x?.ToString())),
-                            _ => sv.ToString(),
-                        };
-                    }
-                    stats.Add(o);
-                }
-                e["player_stats"] = stats;
-                history.Add(e);
-            }
-        }
-        parts["last_act_history"] = history;
+        parts["last_act_history"] = BuildLastActHistory(run, digest);
         return parts;
     }
+
+    private static JsonArray BuildLastActHistory(
+        SerializableRun run,
+        Func<IPacketSerializable, string> digest)
+    {
+        var history = new JsonArray();
+        if (run.MapPointHistory.Count == 0)
+            return history;
+
+        foreach (var entry in run.MapPointHistory[^1])
+        {
+            var e = new JsonObject
+            {
+                ["type"] = entry.MapPointType.ToString(),
+                ["rooms"] = string.Join(";", entry.Rooms.Cast<object?>().Select(x => x is IPacketSerializable xp ? digest(xp)[..12] : x?.ToString())),
+            };
+            var stats = new JsonArray();
+            foreach (var stat in entry.PlayerStats)
+                stats.Add(DescribePlayerStats(stat, digest));
+            e["player_stats"] = stats;
+            history.Add(e);
+        }
+        return history;
+    }
+
+    private static JsonObject DescribePlayerStats(object stat, Func<IPacketSerializable, string> digest)
+    {
+        var row = new JsonObject();
+        foreach (var sp in stat.GetType().GetProperties(System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Public))
+        {
+            if (sp.GetIndexParameters().Length != 0 || sp.GetMethod == null)
+                continue;
+            var (readable, value) = TryReadQuiet<(bool Readable, object? Value)>(
+                () => (true, sp.GetValue(stat)));
+            if (!readable)
+                continue;
+            row[sp.Name] = value switch
+            {
+                null => null,
+                string str => str,
+                System.Collections.ICollection c => string.Join(";", c.Cast<object?>().Select(x =>
+                    x is IPacketSerializable xp ? digest(xp)[..12] : x?.ToString())),
+                _ => value.ToString(),
+            };
+        }
+        return row;
+    }
+
+    private static JsonArray BuildReplayEvents(
+        CombatReplay replay,
+        Func<IPacketSerializable, string> digest)
+    {
+        var events = new JsonArray();
+        for (int i = 0; i < replay.events.Count; i++)
+        {
+            var e = replay.events[i];
+            var entry = new JsonObject
+            {
+                ["index"] = i,
+                ["type"] = e.eventType.ToString(),
+                ["sha256"] = digest(e),
+                // Each .mcr anonymizes player ids with values drawn per process (IdAnonymizer), so
+                // two replays of the same play differ there; this digest leaves the id out.
+                ["sha256_without_player"] = digest(e with { playerId = e.playerId.HasValue ? 0UL : null }),
+            };
+            switch (e.eventType)
+            {
+                case CombatReplayEventType.GameAction:
+                    entry["action"] = RecordObserve.DescribeNetAction(e.action, CombatRecorder.SlotOf);
+                    break;
+                case CombatReplayEventType.HookAction:
+                    entry["hook_id"] = e.hookId;
+                    break;
+                case CombatReplayEventType.ResumeAction:
+                    entry["action_id"] = e.actionId;
+                    break;
+                case CombatReplayEventType.PlayerChoice:
+                    entry["choice_id"] = e.choiceId;
+                    entry["result"] = RecordObserve.DescribeChoiceResult(e.playerChoiceResult, CombatRecorder.SlotOf);
+                    break;
+            }
+            events.Add(entry);
+        }
+        return events;
+    }
+
+    private static JsonArray BuildReplayChecksums(
+        CombatReplay replay,
+        Func<IPacketSerializable, string> digest)
+        => new(replay.checksumData.Select((c, i) => (JsonNode)new JsonObject
+        {
+            ["index"] = i,
+            ["checksum_id"] = c.checksumData.id,
+            ["checksum"] = c.checksumData.checksum,
+            ["context"] = c.context,
+            ["sha256"] = digest(c),
+        }).ToArray());
 
     private static JsonObject InspectReplay(string file)
     {
@@ -173,46 +233,8 @@ public static partial class McpMod
             return Convert.ToHexString(SHA256.HashData(writer.Buffer.AsSpan(0, writer.BytePosition))).ToLowerInvariant();
         }
 
-        var events = new JsonArray();
-        for (int i = 0; i < replay.events.Count; i++)
-        {
-            var e = replay.events[i];
-            var entry = new JsonObject
-            {
-                ["index"] = i,
-                ["type"] = e.eventType.ToString(),
-                ["sha256"] = Digest(e),
-                // Each .mcr anonymizes player ids with values drawn per process (IdAnonymizer), so
-                // two replays of the same play differ there; this digest leaves the id out.
-                ["sha256_without_player"] = Digest(e with { playerId = e.playerId.HasValue ? 0UL : null }),
-            };
-            switch (e.eventType)
-            {
-                case CombatReplayEventType.GameAction:
-                    entry["action"] = RecordObserve.DescribeNetAction(e.action, CombatRecorder.SlotOf);
-                    break;
-                case CombatReplayEventType.HookAction:
-                    entry["hook_id"] = e.hookId;
-                    break;
-                case CombatReplayEventType.ResumeAction:
-                    entry["action_id"] = e.actionId;
-                    break;
-                case CombatReplayEventType.PlayerChoice:
-                    entry["choice_id"] = e.choiceId;
-                    entry["result"] = RecordObserve.DescribeChoiceResult(e.playerChoiceResult, CombatRecorder.SlotOf);
-                    break;
-            }
-            events.Add(entry);
-        }
-
-        var checksums = new JsonArray(replay.checksumData.Select((c, i) => (JsonNode)new JsonObject
-        {
-            ["index"] = i,
-            ["checksum_id"] = c.checksumData.id,
-            ["checksum"] = c.checksumData.checksum,
-            ["context"] = c.context,
-            ["sha256"] = Digest(c),
-        }).ToArray());
+        var events = BuildReplayEvents(replay, Digest);
+        var checksums = BuildReplayChecksums(replay, Digest);
 
         return new JsonObject
         {

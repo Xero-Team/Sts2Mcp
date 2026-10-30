@@ -97,37 +97,10 @@ public static partial class McpMod
             return Error($"Too many strokes (maximum {MaxMapDrawingStrokesPerRequest})");
 
         var nodePositions = BuildMapDrawingNodePositions(mapScreen);
-        var parsedStrokes = new List<ParsedMapDrawingStroke>();
-        int totalPoints = 0;
-
-        foreach (var strokeElement in strokesElement.EnumerateArray())
-        {
-            if (strokeElement.ValueKind != JsonValueKind.Object)
-                return Error("Each stroke must be an object");
-
-            var modeResult = ParseMapDrawingMode(strokeElement, out var mode);
-            if (modeResult != null)
-                return modeResult;
-
-            if (!strokeElement.TryGetProperty("points", out var pointsElement) || pointsElement.ValueKind != JsonValueKind.Array)
-                return Error("Each stroke must contain a 'points' array");
-            if (pointsElement.GetArrayLength() == 0)
-                return Error("Each stroke must contain at least one point");
-
-            totalPoints += pointsElement.GetArrayLength();
-            if (totalPoints > MaxMapDrawingPointsPerRequest)
-                return Error($"Too many drawing points (maximum {MaxMapDrawingPointsPerRequest})");
-
-            var points = new List<Vector2>(pointsElement.GetArrayLength());
-            foreach (var pointElement in pointsElement.EnumerateArray())
-            {
-                var pointResult = ParseMapDrawingPoint(pointElement, nodePositions, out var point);
-                if (pointResult != null)
-                    return pointResult;
-                points.Add(point);
-            }
-            parsedStrokes.Add(new ParsedMapDrawingStroke(mode, points));
-        }
+        var parseError = ParseMapDrawingStrokes(
+            strokesElement, nodePositions, out var parsedStrokes, out int totalPoints);
+        if (parseError != null)
+            return parseError;
 
         foreach (var stroke in parsedStrokes)
         {
@@ -239,6 +212,46 @@ public static partial class McpMod
         if (element.ValueKind != JsonValueKind.Number || !element.TryGetSingle(out value))
             return false;
         return float.IsFinite(value);
+    }
+
+    private static Dictionary<string, object?>? ParseMapDrawingStrokes(
+        JsonElement strokesElement,
+        Dictionary<(int col, int row), Vector2> nodePositions,
+        out List<ParsedMapDrawingStroke> parsedStrokes,
+        out int totalPoints)
+    {
+        parsedStrokes = new List<ParsedMapDrawingStroke>();
+        totalPoints = 0;
+
+        foreach (var strokeElement in strokesElement.EnumerateArray())
+        {
+            if (strokeElement.ValueKind != JsonValueKind.Object)
+                return Error("Each stroke must be an object");
+
+            var modeResult = ParseMapDrawingMode(strokeElement, out var mode);
+            if (modeResult != null)
+                return modeResult;
+
+            if (!strokeElement.TryGetProperty("points", out var pointsElement) || pointsElement.ValueKind != JsonValueKind.Array)
+                return Error("Each stroke must contain a 'points' array");
+            if (pointsElement.GetArrayLength() == 0)
+                return Error("Each stroke must contain at least one point");
+
+            totalPoints += pointsElement.GetArrayLength();
+            if (totalPoints > MaxMapDrawingPointsPerRequest)
+                return Error($"Too many drawing points (maximum {MaxMapDrawingPointsPerRequest})");
+
+            var points = new List<Vector2>(pointsElement.GetArrayLength());
+            foreach (var pointElement in pointsElement.EnumerateArray())
+            {
+                var pointResult = ParseMapDrawingPoint(pointElement, nodePositions, out var point);
+                if (pointResult != null)
+                    return pointResult;
+                points.Add(point);
+            }
+            parsedStrokes.Add(new ParsedMapDrawingStroke(mode, points));
+        }
+        return null;
     }
 
     private static Dictionary<(int col, int row), Vector2> BuildMapDrawingNodePositions(NMapScreen? mapScreen)
