@@ -5820,7 +5820,21 @@ public static partial class McpMod
             state["prompt"] = prompt;
         }
 
-        // Selectable cards (visible holders in the hand)
+        AppendHandSelectCards(state, hand);
+        AddCardSelectionContext(state);
+        AppendHandSelectSelections(state, hand);
+
+        // Confirm button state
+        var confirmBtn = hand.GetNodeOrNull<NConfirmButton>("%SelectModeConfirmButton");
+        state["can_confirm"] = IsControlVisibleOrActionable(confirmBtn);
+
+        return state;
+    }
+
+    /// <summary>The selectable cards: visible holders in the hand, in hand order.</summary>
+    private static void AppendHandSelectCards(
+        Dictionary<string, object?> state, NPlayerHand hand)
+    {
         var selectableCards = new List<Dictionary<string, object?>>();
         int index = 0;
         foreach (var holder in hand.ActiveHolders)
@@ -5839,81 +5853,84 @@ public static partial class McpMod
             index++;
         }
         state["cards"] = selectableCards;
-        AddCardSelectionContext(state);
+    }
 
-        // Already-selected cards. NPlayerHand has two separate selection code paths --
-        // SelectCardInSimpleMode() (used by "simple_select": discard/exhaust-one prompts)
-        // populates the %SelectedHandCardContainer UI node by physically moving the card
-        // there, while SelectCardInUpgradeMode() (used by "upgrade_select": Armaments etc.)
-        // instead shows an in-place NUpgradePreview and never touches that container -- so
-        // reading only the container silently reports zero selected cards for every
-        // upgrade_select prompt, even after a real selection succeeds. The private
-        // `_selectedCards` field (List<CardModel>) is what both code paths actually update,
-        // so read that directly via reflection instead of the UI-only container.
+    /// <summary>
+    /// Already-selected cards. NPlayerHand has two separate selection code paths --
+    /// SelectCardInSimpleMode() (used by "simple_select": discard/exhaust-one prompts)
+    /// populates the %SelectedHandCardContainer UI node by physically moving the card
+    /// there, while SelectCardInUpgradeMode() (used by "upgrade_select": Armaments etc.)
+    /// instead shows an in-place NUpgradePreview and never touches that container -- so
+    /// reading only the container silently reports zero selected cards for every
+    /// upgrade_select prompt, even after a real selection succeeds. The private
+    /// `_selectedCards` field (List&lt;CardModel&gt;) is what both code paths actually update,
+    /// so read that directly via reflection instead of the UI-only container.
+    /// </summary>
+    private static void AppendHandSelectSelections(
+        Dictionary<string, object?> state, NPlayerHand hand)
+    {
         if (GetInstanceFieldValue(hand, "_selectedCards") is List<CardModel> selectedCardModels
             && selectedCardModels.Count > 0)
         {
-            var selectedCards = new List<Dictionary<string, object?>>();
-            int selIdx = 0;
-            foreach (var card in selectedCardModels)
-            {
-                if (card == null) continue;
-                int handIndex = -1;
-                var handCards = card.Owner.PlayerCombatState?.Hand.Cards;
-                if (handCards != null)
-                {
-                    for (int position = 0; position < handCards.Count; position++)
-                    {
-                        if (ReferenceEquals(handCards[position], card))
-                        {
-                            handIndex = position;
-                            break;
-                        }
-                    }
-                }
-                if (handIndex < 0)
-                    throw new InvalidOperationException("Selected Hand card is absent from its combat Hand pile.");
-                var selectedInfo = BuildCardState(card, handIndex);
-                // index addresses the selected UI container; hand_index names
-                // the physical card in player.hand, including identical copies.
-                selectedInfo["index"] = selIdx;
-                selectedInfo["hand_index"] = handIndex;
-                selectedCards.Add(selectedInfo);
-                selIdx++;
-            }
-            if (selectedCards.Count > 0)
-                state["selected_cards"] = selectedCards;
+            AppendReflectedHandSelections(state, selectedCardModels);
+            return;
         }
-        else
+
+        // Fallback to the old UI-container approach in case a future mode uses yet
+        // another representation this doesn't anticipate, or _selectedCards gets
+        // renamed in a game patch.
+        var selectedContainer = hand.GetNodeOrNull<Godot.Control>("%SelectedHandCardContainer");
+        if (selectedContainer == null)
+            return;
+        var selectedCards = new List<Dictionary<string, object?>>();
+        var selectedHolders = FindAll<NSelectedHandCardHolder>(selectedContainer);
+        int selIdx = 0;
+        foreach (var card in selectedHolders.Select(holder => holder.CardModel).OfType<CardModel>())
         {
-            // Fallback to the old UI-container approach in case a future mode uses yet
-            // another representation this doesn't anticipate, or _selectedCards gets
-            // renamed in a game patch.
-            var selectedContainer = hand.GetNodeOrNull<Godot.Control>("%SelectedHandCardContainer");
-            if (selectedContainer != null)
+            selectedCards.Add(new Dictionary<string, object?>(StringComparer.Ordinal)
             {
-                var selectedCards = new List<Dictionary<string, object?>>();
-                var selectedHolders = FindAll<NSelectedHandCardHolder>(selectedContainer);
-                int selIdx = 0;
-                foreach (var card in selectedHolders.Select(holder => holder.CardModel).OfType<CardModel>())
-                {
-                    selectedCards.Add(new Dictionary<string, object?>(StringComparer.Ordinal)
-                    {
-                        ["index"] = selIdx,
-                        ["name"] = SafeGetText(() => card.Title)
-                    });
-                    selIdx++;
-                }
-                if (selectedCards.Count > 0)
-                    state["selected_cards"] = selectedCards;
+                ["index"] = selIdx,
+                ["name"] = SafeGetText(() => card.Title)
+            });
+            selIdx++;
+        }
+        if (selectedCards.Count > 0)
+            state["selected_cards"] = selectedCards;
+    }
+
+    private static void AppendReflectedHandSelections(
+        Dictionary<string, object?> state, List<CardModel> selectedCardModels)
+    {
+        var selectedCards = new List<Dictionary<string, object?>>();
+        int selIdx = 0;
+        foreach (var card in selectedCardModels)
+        {
+            if (card == null) continue;
+            var handIndex = FindHandPosition(card);
+            var selectedInfo = BuildCardState(card, handIndex);
+            // index addresses the selected UI container; hand_index names
+            // the physical card in player.hand, including identical copies.
+            selectedInfo["index"] = selIdx;
+            selectedInfo["hand_index"] = handIndex;
+            selectedCards.Add(selectedInfo);
+            selIdx++;
+        }
+        if (selectedCards.Count > 0)
+            state["selected_cards"] = selectedCards;
+    }
+
+    private static int FindHandPosition(CardModel card)
+    {
+        var handCards = card.Owner.PlayerCombatState?.Hand.Cards;
+        if (handCards != null)
+        {
+            for (int position = 0; position < handCards.Count; position++)
+            {
+                if (ReferenceEquals(handCards[position], card))
+                    return position;
             }
         }
-
-        // Confirm button state
-        var confirmBtn = hand.GetNodeOrNull<NConfirmButton>("%SelectModeConfirmButton");
-        state["can_confirm"] = IsControlVisibleOrActionable(confirmBtn);
-
-        return state;
+        throw new InvalidOperationException("Selected Hand card is absent from its combat Hand pile.");
     }
 
     private static Dictionary<string, object?> BuildRelicSelectState(NChooseARelicSelection screen)
