@@ -59,3 +59,24 @@
 - Not checking card indices after playing — indices shift left.
 - Taking too long to kill bosses — enemies scale every turn.
 - Adding mediocre cards that dilute the deck before boss fights.
+
+---
+
+## Code contributions (agents)
+
+This file is the gameplay guide. The policy for changing the repository itself:
+
+- **Review your own work, then commit.** Read the full diff, run the gates that
+  apply (`dotnet build` with zero warnings; sync `docs/raw-full.md` and
+  `docs/raw-simplified.md` for any API change; update `mcp/server.py` docstrings;
+  run the manual in-game check for behavior changes), then commit without asking
+  when the work is one logical unit the user requested.
+- **Stop and ask** only for an API-surface change (`CONTRIBUTING.md` wants a
+  Discussion or issue first), a push or merge, anything verifiable only with a
+  live game, or scope you would have to guess.
+- **Never** push `main`, force-push, merge a PR, tag, publish, or write inside the
+  game install directory.
+- Commit shape: `.agents/shared/conventional-commit/REFERENCE.md`. Autonomy and
+  review limits: `.agents/shared/ai-contribution/REFERENCE.md`. Code and layer
+  rules: `.agents/skills/sts2-engineering/SKILL.md`. Security review:
+  `.agents/skills/security-audit/SKILL.md`.
