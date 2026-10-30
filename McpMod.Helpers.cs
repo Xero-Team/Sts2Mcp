@@ -509,6 +509,14 @@ public static partial class McpMod
     /// upgrade uses %Upgrade*PreviewContainer, enchant %Enchant*PreviewContainer, and
     /// remove/transform the generic %PreviewContainer. Only one is ever visible.
     /// </summary>
+    /// <summary>
+    /// A regex runs on the game's main thread, so a pattern over a game-supplied
+    /// identifier must be bounded. Every pattern the mod uses is linear in the
+    /// input; 250 ms is generous for a name and short enough that a pathological
+    /// string cannot freeze a frame.
+    /// </summary>
+    internal static readonly TimeSpan RegexTimeout = TimeSpan.FromMilliseconds(250);
+
     private static readonly string[] CardSelectPreviewContainerNames =
     {
         "%UpgradeSinglePreviewContainer",

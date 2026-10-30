@@ -304,8 +304,8 @@ public static partial class McpMod
                                             var eraName = epoch.Id;
                                             var state = epoch.State.ToString();
                                             // Clean up ID to readable name
-                                            var name = System.Text.RegularExpressions.Regex.Replace(eraName, @"(\d+)$", "");
-                                            name = System.Text.RegularExpressions.Regex.Replace(name, @"(?<=[a-z])(?=[A-Z])", " ");
+                                            var name = System.Text.RegularExpressions.Regex.Replace(eraName, @"(\d+)$", "", System.Text.RegularExpressions.RegexOptions.None, RegexTimeout);
+                                            name = System.Text.RegularExpressions.Regex.Replace(name, @"(?<=[a-z])(?=[A-Z])", " ", System.Text.RegularExpressions.RegexOptions.None, RegexTimeout);
 
                                             switch (epoch.State)
                                             {
@@ -1204,7 +1204,7 @@ public static partial class McpMod
         }
 
         name = System.Text.RegularExpressions.Regex
-            .Replace(name, "(?<=[a-z0-9])(?=[A-Z])", "_")
+            .Replace(name, "(?<=[a-z0-9])(?=[A-Z])", "_", System.Text.RegularExpressions.RegexOptions.None, RegexTimeout)
             .ToLowerInvariant();
         return name.Length > 0 ? name : "submenu";
     }
