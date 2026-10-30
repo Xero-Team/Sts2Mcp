@@ -617,7 +617,8 @@ public static partial class McpMod
     /// <summary>Closes the merchant inventory panel if it is open. Returns true if a shop was found.</summary>
     private static bool TryCloseMerchantInventory(Player player)
     {
-        try
+        // Closing a panel that is already gone is the normal case here.
+        return TryReadQuiet<bool?>(() =>
         {
             if (NMerchantRoom.Instance is { } merchRoom && player.RunState.CurrentRoom is MerchantRoom)
             {
@@ -645,10 +646,9 @@ public static partial class McpMod
                     return true;
                 }
             }
-        }
-        catch { /* best effort */ }
 
-        return false;
+            return false;
+        }) ?? false;
     }
 
     private static Dictionary<string, object?> ExecuteDiscardPotion(Player player, Dictionary<string, JsonElement> data)
@@ -842,26 +842,15 @@ public static partial class McpMod
     /// </summary>
     internal static NRestSiteButton? FindRestSiteButton(NRestSiteRoom uiRoom, RestSiteOption option)
     {
-        try
-        {
-            var button = uiRoom.GetButtonForOption(option);
-            if (button != null)
-                return button;
-        }
-        catch { /* game-side lookup is best effort; fall through to the identity scan */ }
+        // The game-side lookup is best effort; a button mid-teardown can also throw on
+        // .Option, so both halves fall through silently to the other one.
+        var button = TryReadQuiet(() => uiRoom.GetButtonForOption(option));
+        if (button != null)
+            return button;
 
-        try
-        {
-            // RestSiteOption overrides Equals/==, so this is identity by model, not by position.
-            foreach (var candidate in FindAll<NRestSiteButton>(uiRoom))
-            {
-                if (candidate.Option == option)
-                    return candidate;
-            }
-        }
-        catch { /* a button mid-teardown can throw on .Option */ }
-
-        return null;
+        // RestSiteOption overrides Equals/==, so this is identity by model, not by position.
+        return TryReadQuiet(() => FindAll<NRestSiteButton>(uiRoom)
+            .FirstOrDefault(candidate => candidate.Option == option));
     }
 
     private static Dictionary<string, object?> ExecuteShopOpen(Player player)
@@ -1251,7 +1240,7 @@ public static partial class McpMod
         {
             if (merchRoom.Inventory?.IsOpen == true)
             {
-                if (!TryCloseMerchantInventory(merchRoom.Inventory))
+                if (!TryCloseMerchantInventoryPanel(merchRoom.Inventory))
                     return Error("Shop inventory is open but could not be closed");
                 return new Dictionary<string, object?>(StringComparer.Ordinal)
                 {
@@ -1275,7 +1264,7 @@ public static partial class McpMod
                 var fmInventory = FindFirst<NMerchantInventory>(fmNode);
                 if (fmInventory is { IsOpen: true })
                 {
-                    if (!TryCloseMerchantInventory(fmInventory))
+                    if (!TryCloseMerchantInventoryPanel(fmInventory))
                         return Error("Fake merchant inventory is open but could not be closed");
                     return new Dictionary<string, object?>(StringComparer.Ordinal)
                     {
@@ -1304,7 +1293,7 @@ public static partial class McpMod
         return Error("No proceed button available or enabled");
     }
 
-    private static bool TryCloseMerchantInventory(NMerchantInventory inventory)
+    private static bool TryCloseMerchantInventoryPanel(NMerchantInventory inventory)
     {
         return TryRead<bool?>(() =>
         {
@@ -2118,26 +2107,23 @@ public static partial class McpMod
         // then reveal. RevealEpoch writes the progress state, opens the inspect screen
         // and runs the unlock animation, which is what actually grants the epoch's cards
         // and relics. It is private only because nothing but the click handler calls it.
-        try
+        var reveal = TryRead<System.Reflection.MethodInfo?>("timeline.reveal_epoch.method",
+            () => typeof(NEpochSlot).GetMethod(
+                "RevealEpoch",
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance));
+        if (reveal == null)
+            return Error("NEpochSlot.RevealEpoch is missing - the game's timeline API changed");
+
+        var failure = TryAction("timeline.reveal_epoch", () =>
         {
             timelineScreen.DisableInput();
             slot.GetViewport()?.GuiReleaseFocus();
-
-            var reveal = typeof(NEpochSlot).GetMethod(
-                "RevealEpoch",
-                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-            if (reveal == null)
-            {
-                timelineScreen.EnableInput();
-                return Error("NEpochSlot.RevealEpoch is missing - the game's timeline API changed");
-            }
-
             reveal.Invoke(slot, null);
-        }
-        catch (System.Exception ex)
+        });
+        if (failure != null)
         {
-            try { timelineScreen.EnableInput(); } catch { }
-            return Error($"Failed to reveal epoch '{epochId}': {ex.InnerException?.Message ?? ex.Message}");
+            TryDoQuiet(timelineScreen.EnableInput);
+            return Error($"Failed to reveal epoch '{epochId}': {failure}");
         }
 
         return new Dictionary<string, object?>(StringComparer.Ordinal)
@@ -2343,13 +2329,10 @@ public static partial class McpMod
             {
                 // Try NBackButton directly on NTimelineScreen
                 var backBtn = timelineScreen.GetType().GetField("_backButton", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)?.GetValue(timelineScreen);
-                if (backBtn is NClickableControl backClickable)
+                if (backBtn is NClickableControl { IsEnabled: true } backClickable)
                 {
-                    if (backClickable.IsEnabled)
-                    {
-                        backClickable.ForceClick();
-                        return new Dictionary<string, object?>(StringComparer.Ordinal) { ["status"] = "ok", ["message"] = "Going back from timeline" };
-                    }
+                    backClickable.ForceClick();
+                    return new Dictionary<string, object?>(StringComparer.Ordinal) { ["status"] = "ok", ["message"] = "Going back from timeline" };
                 }
                 // Try the submenu stack
                 var stack = timelineScreen.GetType().GetField("_stack", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)?.GetValue(timelineScreen);
@@ -2574,21 +2557,22 @@ public static partial class McpMod
         // The back button is hidden or disabled while the submenu stack animates, which
         // would otherwise leave the caller stuck on a screen with no other exit. Popping
         // the stack is what the button itself does, so this lands in the same place.
-        try
+        var popped = TryRead<Dictionary<string, object?>?>("menu.submenu.pop", () =>
         {
             var stack = GetInstanceFieldValue(submenu, "_stack");
             var popMethod = stack?.GetType().GetMethod("Pop");
-            if (stack != null && popMethod != null)
+            if (stack == null || popMethod == null)
+                return null;
+
+            popMethod.Invoke(stack, null);
+            return new Dictionary<string, object?>(StringComparer.Ordinal)
             {
-                popMethod.Invoke(stack, null);
-                return new Dictionary<string, object?>(StringComparer.Ordinal)
-                {
-                    ["status"] = "ok",
-                    ["message"] = $"Left the {screen} screen (popped the submenu stack)"
-                };
-            }
-        }
-        catch { /* fall through to the error below */ }
+                ["status"] = "ok",
+                ["message"] = $"Left the {screen} screen (popped the submenu stack)"
+            };
+        });
+        if (popped != null)
+            return popped;
 
         return Error($"The {screen} screen is open but neither its back button nor its submenu stack could close it");
     }
@@ -2673,43 +2657,34 @@ public static partial class McpMod
         }
 
         // A card still in flight resolves against the room that is about to be covered.
-        try
-        {
-            if (NPlayerHand.Instance is { InCardPlay: true })
-                return Error("A card is still being played. Wait for is_resolving to clear, then pause.");
-        }
-        catch { /* no hand outside combat */ }
+        // No hand outside combat is the normal case, so this read is quiet.
+        if (TryReadQuiet<bool?>(() => NPlayerHand.Instance is { InCardPlay: true }) == true)
+            return Error("A card is still being played. Wait for is_resolving to clear, then pause.");
 
         var pauseButton = SafeGetTopBarPauseButton(tree?.Root);
         if (pauseButton != null)
         {
-            try
-            {
-                pauseButton.ForceClick();
-                if (GetOpenRunSubmenu(tree?.Root) is NPauseMenu)
-                    return OpenedPauseMenuResult();
-            }
-            catch { /* fall through to the direct call below */ }
+            TryDo("menu.pause.force_click", pauseButton.ForceClick);
+            if (GetOpenRunSubmenu(tree?.Root) is NPauseMenu)
+                return OpenedPauseMenuResult();
         }
 
         // Fallback for a top bar that is hidden or not yet initialized: the same two
         // calls NTopBarPauseButton.OnRelease makes.
-        try
+        Dictionary<string, object?>? opened = null;
+        var openFailure = TryAction("menu.pause.open_direct", () =>
         {
             var stack = MegaCrit.Sts2.Core.Nodes.NRun.Instance?.GlobalUi?.SubmenuStack;
-            if (stack != null)
+            if (stack?.ShowScreen(CapstoneSubmenuType.PauseMenu) is NPauseMenu menu)
             {
-                if (stack.ShowScreen(CapstoneSubmenuType.PauseMenu) is NPauseMenu menu)
-                {
-                    menu.Initialize(runState);
-                    return OpenedPauseMenuResult();
-                }
+                menu.Initialize(runState);
+                opened = OpenedPauseMenuResult();
             }
-        }
-        catch (System.Exception ex)
-        {
-            return Error($"Could not open the pause menu: {ex.Message}");
-        }
+        });
+        if (opened != null)
+            return opened;
+        if (openFailure != null)
+            return Error($"Could not open the pause menu: {openFailure}");
 
         return Error("Could not open the pause menu: neither the top-bar pause button nor the run's submenu stack is available");
     }
@@ -2728,13 +2703,12 @@ public static partial class McpMod
     /// </summary>
     private static NTopBarPauseButton? SafeGetTopBarPauseButton(Node? root)
     {
-        try
-        {
-            var button = MegaCrit.Sts2.Core.Nodes.NRun.Instance?.GlobalUi?.TopBar?.Pause;
-            if (button != null && IsLiveNode(button))
-                return button;
-        }
-        catch { /* fall through to the tree search */ }
+        // No top bar before the run scene is up, which is normal; only the tree search
+        // can find the button then, so the read stays quiet.
+        var button = TryReadQuiet(() =>
+            MegaCrit.Sts2.Core.Nodes.NRun.Instance?.GlobalUi?.TopBar?.Pause);
+        if (button != null && IsLiveNode(button))
+            return button;
 
         return root == null ? null : FindFirst<NTopBarPauseButton>(root);
     }
@@ -3015,14 +2989,9 @@ public static partial class McpMod
                 if (lobby == null)
                     return Error(noLobbySeedError);
 
-                try
-                {
-                    lobby.SetSeed(seed);
-                }
-                catch (System.Exception ex)
-                {
-                    return Error($"Seeded embark failed before starting the run: {ex.Message}");
-                }
+                var seedFailure = TryAction("start_run.set_seed", () => lobby.SetSeed(seed));
+                if (seedFailure != null)
+                    return Error($"Seeded embark failed before starting the run: {seedFailure}");
             }
 
             var confirmBtn = GetInstanceFieldValue(screen, confirmField);
@@ -3105,9 +3074,10 @@ public static partial class McpMod
     {
         if (!data.TryGetValue("scale", out var scaleElem))
             return Error("Missing 'scale'");
-        double scale;
-        try { scale = scaleElem.GetDouble(); }
-        catch { return Error("'scale' must be a number"); }
+        var parsedScale = TryRead<double?>("time_scale.scale", () => scaleElem.GetDouble());
+        if (parsedScale == null)
+            return Error("'scale' must be a number");
+        double scale = parsedScale.Value;
         if (scale is < 0.25 or > 10.0)
             return Error($"'scale' {scale} out of range (0.25 - 10.0)");
         Godot.Engine.TimeScale = scale;
@@ -3126,9 +3096,10 @@ public static partial class McpMod
     {
         if (!data.TryGetValue("level", out var levelElem))
             return Error("Missing 'level'");
-        int level;
-        try { level = levelElem.GetInt32(); }
-        catch { return Error("'level' must be an integer"); }
+        var parsedLevel = TryRead<int?>("ascension.level", () => levelElem.GetInt32());
+        if (parsedLevel == null)
+            return Error("'level' must be an integer");
+        int level = parsedLevel.Value;
         if (level < 0)
             return Error("'level' must be >= 0");
 
@@ -3258,9 +3229,8 @@ public static partial class McpMod
     /// </summary>
     private static Dictionary<string, object?>? TryConfirmOpenUnlockScreen(NTimelineScreen timelineScreen)
     {
-        NUnlockScreen? screen;
-        try { screen = timelineScreen.CurrentUnlockScreen; }
-        catch { return null; }
+        // No unlock screen queued is the normal case, so this read is quiet.
+        var screen = TryReadQuiet(() => timelineScreen.CurrentUnlockScreen);
 
         if (screen == null || !IsNodeVisible(screen))
             return null;
@@ -3349,37 +3319,34 @@ public static partial class McpMod
             };
         }
 
-        try
-        {
-            timelineScreen.OpenQueuedScreen();
-            return new Dictionary<string, object?>(StringComparer.Ordinal)
+        return RunAction(
+            "timeline.queued_unlock.open",
+            () =>
             {
-                ["status"] = "ok",
-                ["message"] = $"Opening queued {queuedType}",
-                ["queued_unlock_type"] = queuedType,
-                ["pending_epoch_ids"] = queuedEpochIds
-            };
-        }
-        catch (System.ObjectDisposedException)
-        {
-            return new Dictionary<string, object?>(StringComparer.Ordinal)
-            {
-                ["status"] = "ok",
-                ["message"] = "Timeline changed before the queued unlock could open; retry after the next state poll",
-                ["queued_unlock_type"] = queuedType,
-                ["retry"] = true
-            };
-        }
-        catch (System.Exception ex)
-        {
-            return new Dictionary<string, object?>(StringComparer.Ordinal)
-            {
-                ["status"] = "ok",
-                ["message"] = $"Skipped queued {queuedType}: {ex.Message}",
-                ["queued_unlock_type"] = queuedType,
-                ["retry"] = true
-            };
-        }
+                timelineScreen.OpenQueuedScreen();
+                return new Dictionary<string, object?>(StringComparer.Ordinal)
+                {
+                    ["status"] = "ok",
+                    ["message"] = $"Opening queued {queuedType}",
+                    ["queued_unlock_type"] = queuedType,
+                    ["pending_epoch_ids"] = queuedEpochIds
+                };
+            },
+            ex => ex is System.ObjectDisposedException
+                ? new Dictionary<string, object?>(StringComparer.Ordinal)
+                {
+                    ["status"] = "ok",
+                    ["message"] = "Timeline changed before the queued unlock could open; retry after the next state poll",
+                    ["queued_unlock_type"] = queuedType,
+                    ["retry"] = true
+                }
+                : new Dictionary<string, object?>(StringComparer.Ordinal)
+                {
+                    ["status"] = "ok",
+                    ["message"] = $"Skipped queued {queuedType}: {DescribeFailure(ex)}",
+                    ["queued_unlock_type"] = queuedType,
+                    ["retry"] = true
+                });
     }
 
     private static object? TryPeekQueuedTimelineScreen(NTimelineScreen timelineScreen)
@@ -3470,7 +3437,8 @@ public static partial class McpMod
     private static List<string> GetProgressEpochIdsByState(params string[] states)
     {
         var stateSet = new HashSet<string>(states, StringComparer.OrdinalIgnoreCase);
-        try
+        // No loaded save is the normal case outside the timeline, so this read is quiet.
+        return TryReadQuiet(() =>
         {
             var progress = MegaCrit.Sts2.Core.Saves.SaveManager.Instance?.Progress;
             if (progress == null)
@@ -3480,11 +3448,7 @@ public static partial class McpMod
                 .Where(epoch => stateSet.Contains(epoch.State.ToString()))
                 .Select(epoch => epoch.Id)
                 .ToList();
-        }
-        catch
-        {
-            return new List<string>();
-        }
+        }) ?? new List<string>();
     }
 
     private static Dictionary<string, object?> ClickMenuButtonField(

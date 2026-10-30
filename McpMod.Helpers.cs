@@ -184,6 +184,87 @@ public static partial class McpMod
         }
     }
 
+    /// <summary>
+    /// <see cref="TryDo"/> with <see cref="TryReadQuiet{T}"/>'s meaning: the call is
+    /// expected to fail in normal use (restoring input on a screen that is already torn
+    /// down, scrolling a list that was just reparented) and nothing is recorded.
+    /// </summary>
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1031:Do not catch general exception types",
+        Justification = "These are best-effort UI calls whose failure changes nothing the caller acts on.")]
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "ERP022:Swallowed exception",
+        Justification = "Reporting every teardown race would drown the warnings a state read actually needs.")]
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("Major Code Smell", "S2486:Exceptions should not be ignored",
+        Justification = "Same as ERP022: a UI call that races a scene change is not a compatibility break.")]
+    internal static void TryDoQuiet(Action action)
+    {
+        try
+        {
+            action();
+        }
+        catch (Exception)
+        {
+            // Nothing to report: see the justification above.
+        }
+    }
+
+    /// <summary>
+    /// Runs an action whose failure the client should see as an error result rather than
+    /// an exception. Returns null when the call succeeded, otherwise the failure message.
+    /// The failure is recorded once under <paramref name="context"/>, like a state read.
+    /// </summary>
+    /// <remarks>
+    /// The message is unwrapped from the reflection wrapper first: a game call reached
+    /// through <c>MethodInfo.Invoke</c> otherwise reports "Exception has been thrown by
+    /// the target of an invocation" and drops the only useful part.
+    /// </remarks>
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1031:Do not catch general exception types",
+        Justification = "An action that presses a game button can throw anything the game throws; mapping it to an error response is the boundary's job.")]
+    internal static string? TryAction(string context, Action action)
+    {
+        try
+        {
+            action();
+            return null;
+        }
+        catch (Exception ex)
+        {
+            Warn(context, ex);
+            return DescribeFailure(ex);
+        }
+    }
+
+    /// <summary>
+    /// <see cref="TryAction"/> for a body that produces the response itself. When the body
+    /// throws, <paramref name="failure"/> decides the response: a screen torn down mid-call
+    /// is a retry, not a 500, and only the call site can tell them apart.
+    /// </summary>
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1031:Do not catch general exception types",
+        Justification = "Same boundary as TryAction: the call site maps the failure to a response it can describe.")]
+    internal static Dictionary<string, object?> RunAction(
+        string context,
+        Func<Dictionary<string, object?>> body,
+        Func<Exception, Dictionary<string, object?>> failure)
+    {
+        try
+        {
+            return body();
+        }
+        catch (Exception ex)
+        {
+            Warn(context, ex);
+            return failure(ex);
+        }
+    }
+
+    /// <summary>The one-line form of an exception for a client-facing message.</summary>
+    internal static string DescribeFailure(Exception ex)
+    {
+        while (ex is System.Reflection.TargetInvocationException { InnerException: { } inner })
+            ex = inner;
+
+        return ex.Message.Replace("\r\n", " ").Replace('\n', ' ').Replace('\r', ' ').Trim();
+    }
+
     internal static string StripRichTextTags(string text)
     {
         // Remove BBCode-style tags like [color=red], [/color], etc.
