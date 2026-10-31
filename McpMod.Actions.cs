@@ -249,7 +249,6 @@ public static partial class McpMod
         if (combatState == null)
             return Error("No combat state");
 
-        // Get card by index in hand
         CardPile? hand = player.PlayerCombatState?.Hand;
         if (hand == null)
             return Error("No hand available");
@@ -422,7 +421,7 @@ public static partial class McpMod
     /// <summary>
     /// "slot" is the fixed slot number on the potion belt, not an index into the
     /// non-empty potions. After using the potion in slot 0, the survivor stays in
-    /// slot 1 — asking for slot 0 then has to say so, and say where the potions are.
+    /// slot 1 - asking for slot 0 then has to say so, and say where the potions are.
     /// </summary>
     private static string DescribeEmptyPotionSlot(Player player, int slot)
     {
@@ -611,7 +610,7 @@ public static partial class McpMod
     }
 
     /// <summary>
-    /// Sells a potion to the merchant by using it on them — the Foul Potion's second
+    /// Sells a potion to the merchant by using it on them - the Foul Potion's second
     /// mode, worth 100 gold each. The API had no way to do this at all: use_potion in a
     /// shop returned ok and changed nothing, and the shop state exposed no sell action,
     /// so three Foul Potions over a run were 300 gold silently left on the floor.
@@ -694,7 +693,9 @@ public static partial class McpMod
         }) ?? false;
     }
 
-    /// <summary>Closes the merchant inventory panel if it is open. Returns true if a shop was found.</summary>
+    /// <summary>
+    /// Closes the merchant inventory panel if it is open. Returns true if a shop was found.
+    /// </summary>
     private static bool TryCloseMerchantInventory(Player player)
     {
         // Closing a panel that is already gone is the normal case here.
@@ -1262,7 +1263,7 @@ public static partial class McpMod
     /// Takes one of the card reward's alternative options by id (preferred) or index.
     ///
     /// Skip used to be the only one reachable, so a relic that adds its own alternative
-    /// was unusable from the API — Pael's Wing turns a card reward into progress towards
+    /// was unusable from the API - Pael's Wing turns a card reward into progress towards
     /// a relic, and skip_card_reward does not count as sacrificing, so the relic did
     /// nothing at all for a whole run.
     /// </summary>
@@ -1528,7 +1529,7 @@ public static partial class McpMod
     /// (FocusBehaviorRecursive = Disabled, scrolling off). Firing HolderPressed anyway still
     /// mutates the selection behind the panel, and re-reaching MaxSelect re-runs
     /// PreviewSelection, which appends another copy of every selected card to the preview row
-    /// - the "select_card adds instead of toggling" symptom of A-7.
+    /// - the "select_card adds instead of toggling" symptom.
     /// </remarks>
     private static bool TryResolveGridPress(
         NCardGridSelectionScreen gridScreen,
@@ -1667,7 +1668,7 @@ public static partial class McpMod
         // The count the screen itself holds, and the min/max it will accept. The game's
         // completion check is `count >= MinSelect && count <= MaxSelect`; when it fails the
         // click is simply swallowed, which is how confirm_selection used to return ok and
-        // do nothing (A-7).
+        // do nothing.
         HashSet<CardModel>? selection = GetCardSelectSelection(screen);
         CardSelectorPrefs? prefs = GetCardSelectPrefs(screen);
         int? selectedCount = selection?.Count;
@@ -1675,7 +1676,7 @@ public static partial class McpMod
         // Step two of the screen: a preview panel is up, and its own Confirm is the button
         // that actually applies the selection. This has to be checked first - the screen's
         // main Confirm is still enabled underneath, and on these screens pressing it means
-        // "open the preview", which appends a second copy of every selected card (A-7).
+        // "open the preview", which appends a second copy of every selected card.
         Control? preview = FindVisibleCardSelectPreview(screen);
         if (preview != null)
             return ConfirmSelectionPreview(screen, preview, selectedCount);
@@ -1786,7 +1787,7 @@ public static partial class McpMod
 
         // Still on the grid, no preview: the game swallowed the press. The enchant and
         // remove screens do that with an empty selection (their confirm handlers bail on
-        // Count == 0), which is the "ok that did nothing" of A-7.
+        // Count == 0), which is the same "ok that did nothing" failure.
         return Error(selectedCount is 0
             ? "No card is selected - select at least one card, or use cancel_selection to leave the screen"
             : "The confirm press did nothing - the screen would not accept the current selection");
@@ -1796,7 +1797,7 @@ public static partial class McpMod
     {
         IOverlayScreen? overlay = NOverlayStack.Instance?.Peek();
 
-        // Handle choose-a-card screen (skip button)
+        // The choose-a-card screen offers a skip button instead of a grid.
         if (overlay is NChooseACardSelectionScreen chooseScreen)
         {
             NClickableControl skipButton = chooseScreen.GetNodeOrNull<NClickableControl>("SkipButton");
@@ -1833,7 +1834,7 @@ public static partial class McpMod
             }
         }
 
-        // Close the screen entirely
+        // No preview is up: fall back to the screen's own close button.
         NBackButton closeButton = screen.GetNodeOrNull<NBackButton>("%Close");
         if (IsControlVisibleOrActionable(closeButton))
         {
@@ -1935,7 +1936,8 @@ public static partial class McpMod
 
         string cardName = SafeGetText(() => holder.CardModel?.Title) ?? "unknown";
 
-        // Emit the Pressed signal - same path the game UI uses
+        // Pressing the holder runs the game's own click chain; setting the model directly
+        // would skip it.
         holder.EmitSignal(NCardHolder.SignalName.Pressed, holder);
 
         return new Dictionary<string, object?>(StringComparer.Ordinal)
@@ -2150,7 +2152,9 @@ public static partial class McpMod
         return null;
     }
 
-    /// <summary>Comma list of the caller's living teammates' entity ids, for error messages.</summary>
+    /// <summary>
+    /// Comma list of the caller's living teammates' entity ids, for error messages.
+    /// </summary>
     private static string ListAllyTargetIds(Player me)
     {
         List<string> ids = me.RunState.Players
@@ -2161,7 +2165,9 @@ public static partial class McpMod
         return ids.Count > 0 ? string.Join(", ", ids) : "(none)";
     }
 
-    /// <summary>Display name for a creature: monster title, player character title, or "target".</summary>
+    /// <summary>
+    /// Display name for a creature: monster title, player character title, or "target".
+    /// </summary>
     private static string DescribeCreature(Creature? creature)
     {
         if (creature == null)
@@ -2173,8 +2179,8 @@ public static partial class McpMod
 
     private static Creature? ResolveTarget(ICombatState combatState, string entityId)
     {
-        // Try to match by entity_id pattern: "model_entry_N"
-        // First try matching by combat_id if it's a pure number
+        // A pure number is a combat id, which survives renames; anything else is an
+        // entity_id ("model_entry_N") from the registry below.
         if (uint.TryParse(entityId, out uint combatId))
             return combatState.GetCreature(combatId);
 
@@ -2197,12 +2203,12 @@ public static partial class McpMod
     /// Reveals every obtained-but-unrevealed epoch, opening the Timeline if needed.
     ///
     /// A finished run leaves its epochs "Obtained". Until they are revealed the main
-    /// menu hides `singleplayer` entirely, so the API could not start the next run —
+    /// menu hides <c>singleplayer</c> entirely, so the API could not start the next run -
     /// the single thing that made unattended play impossible, because every run ended
     /// in a screenshot and a hand-placed click.
     ///
-    /// One step per call so the caller can poll; the response carries `done` and
-    /// `pending_epoch_ids`. Reveals go through NEpochSlot.RevealEpoch, the same method
+    /// One step per call so the caller can poll; the response carries <c>done</c> and
+    /// <c>pending_epoch_ids</c>. Reveals go through NEpochSlot.RevealEpoch, the same method
     /// the slot's own click handler calls, so the epoch's unlocks are granted and the
     /// progress file is written exactly as a manual reveal would.
     /// </summary>
@@ -2279,7 +2285,7 @@ public static partial class McpMod
 
         // Look for the slot first. IsTimelineScreenBusy is a coarse heuristic (it reads
         // _isUiVisible and the input blocker) and reports "busy" on a timeline that is
-        // sitting still and perfectly interactive, so it must not gate the reveal —
+        // sitting still and perfectly interactive, so it must not gate the reveal -
         // only explain why no slot is available yet.
         NEpochSlot? slot = FindAll<NEpochSlot>(timelineScreen)
             .FirstOrDefault(s => s.State == EpochSlotState.Obtained);
@@ -2368,7 +2374,7 @@ public static partial class McpMod
         if (lobbyResult != null)
             return lobbyResult;
 
-        // Main menu — click a menu button
+        // No other screen claimed the option, so it is a main-menu button.
         NMainMenu? mainMenu = FindFirst<NMainMenu>(tree.Root);
         if (mainMenu != null)
             return ExecuteMainMenuOption(tree.Root, mainMenu, option);
@@ -2515,7 +2521,9 @@ public static partial class McpMod
         return Error($"Unknown timeline option: {option}. Use: advance, back");
     }
 
-    /// <summary>One "advance" step: open panels first, then the queued unlocks, then a reveal.</summary>
+    /// <summary>
+    /// One "advance" step: open panels first, then the queued unlocks, then a reveal.
+    /// </summary>
     private static Dictionary<string, object?> AdvanceTimeline(NTimelineScreen timelineScreen, Node root)
     {
         Dictionary<string, object?>? tutorialResult = TryClickTimelineTutorial(root);
@@ -2606,7 +2614,7 @@ public static partial class McpMod
 
     private static Dictionary<string, object?> GoBackFromTimeline(NTimelineScreen timelineScreen)
     {
-        // Try NBackButton directly on NTimelineScreen
+        // The screen's own back button is the first choice.
         object? backBtn = timelineScreen.GetType().GetField("_backButton", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)?.GetValue(timelineScreen);
         if (backBtn is NClickableControl { IsEnabled: true } backClickable)
         {
@@ -2614,7 +2622,7 @@ public static partial class McpMod
             return Ok("Going back from timeline");
         }
 
-        // Try the submenu stack
+        // No back button: pop the screen's own stack so the timeline is not left mounted.
         object? stack = timelineScreen.GetType().GetField("_stack", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)?.GetValue(timelineScreen);
         if (stack != null)
         {
@@ -2633,12 +2641,12 @@ public static partial class McpMod
     private static Dictionary<string, object?>? TryExecuteLobbyScreenOption(
         Node root, string option, string? seed, int? ascension)
     {
-        // Multiplayer Join Friend screen — friend list, refresh, back, or join_<index>/<player_id>.
+        // Multiplayer Join Friend screen - friend list, refresh, back, or join_<index>/<player_id>.
         NJoinFriendScreen? joinScreen = FindFirst<NJoinFriendScreen>(root);
         if (joinScreen != null && IsNodeVisible(joinScreen))
             return ExecuteJoinScreenMenuOption(joinScreen, option);
 
-        // Multiplayer Load Game lobby — confirm/embark/unready/back to resume saved MP run.
+        // Multiplayer Load Game lobby - confirm/embark/unready/back to resume saved MP run.
         NMultiplayerLoadGameScreen? loadLobby = FindFirst<NMultiplayerLoadGameScreen>(root);
         if (loadLobby != null && IsNodeVisible(loadLobby))
             return ExecuteLoadLobbyMenuOption(loadLobby, option);
@@ -2662,22 +2670,21 @@ public static partial class McpMod
     private static Dictionary<string, object?> ExecuteMainMenuOption(
         Node root, NMainMenu mainMenu, string option)
     {
-        // Check if we're on singleplayer submenu
+        // A submenu is mounted over the main menu and owns the same option names, so each one
+        // is checked before the main-menu buttons.
         NSingleplayerSubmenu? spSubmenu = FindFirst<NSingleplayerSubmenu>(root);
         if (spSubmenu != null && IsNodeVisible(spSubmenu))
             return ExecuteGameModeSubmenuOption(spSubmenu, option, "singleplayer");
 
-        // Check if we're on multiplayer host submenu
         NMultiplayerHostSubmenu? mpHostSubmenu = FindFirst<NMultiplayerHostSubmenu>(root);
         if (mpHostSubmenu != null && IsNodeVisible(mpHostSubmenu))
             return ExecuteGameModeSubmenuOption(mpHostSubmenu, option, "multiplayer host");
 
-        // Check if we're on multiplayer submenu
         NMultiplayerSubmenu? mpSubmenu = FindFirst<NMultiplayerSubmenu>(root);
         if (mpSubmenu != null && IsNodeVisible(mpSubmenu))
             return ExecuteMultiplayerSubmenuOption(mpSubmenu, option);
 
-        // Main menu buttons
+        // No submenu is up: the option names a top-level button.
         string? menuFieldName = option.ToLowerInvariant() switch
         {
             "singleplayer" => "_singleplayerButton",
@@ -2973,7 +2980,7 @@ public static partial class McpMod
     /// <summary>
     /// The pause menu and the screens reachable from it cover the room with a capstone
     /// screen the room knows nothing about, so a gameplay action sent while one is up
-    /// lands on a screen the player cannot see (A-5). menu_select drives whatever is
+    /// lands on a screen the player cannot see. menu_select drives whatever is
     /// visible; everything else waits until it is closed.
     /// </summary>
     private static Dictionary<string, object?>? RunSubmenuBlockingError(SceneTree? tree, string action)
@@ -3003,7 +3010,7 @@ public static partial class McpMod
         if (string.Equals(normalized, "refresh", StringComparison.Ordinal))
             return RefreshJoinFriendList(joinScreen);
 
-        // join_<index> or join_<player_id>
+        // A join option is either join_<index> or join_<player_id>.
         if (normalized.StartsWith("join_", StringComparison.Ordinal))
             return JoinFriend(joinScreen, normalized["join_".Length..]);
 
@@ -3025,7 +3032,7 @@ public static partial class McpMod
         if (buttonContainer == null)
             return Error("Friend list container not available");
 
-        // Build the in-order friend list once
+        // Buttons are in display order, so index 0 is the first friend shown.
         var friendButtons = new List<NJoinFriendButton>();
         foreach (Node? child in buttonContainer.GetChildren())
         {
@@ -3036,7 +3043,7 @@ public static partial class McpMod
         if (friendButtons.Count == 0)
             return Error("No friends with open lobbies. Use 'refresh' to retry.");
 
-        // Try as index first
+        // A short numeric key is a list index; anything that overflows int is a player id.
         if (int.TryParse(key, CultureInfo.InvariantCulture, out int idx))
         {
             if (idx < 0 || idx >= friendButtons.Count)
@@ -3047,7 +3054,7 @@ public static partial class McpMod
             return Ok($"Joining friend at index {idx}");
         }
 
-        // Otherwise treat as ulong player id
+        // Not a list index, so it must be a player id.
         if (ulong.TryParse(key, out ulong playerId))
         {
             NJoinFriendButton? match = friendButtons.FirstOrDefault(b => b.PlayerId == playerId);
@@ -3101,7 +3108,7 @@ public static partial class McpMod
     /// <summary>
     /// Sets the ascension level on the character select screen.
     /// SetAscensionLevel emits AscensionLevelChanged, which is what
-    /// NCharacterSelectScreen listens to before calling StartRunLobby.SyncAscensionChange —
+    /// NCharacterSelectScreen listens to before calling StartRunLobby.SyncAscensionChange -
     /// i.e. the same path the on-screen arrows take.
     /// </summary>
     private static Dictionary<string, object?> ApplyAscension(NCharacterSelectScreen charSelect, int ascension)
@@ -3146,7 +3153,7 @@ public static partial class McpMod
             ascension: ascension);
     }
 
-    // Custom mode setup. Same screen shape as character select — the confirm control is
+    // Custom mode setup. Same screen shape as character select - the confirm control is
     // _confirmButton instead of _embarkButton, and run-modifier tickboxes are present.
     private static Dictionary<string, object?> ExecuteCustomRunMenuOption(
         NCustomRunScreen customRun,
@@ -3237,7 +3244,7 @@ public static partial class McpMod
     /// <summary>
     /// Leaves the lobby. _backButton leaves the lobby (and disconnects in MP).
     /// _unreadyButton is a separate control that only becomes enabled after the player has
-    /// hit confirm/embark in MP — it retracts the ready vote without leaving. Surface them
+    /// hit confirm/embark in MP - it retracts the ready vote without leaving. Surface them
     /// as distinct options so callers can pick deliberately. Fall back to unready when only
     /// it is actionable so older callers don't get stuck.
     /// </summary>
@@ -3322,7 +3329,7 @@ public static partial class McpMod
                 if (btn.IsLocked)
                     return Error($"Character '{option}' is locked");
                 // NCharacterSelectButton.Select() no-ops while the button still
-                // thinks it is selected — and the unlock animation steals selection
+                // thinks it is selected - and the unlock animation steals selection
                 // without deselecting other buttons. Clear the flag first so the
                 // full commit path always runs (delegate -> screen.SelectCharacter
                 // -> lobby.SetLocalCharacter, which is what embark reads).
@@ -3366,7 +3373,7 @@ public static partial class McpMod
 
     /// <summary>Set the run ascension level on the (open) character select screen.
     /// The panel's AscensionLevelChanged signal makes the screen sync the lobby,
-    /// which is what embark reads — same path as clicking the arrows.</summary>
+    /// which is what embark reads - same path as clicking the arrows.</summary>
     internal static Dictionary<string, object?> ExecuteSetAscension(Dictionary<string, JsonElement> data)
     {
         if (!data.TryGetValue("level", out JsonElement levelElem))
@@ -3437,12 +3444,12 @@ public static partial class McpMod
     //
     // Selection accepts the advertised "modifier_<key>" option name, the bare key, or the
     // raw modifier id when that id is unambiguous. It is ambiguous for the per-character
-    // "character cards" modifiers, which all share one id — those must be addressed by key.
+    // "character cards" modifiers, which all share one id - those must be addressed by key.
     //
     // Modifiers can also be mutually exclusive: ticking one makes the game untick others in
     // the same group (NCustomRunModifiersList.UntickMutuallyExclusiveModifiersForTickbox).
     // That happens synchronously inside ForceClick, so the response reports the full set of
-    // modifiers ticked afterwards — the caller must not assume its own toggle was the only
+    // modifiers ticked afterwards - the caller must not assume its own toggle was the only
     // change.
     private static Dictionary<string, object?>? TryToggleRunModifier(Node screen, string option)
     {

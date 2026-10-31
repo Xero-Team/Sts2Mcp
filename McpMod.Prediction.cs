@@ -84,7 +84,9 @@ public static partial class McpMod
         return result;
     }
 
-    /// <summary>The serialized machine nodes, plus whether either kind of value was a snapshot.</summary>
+    /// <summary>
+    /// The serialized machine nodes, plus whether either kind of value was a snapshot.
+    /// </summary>
     private sealed record MachineStates(
         List<Dictionary<string, object?>> States,
         bool ConditionalSnapshots,

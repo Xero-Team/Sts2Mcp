@@ -42,7 +42,9 @@ internal sealed class RecordWriter
     private sealed record Close(string Path) : Item;
     private sealed record Barrier(ManualResetEventSlim Done) : Item;
 
-    /// <summary>Write failures so far (disk full, permissions...). Surfaced on the status endpoint.</summary>
+    /// <summary>
+    /// Write failures so far (disk full, permissions...). Surfaced on the status endpoint.
+    /// </summary>
     internal int Failures => Volatile.Read(ref _failures);
     internal string? LastError => Volatile.Read(ref _lastError);
     internal int Pending => _queue.Count;
@@ -59,7 +61,9 @@ internal sealed class RecordWriter
 
     internal void CloseFile(string path) => _queue.Add(new Close(path));
 
-    /// <summary>Blocks until everything queued so far is on disk (or <paramref name="timeoutMs"/> passes).</summary>
+    /// <summary>
+    /// Blocks until everything queued so far is on disk (or <paramref name="timeoutMs"/> passes).
+    /// </summary>
     internal bool Drain(int timeoutMs)
     {
         using var done = new ManualResetEventSlim(false);

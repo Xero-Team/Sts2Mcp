@@ -593,11 +593,11 @@ public static partial class McpMod
     }
 
     /// <summary>
-    /// `ProgressSaveManager.GetProgressPathForProfile`, called across game
-    /// versions. v0.111 gave it an optional `bool? forceModState`; C# bakes an
+    /// <c>ProgressSaveManager.GetProgressPathForProfile</c>, called across game
+    /// versions. v0.111 gave it an optional <c>bool? forceModState</c>; C# bakes an
     /// optional argument into the call site, so a direct call emits a two-
     /// parameter memberref that does not resolve on the main branch. The arity
-    /// is therefore picked at runtime — passing null asks for the same path the
+    /// is therefore picked at runtime - passing null asks for the same path the
     /// one-argument version returned.
     /// </summary>
     private static string? GetProfileProgressPath(int profileId)

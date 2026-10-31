@@ -22,11 +22,11 @@ public class Creature
     public bool HasPower<T>() => false;
     public T GetPower<T>() where T : new() => new T();
 
-    /// <summary>What `TheForgotten.DreadDamage` reads to scale its attack.</summary>
+    /// <summary>What <c>TheForgotten.DreadDamage</c> reads to scale its attack.</summary>
     public int GetPowerAmount<T>() => 0;
     public CombatState CombatState { get; } = new CombatState();
 
-    /// <summary>What a `Where(c =&gt; c.Monster is Fabricator)` filter tests.</summary>
+    /// <summary>What a <c>Where(c =&gt; c.Monster is Fabricator)</c> filter tests.</summary>
     public MegaCrit.Sts2.Core.Models.MonsterModel? Monster => null;
 }
 
@@ -34,7 +34,7 @@ public class CombatState
 {
     public IReadOnlyList<Creature> GetTeammatesOf(Creature creature) => Array.Empty<Creature>();
 
-    /// <summary>The mover's own side, which is what `Guardbot.GuardMove` filters.</summary>
+    /// <summary>The mover's own side, which is what <c>Guardbot.GuardMove</c> filters.</summary>
     public IReadOnlyList<Creature> Enemies { get; } = Array.Empty<Creature>();
 
     /// <summary>Two players, so a per-player amount differs from its multiplier.</summary>
@@ -46,7 +46,7 @@ public class AsleepPower { }
 // Each fake reproduces one shipped predicate shape verbatim. The class names
 // are only labels; the scanner keys on the members, not on them.
 
-/// <summary>`TestSubject`: an int counter a move increments.</summary>
+/// <summary><c>TestSubject</c>: an int counter a move increments.</summary>
 public sealed class CounterProperty : MegaCrit.Sts2.Core.Models.MonsterModel
 {
     private int _respawns;
@@ -55,7 +55,7 @@ public sealed class CounterProperty : MegaCrit.Sts2.Core.Models.MonsterModel
     public Func<bool> AtLeast() => () => Respawns >= 2;
 }
 
-/// <summary>`KnowledgeDemon`: the same, read straight off the field.</summary>
+/// <summary><c>KnowledgeDemon</c>: the same, read straight off the field.</summary>
 public sealed class CounterField : MegaCrit.Sts2.Core.Models.MonsterModel
 {
     private int _curseOfKnowledgeCounter;
@@ -64,7 +64,7 @@ public sealed class CounterField : MegaCrit.Sts2.Core.Models.MonsterModel
     public void Bump() => _curseOfKnowledgeCounter++;
 }
 
-/// <summary>`BowlbugRock`: a plain mutable bool.</summary>
+/// <summary><c>BowlbugRock</c>: a plain mutable bool.</summary>
 public sealed class BoolFlag : MegaCrit.Sts2.Core.Models.MonsterModel
 {
     private bool _isOffBalance;
@@ -73,14 +73,14 @@ public sealed class BoolFlag : MegaCrit.Sts2.Core.Models.MonsterModel
     public Func<bool> Clear() => () => !IsOffBalance;
 }
 
-/// <summary>`LagavulinMatriarch` / `SlumberingBeetle`: a power check.</summary>
+/// <summary><c>LagavulinMatriarch</c> / <c>SlumberingBeetle</c>: a power check.</summary>
 public sealed class PowerCheck : MegaCrit.Sts2.Core.Models.MonsterModel
 {
     public Func<bool> Has() => () => base.Creature.HasPower<AsleepPower>();
     public Func<bool> Lacks() => () => !base.Creature.HasPower<AsleepPower>();
 }
 
-/// <summary>`LivingShield`: a self-EXCLUSIVE living-teammate count.</summary>
+/// <summary><c>LivingShield</c>: a self-EXCLUSIVE living-teammate count.</summary>
 public sealed class AllyCountExcludingSelf : MegaCrit.Sts2.Core.Models.MonsterModel
 {
     public Func<bool> Any() => () => GetAllyCount() > 0;
@@ -90,7 +90,7 @@ public sealed class AllyCountExcludingSelf : MegaCrit.Sts2.Core.Models.MonsterMo
             .Count((Creature c) => c.IsAlive && c != base.Creature);
 }
 
-/// <summary>`Fabricator`: a self-INCLUSIVE count behind a bool property.</summary>
+/// <summary><c>Fabricator</c>: a self-INCLUSIVE count behind a bool property.</summary>
 public sealed class AllyCountIncludingSelf : MegaCrit.Sts2.Core.Models.MonsterModel
 {
     private bool CanFabricate =>
@@ -99,7 +99,7 @@ public sealed class AllyCountIncludingSelf : MegaCrit.Sts2.Core.Models.MonsterMo
     public Func<bool> Cannot() => () => !CanFabricate;
 }
 
-/// <summary>`Ovicopter`: the same, with an already-negated inner comparison.</summary>
+/// <summary><c>Ovicopter</c>: the same, with an already-negated inner comparison.</summary>
 public sealed class AllyCountAtMost : MegaCrit.Sts2.Core.Models.MonsterModel
 {
     private bool CanLay =>
@@ -108,7 +108,7 @@ public sealed class AllyCountAtMost : MegaCrit.Sts2.Core.Models.MonsterModel
     public Func<bool> Cannot() => () => !CanLay;
 }
 
-/// <summary>`FrogKnight`: a short-circuit over a flag and an HP fraction.</summary>
+/// <summary><c>FrogKnight</c>: a short-circuit over a flag and an HP fraction.</summary>
 public sealed class FlagOrHalfHealth : MegaCrit.Sts2.Core.Models.MonsterModel
 {
     private bool _hasBeetleCharged;
@@ -117,7 +117,9 @@ public sealed class FlagOrHalfHealth : MegaCrit.Sts2.Core.Models.MonsterModel
     public Func<bool> Neither() => () => !HasBeetleCharged && base.Creature.CurrentHp < base.Creature.MaxHp / 2;
 }
 
-/// <summary>`Exoskeleton` / `Nibbit` / `Toadpole`: encounter-fixed placement.</summary>
+/// <summary>
+/// <c>Exoskeleton</c> / <c>Nibbit</c> / <c>Toadpole</c>: encounter-fixed placement.
+/// </summary>
 public sealed class Placement : MegaCrit.Sts2.Core.Models.MonsterModel
 {
     public bool IsFront { get; set; }
@@ -127,7 +129,7 @@ public sealed class Placement : MegaCrit.Sts2.Core.Models.MonsterModel
     public Func<bool> ByAlone() => () => ((Placement)(object)this).IsAlone;
 }
 
-/// <summary>`TwoTailedRat` versus every constant-weight branch.</summary>
+/// <summary><c>TwoTailedRat</c> versus every constant-weight branch.</summary>
 public sealed class Weights
 {
     private bool CanSummon() => false;

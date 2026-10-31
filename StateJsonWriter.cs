@@ -11,7 +11,7 @@ namespace Sts2Mcp;
 /// scalars) straight to a <see cref="Utf8JsonWriter"/>.
 ///
 /// The state builders hand back an untyped tree, so serializing it went through
-/// <c>JsonSerializer</c>'s reflection path — the slowest shape it supports — and produced a
+/// <c>JsonSerializer</c>'s reflection path - the slowest shape it supports - and produced a
 /// string that was then copied into a second byte array. Walking the same tree here emits the
 /// exact bytes <c>JsonSerializer</c> would (same options: snake_case for typed members,
 /// <c>WhenWritingNull</c> for dictionary entries, relaxed escaping) without either copy.

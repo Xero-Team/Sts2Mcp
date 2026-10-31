@@ -1,6 +1,8 @@
 namespace Sts2Mcp.Core.Contracts;
 
-/// <summary>Display preferences of <see cref="SettingsResponse"/>: window, frame rate, monitor.</summary>
+/// <summary>
+/// Display preferences of <see cref="SettingsResponse"/>: window, frame rate, monitor.
+/// </summary>
 internal sealed record SettingsDisplay
 {
     /// <summary>Fullscreen window mode.</summary>

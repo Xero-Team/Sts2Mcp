@@ -1,9 +1,13 @@
 namespace Sts2Mcp.Core.Contracts;
 
-/// <summary>Gameplay preferences of <see cref="SettingsResponse"/>: speed, shake, and HUD toggles.</summary>
+/// <summary>
+/// Gameplay preferences of <see cref="SettingsResponse"/>: speed, shake, and HUD toggles.
+/// </summary>
 internal sealed record SettingsGameplay
 {
-    /// <summary>The game's fast-mode preference name (<c>Normal</c>, <c>Fast</c>, <c>Instant</c>).</summary>
+    /// <summary>
+    /// The game's fast-mode preference name (<c>Normal</c>, <c>Fast</c>, <c>Instant</c>).
+    /// </summary>
     public required string FastMode { get; init; }
 
     /// <summary>The screen-shake option index, as the settings screen stores it.</summary>

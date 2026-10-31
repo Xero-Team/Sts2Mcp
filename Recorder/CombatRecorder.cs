@@ -37,7 +37,7 @@ namespace Sts2Mcp.Recorder;
 /// any) an action came from, which action a choice belongs to, the round/turn it happened in, and
 /// a public observation at each decision boundary.
 ///
-/// Rules this class keeps (docs/recording.md):
+/// Rules this class keeps:
 ///  - It never changes what the game does. Everything reads; nothing here writes game state,
 ///    awaits, or calls game logic beyond property getters and the game's serializers. In
 ///    particular it does not call Anonymized() while a combat runs: IdAnonymizer draws from
@@ -68,10 +68,14 @@ internal static class CombatRecorder
     // --- API attribution ---------------------------------------------------------------------
 
     private static long s_apiSeq;
-    /// <summary>The request whose handler is running on the main thread right now (0 = none).</summary>
+    /// <summary>
+    /// The request whose handler is running on the main thread right now (0 = none).
+    /// </summary>
     [ThreadStatic] private static long t_handlerRequest;
     [ThreadStatic] private static Type? t_expectType;
-    /// <summary>The request between receipt and response (HTTP thread). A time window, not a cause.</summary>
+    /// <summary>
+    /// The request between receipt and response (HTTP thread). A time window, not a cause.
+    /// </summary>
     private static long s_windowRequest;
     private static readonly ConditionalWeakTable<GameAction, StrongBox<long>> s_apiActions = new();
     /// <summary>The first id each action got. Resuming after a choice gives it a new id.</summary>
@@ -93,26 +97,30 @@ internal static class CombatRecorder
     private static RoomTracker s_track = new();
 
     /// <summary>
-    /// "startup": installed by the mod's initializer (StartIfConfigured), before the game has run a
-    /// single console command, API request or run - the tracking layer has seen the whole process.
-    /// "runtime": installed later by set_recording, at the menu or mid-run. Whatever happened in the
-    /// process before that (a console command at the menu, an action requested and held back by the
-    /// game) was not seen, and the game can hand such things back later looking new - a held-back
-    /// action comes through RequestEnqueue again at the next player turn. So in a "runtime"
-    /// process the recorder guarantees neither provenance nor the absence of outside inputs: every
-    /// untagged player-driven action is "unknown" and inputs_outside_replay is "unknown".
-    /// Supported scope: complete records come only from a process that started with "record": true.
+    /// "startup": installed by the mod's initializer (StartIfConfigured), before the game has run
+    /// a single console command, API request or run - the tracking layer has seen the whole
+    /// process. "runtime": installed later by set_recording, at the menu or mid-run. Whatever
+    /// happened in the process before that (a console command at the menu, an action requested
+    /// and held back by the game) was not seen, and the game can hand such things back later
+    /// looking new - a held-back action comes through RequestEnqueue again at the next player
+    /// turn. So in a "runtime" process the recorder guarantees neither provenance nor the
+    /// absence of outside inputs: every untagged player-driven action is "unknown" and
+    /// inputs_outside_replay is "unknown". Supported scope: complete records come only from a
+    /// process that started with "record": true.
     /// </summary>
     private static string s_installedAt = "not_installed";
 
-    /// <summary>Every action seen at ActionQueueSynchronizer.RequestEnqueue since install.</summary>
+    /// <summary>
+    /// Every action seen at ActionQueueSynchronizer.RequestEnqueue since install.
+    /// </summary>
     private static readonly ConditionalWeakTable<GameAction, object> s_seenRequests = new();
 
     /// <summary>
     /// Console commands run in this process since install that bypassed the action queue. Their
-    /// effects need not stay in one room nor in the save (GodModeConsoleCmd keeps static state and a
-    /// CombatManager.CombatSetUp subscription that acts in every later combat), so every record
-    /// opened after one in the same process carries the list and a fault. A new process starts clean.
+    /// effects need not stay in one room nor in the save (GodModeConsoleCmd keeps static state
+    /// and a CombatManager.CombatSetUp subscription that acts in every later combat), so every
+    /// record opened after one in the same process carries the list and a fault. A new process
+    /// starts clean.
     /// </summary>
     private static readonly JsonArray s_consoleInProcess = new();
 
@@ -123,7 +131,9 @@ internal static class CombatRecorder
     internal static bool ConfigEnabled { get; private set; } = true;
     internal static string Root { get; private set; } = DefaultRoot();
 
-    /// <summary>"not_installed" / "installed" / "failed". Patches are only applied when asked to.</summary>
+    /// <summary>
+    /// "not_installed" / "installed" / "failed". Patches are only applied when asked to.
+    /// </summary>
     internal static string InstallState { get; private set; } = "not_installed";
     internal static string? InstallError { get; private set; }
 
@@ -138,7 +148,9 @@ internal static class CombatRecorder
         internal required long StartTime;
         internal required int Act;
         internal required int Floor;
-        /// <summary>MOD requests between entering the room and the combat (an event that starts a fight).</summary>
+        /// <summary>
+        /// MOD requests between entering the room and the combat (an event that starts a fight).
+        /// </summary>
         internal readonly JsonArray Requests = new();
     }
 
@@ -157,7 +169,9 @@ internal static class CombatRecorder
         internal readonly List<string> ChecksumKeys = new();
         internal readonly List<string> Faults = new();
         internal readonly HashSet<GameAction> JournaledActions = new(ReferenceEqualityComparer.Instance);
-        /// <summary>The first API request this record lists (earlier ones happened before it opened).</summary>
+        /// <summary>
+        /// The first API request this record lists (earlier ones happened before it opened).
+        /// </summary>
         internal long FirstRequest;
         internal JsonObject? LossOutcome;
         internal readonly List<double> HookMicros = new();
@@ -178,17 +192,28 @@ internal static class CombatRecorder
     /// <summary>What the tracking layer knows about the current room.</summary>
     private sealed class RoomTracker
     {
-        /// <summary>The game replay whose room entry was seen. Null when tracking started inside a room.</summary>
+        /// <summary>
+        /// The game replay whose room entry was seen. Null when tracking started inside a room.
+        /// </summary>
         internal CombatReplay? Replay;
         /// <summary>Choices reserved and not yet answered, per player slot.</summary>
         internal readonly Dictionary<int, SortedSet<uint>> OpenChoices = new();
-        /// <summary>(slot, choice id) -> the action that owns it (from SignalPlayerChoiceBegun).</summary>
+        /// <summary>
+        /// (slot, choice id) -> the action that owns it (from SignalPlayerChoiceBegun).
+        /// </summary>
         internal readonly Dictionary<(int, uint), JsonObject> ChoiceOwners = new();
-        /// <summary>The action currently paused for a choice (single player: at most one).</summary>
+        /// <summary>
+        /// The action currently paused for a choice (single player: at most one).
+        /// </summary>
         internal GameAction? Paused;
-        /// <summary>Paused when tracking started: its reservation and begin were not seen.</summary>
+        /// <summary>
+        /// Paused when tracking started: its reservation and begin were not seen.
+        /// </summary>
         internal bool PausedUnseen;
-        /// <summary>Per slot, the next choice id when tracking started inside a room: smaller ids were reserved unseen.</summary>
+        /// <summary>
+        /// Per slot, the next choice id when tracking started inside a room: smaller ids were
+        /// reserved unseen.
+        /// </summary>
         internal readonly Dictionary<int, uint> ChoiceFloor = new();
     }
 
@@ -204,7 +229,9 @@ internal static class CombatRecorder
         return Path.Combine(home, ".local", "state", "sts2", "records");
     }
 
-    /// <summary>Reads "record" / "record_dir" from Sts2Mcp.conf. Missing keys keep the defaults.</summary>
+    /// <summary>
+    /// Reads "record" / "record_dir" from Sts2Mcp.conf. Missing keys keep the defaults.
+    /// </summary>
     internal static void Configure(JsonElement config)
     {
         if (config.ValueKind != JsonValueKind.Object)
@@ -364,7 +391,9 @@ internal static class CombatRecorder
     // API attribution
     // ========================================================================================
 
-    /// <summary>Opens the request window. Returns the request id (0 when the recorder is not installed).</summary>
+    /// <summary>
+    /// Opens the request window. Returns the request id (0 when the recorder is not installed).
+    /// </summary>
     internal static long ApiBegin(string action, Dictionary<string, JsonElement> parsed)
     {
         if (!Installed)
@@ -408,7 +437,9 @@ internal static class CombatRecorder
         }
     }
 
-    /// <summary>Wraps a handler that runs on the main thread, so the action it enqueues carries the request.</summary>
+    /// <summary>
+    /// Wraps a handler that runs on the main thread, so the action it enqueues carries the request.
+    /// </summary>
     internal static Func<T> InHandler<T>(long id, Func<T> body) => () =>
     {
         long outer = t_handlerRequest;
@@ -475,11 +506,11 @@ internal static class CombatRecorder
     }
 
     /// <summary>
-    /// mod_api: made by a MOD handler (tagged on the object). not_mod_api: a player-driven action the
-    /// tracking layer saw reach RequestEnqueue untagged (the UI, including a click by hand).
-    /// unknown: a player-driven action it never saw requested - requested before the recorder was
-    /// installed, or through some other door; never guessed to be either. game: hook actions and the
-    /// game's own (ReadyToBeginEnemyTurnAction ...).
+    /// mod_api: made by a MOD handler (tagged on the object). not_mod_api: a player-driven
+    /// action the tracking layer saw reach RequestEnqueue untagged (the UI, including a click by
+    /// hand). unknown: a player-driven action it never saw requested - requested before the
+    /// recorder was installed, or through some other door; never guessed to be either. game: hook
+    /// actions and the game's own (ReadyToBeginEnemyTurnAction ...).
     /// </summary>
     private static JsonObject OriginOf(GameAction action)
     {
@@ -511,7 +542,9 @@ internal static class CombatRecorder
     // Game hooks (called from RecorderPatches and the CombatManager events)
     // ========================================================================================
 
-    /// <summary>Postfix of CombatReplayWriter.RecordInitialState: the run as it was on entering the room.</summary>
+    /// <summary>
+    /// Postfix of CombatReplayWriter.RecordInitialState: the run as it was on entering the room.
+    /// </summary>
     internal static void OnInitialState(CombatReplayWriter writer, SerializableRun serializableRun)
     {
         if (!s_active)
@@ -627,7 +660,9 @@ internal static class CombatRecorder
         }
     }
 
-    /// <summary>Postfix of the writer's RecordGameAction / RecordActionResume / RecordPlayerChoice.</summary>
+    /// <summary>
+    /// Postfix of the writer's RecordGameAction / RecordActionResume / RecordPlayerChoice.
+    /// </summary>
     internal static void OnGameEvent(CombatReplayWriter writer, int countBefore, GameAction? action)
     {
         Guard("game_event", () =>
@@ -798,8 +833,8 @@ internal static class CombatRecorder
             if (!reservedSeen && !beforeTracking)
                 data["patch_missed"] = true;
         }
-        // "paused" / "not_paused" are both observations: tracking reads the queue when it starts and
-        // follows every pause and resume after that.
+        // "paused" / "not_paused" are both observations: tracking reads the queue when it
+        // starts and follows every pause and resume after that.
         data["pause_state"] = "paused";
         if (t.Paused == null)
             data["pause_state"] = "not_paused";
@@ -1021,7 +1056,8 @@ internal static class CombatRecorder
                 var data = new JsonObject
                 {
                     ["old_action_id"] = oldId,
-                    // ResumeActionWithoutSynchronizing hands out exactly one new id after the event.
+                    // ResumeActionWithoutSynchronizing hands out exactly one new id after
+                    // the event.
                     ["new_action_id"] = nextActionId - 1,
                 };
                 // A choice the game settles without asking (e.g. HEADBUTT with one card in the
@@ -1110,9 +1146,9 @@ internal static class CombatRecorder
         {
             lock (s_gate)
             {
-                // Only a networked command in a multiplayer run with a local player is enqueued as a
-                // ConsoleCmdGameAction (DevConsole.ProcessCommand); everything else - single player,
-                // and every command at the menu - runs directly.
+                // Only a networked command in a multiplayer run with a local player is enqueued
+                // as a ConsoleCmdGameAction (DevConsole.ProcessCommand); everything else -
+                // single player, and every command at the menu - runs directly.
                 bool viaQueue = goesThroughQueue();
                 RunState? run = RunManager.Instance.DebugOnlyGetState();
                 var line = new JsonObject
@@ -1134,7 +1170,9 @@ internal static class CombatRecorder
         });
     }
 
-    /// <summary>Postfix of RecordInitialState, recording on or off: a new room, a new replay to track.</summary>
+    /// <summary>
+    /// Postfix of RecordInitialState, recording on or off: a new room, a new replay to track.
+    /// </summary>
     internal static void TrackRoomEntry(CombatReplayWriter writer)
     {
         Guard("track_room_entry", () =>
@@ -1224,7 +1262,10 @@ internal static class CombatRecorder
             }
             s_writer.Drain(2000);
         }
-        catch { /* the process is going away */ }
+        catch
+        {
+            // The process is going away; nothing to report.
+        }
     }
 
     // ========================================================================================
@@ -1341,7 +1382,9 @@ internal static class CombatRecorder
         };
     }
 
-    /// <summary>Whether the record copied the room's start itself, read it back, or has none.</summary>
+    /// <summary>
+    /// Whether the record copied the room's start itself, read it back, or has none.
+    /// </summary>
     private static string DescribeInitialState(CombatReplay? replay, PendingInitial? pending)
     {
         if (replay == null)
@@ -1474,8 +1517,9 @@ internal static class CombatRecorder
             {
                 selfCheck["events"] = Compare(replay.events.Select(e => Sha(Packet(e))).ToList(), rec.EventHashes);
                 selfCheck["checksums"] = Compare(replay.checksumData.Select(ChecksumKey).ToList(), rec.ChecksumKeys);
-                // The game anonymizes this same replay on the next line of WriteReplay; doing it one
-                // call earlier makes the same Rng.Chaotic draws in the same order (IdAnonymizer caches).
+                // The game anonymizes this same replay on the next line of WriteReplay;
+                // doing it one call earlier makes the same Rng.Chaotic draws in the same
+                // order (IdAnonymizer caches).
                 byte[] mcr = Packet(replay.Anonymized());
                 selfCheck["replay_mcr_sha256"] = Sha(mcr);
                 selfCheck["replay_mcr_bytes"] = mcr.Length;
@@ -1767,7 +1811,9 @@ internal static class CombatRecorder
         }
     }
 
-    /// <summary><see cref="TryRecordQuiet{T}"/> for a body whose only outcome is "it worked".</summary>
+    /// <summary>
+    /// <see cref="TryRecordQuiet{T}"/> for a body whose only outcome is "it worked".
+    /// </summary>
     [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1031:Do not catch general exception types",
         Justification = "These reads only feed diagnostics, so a miss changes nothing a consumer acts on.")]
     [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "ERP022:Swallowed exception",
@@ -1803,7 +1849,9 @@ internal static class CombatRecorder
         }
     }
 
-    /// <summary>The replay's header: the same fields, events and checksums left empty. A data copy.</summary>
+    /// <summary>
+    /// The replay's header: the same fields, events and checksums left empty. A data copy.
+    /// </summary>
     private static CombatReplay HeaderOf(CombatReplay replay) => new()
     {
         version = replay.version,
@@ -1919,7 +1967,9 @@ internal static class CombatRecorder
         return null;
     }
 
-    /// <summary>A platform player id as the player's slot in the run (never the id itself).</summary>
+    /// <summary>
+    /// A platform player id as the player's slot in the run (never the id itself).
+    /// </summary>
     internal static int? SlotOf(ulong? netId)
     {
         if (netId is not { } id)

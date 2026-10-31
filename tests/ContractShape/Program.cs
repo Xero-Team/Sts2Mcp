@@ -75,7 +75,8 @@ CheckWire("""{"commit":null,"status":"ok"}""", bag, "null dictionary values are 
 
 // GET /api/v1/settings was a Dictionary<string, object?>; the contract type must be byte-identical
 // to that shape so a client cannot tell the two apart. Field order, nesting, and the snake_case
-// names are the contract, and 0.5f must stay "0.5" (which is why the volumes are float, not double).
+// names are the contract, and 0.5f must stay "0.5" (which is why the volumes are float, not
+// double).
 SettingsResponse Settings(string? language = "en") => new()
 {
     Display = new SettingsDisplay

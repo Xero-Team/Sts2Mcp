@@ -140,7 +140,7 @@ public static partial class McpMod
             // Curse of Knowledge. The two offered cards are never added to any
             // pile: `KnowledgeDemon.IChoosable.OnChosen` applies the chosen
             // card's own power to the player and the card is dropped. Reading
-            // it as `generated_to_hand` — the `FromChooseACard` default below —
+            // it as `generated_to_hand` - the `FromChooseACard` default below -
             // asks which card is best to HOLD, when the question is which
             // debuff hurts least for the rest of the fight.
             "KnowledgeDemon" => "knowledge_curse",

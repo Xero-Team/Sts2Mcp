@@ -28,8 +28,9 @@ public static partial class McpMod
             "Failed to read settings", "settings_read_failed");
 
     /// <summary>
-    /// Reads the saved settings into <see cref="SettingsResponse"/>. Returns <see cref="ErrorResponse"/>
-    /// when the save manager or either save object is missing; the transport maps that to a status.
+    /// Reads the saved settings into <see cref="SettingsResponse"/>. Returns
+    /// <see cref="ErrorResponse"/> when the save manager or either save object is missing; the
+    /// transport maps that to a status.
     /// </summary>
     internal static object BuildSettings()
     {

@@ -62,7 +62,8 @@ internal static class RecorderPatches
 
         Patch(typeof(ActionQueueSynchronizer), nameof(ActionQueueSynchronizer.RequestEnqueue), prefix: nameof(RequestEnqueuePrefix));
         Patch(typeof(PlayerChoiceSynchronizer), nameof(PlayerChoiceSynchronizer.ReserveChoiceId), postfix: nameof(ReservePostfix));
-        // BranchingPlayerChoiceContext only forwards to the context it wraps, which is patched itself.
+        // BranchingPlayerChoiceContext only forwards to the context it wraps, which is patched
+        // itself.
         foreach (Type? ctx in new[] { typeof(GameActionPlayerChoiceContext), typeof(HookPlayerChoiceContext),
                                     typeof(BlockingPlayerChoiceContext), typeof(ThrowingPlayerChoiceContext) })
             Patch(ctx, nameof(PlayerChoiceContext.SignalPlayerChoiceBegun),
@@ -74,7 +75,8 @@ internal static class RecorderPatches
         Patch(typeof(RunManager), nameof(RunManager.CleanUp), prefix: nameof(CleanUpPrefix), postfix: nameof(CleanUpPostfix));
         Patch(typeof(MegaCrit.Sts2.Core.DevConsole.DevConsole), nameof(MegaCrit.Sts2.Core.DevConsole.DevConsole.ProcessCommand),
             prefix: nameof(ConsolePrefix), parameters: new[] { typeof(string) });
-        // Counted only: AC2 asks that recording sends nothing to Sentry (docs/recording.md).
+        // Counted only: the recording acceptance criteria require that recording sends nothing
+        // to Sentry.
         foreach (MethodInfo? m in AccessTools.GetDeclaredMethods(typeof(SentryService))
                      .Where(m => string.Equals(m.Name, nameof(SentryService.CaptureException), StringComparison.Ordinal)))
         {
@@ -182,7 +184,9 @@ internal static class RecorderPatches
         return commands[name] is MegaCrit.Sts2.Core.DevConsole.ConsoleCommands.AbstractConsoleCmd cmd && cmd.IsNetworked;
     }
 
-    /// <summary>Every action in the player queues (read through the private list; nothing is changed).</summary>
+    /// <summary>
+    /// Every action in the player queues (read through the private list; nothing is changed).
+    /// </summary>
     internal static IEnumerable<GameAction> QueuedActions(ActionQueueSet? set)
     {
         if (set == null || s_queuesField?.GetValue(set) is not System.Collections.IEnumerable queues)

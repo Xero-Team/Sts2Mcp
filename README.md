@@ -287,7 +287,9 @@ cp out/Sts2Mcp/Sts2Mcp.json "$MODS_DIR/"
 
 ## License
 
-MIT
+MIT. The original work is Copyright 2026 Yikun Ji (Kunologist); modifications in
+this repository are Copyright 2026 Xero Team. Both notices are retained in
+[`LICENSE`](LICENSE), as the MIT license requires.
 
 ## FAQ
 

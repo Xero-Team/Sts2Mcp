@@ -21,7 +21,7 @@ public static partial class McpMod
     //
     // The game holds deterministic randomness in three places, and all three are
     // exported here so a consumer can reconstruct any stream at its current
-    // position and roll it forward without ever touching the live generator —
+    // position and roll it forward without ever touching the live generator -
     // the same technique BuildIntentMachine already uses for RunRng.MonsterAi.
     //
     //   1. RunRngSet (runState.Rng) - the run-wide streams, one per RunRngType:
@@ -163,7 +163,7 @@ public static partial class McpMod
     ///
     /// Public <c>Rng</c>-typed properties come first (their names are the stable
     /// contract consumers key off), then the set's private backing dictionary is
-    /// swept for any stream that has no property accessor — so a game update that
+    /// swept for any stream that has no property accessor - so a game update that
     /// adds an RngType still exports it, under the snake-cased enum name.
     /// Streams already emitted by a property are matched by reference, not by
     /// name, so the same stream is never exported twice under two spellings.
@@ -370,13 +370,13 @@ public static partial class McpMod
     /// Its own endpoint rather than a field on the state, because the two have
     /// opposite shapes. The bag is ~1.8 KB of relic ids at run start and the
     /// state is polled ten times a second, but the bag only CHANGES when a
-    /// relic leaves it — at an elite, a chest, an event, a shop — so a consumer
+    /// relic leaves it - at an elite, a chest, an event, a shop - so a consumer
     /// wants it a handful of times per act, not a hundred times a floor.
     ///
     /// Deliberately NOT called "relicpools", for all that it sits beside
     /// /api/v1/cardpools: a card pool is static for a whole run and is fetched
     /// once, while this is a BAG that shrinks every time a relic leaves it.
-    /// Never cache it across rooms — fetch it when planning a route and again
+    /// Never cache it across rooms - fetch it when planning a route and again
     /// when a shop opens.
     /// </remarks>
     private static void HandleGetRelicBag(HttpListenerResponse response)

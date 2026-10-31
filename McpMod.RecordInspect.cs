@@ -19,13 +19,13 @@ namespace Sts2Mcp;
 public static partial class McpMod
 {
     /// <summary>
-    /// GET /api/v1/record/inspect?file=&lt;path&gt; - reads a .mcr (the game's CombatReplay) with the
-    /// game's own PacketReader and lists its parts as digests, so two replays can be compared
-    /// entry by entry without a second implementation of the format.
+    /// GET /api/v1/record/inspect?file=&lt;path&gt; - reads a .mcr (the game's
+    /// CombatReplay) with the game's own PacketReader and lists its parts as digests, so two
+    /// replays can be compared entry by entry without a second implementation of the format.
     ///
-    /// A verification tool (docs/recording.md "A/B"), not part of the play API: its output
-    /// contains the game's checksums, which are hidden information. Only files under the record
-    /// directory or the current profile's replays/ directory are read.
+    /// A verification tool (the recording format's "A/B" check), not part of the play API: its
+    /// output contains the game's checksums, which are hidden information. Only files under the
+    /// record directory or the current profile's replays/ directory are read.
     /// </summary>
     private static void HandleInspectReplay(HttpListenerRequest request, HttpListenerResponse response)
     {

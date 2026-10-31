@@ -13,7 +13,8 @@ namespace Sts2Mcp;
 
 public static partial class McpMod
 {
-    // 実際にロードした本体の版。固定の出典ラベルで別版を信頼させない。
+    // The build actually loaded: a fixed provenance label must never make a caller trust a
+    // different one.
     private static readonly Lazy<string> s_generationAssemblySha256 = new(() =>
     {
         using FileStream stream = File.OpenRead(typeof(CardModel).Assembly.Location);
@@ -41,7 +42,7 @@ public static partial class McpMod
                 throw new InvalidOperationException("\u5BFE\u8C61player\u304Crun.Players\u306B\u5B58\u5728\u3057\u306A\u3044");
 
             IEnumerable<CardModel> unlocked = player.Character.CardPool.GetUnlockedCards(player.UnlockState, run.CardMultiplayerConstraint);
-            // privateなFilterForPlayerCountと同じ条件（sts2-9cb4f1ad）。
+            // The same condition as the private FilterForPlayerCount (sts2-9cb4f1ad).
             CardMultiplayerConstraint excluded = run.Players.Count > 1
                 ? CardMultiplayerConstraint.SingleplayerOnly : CardMultiplayerConstraint.MultiplayerOnly;
             List<Dictionary<string, object?>> cards = CardFactory.FilterForCombat(unlocked.Where(c => c.MultiplayerConstraint != excluded))
@@ -49,7 +50,8 @@ public static partial class McpMod
                 .OrderBy(c => c.Id.Entry, StringComparer.Ordinal)
                 .Select(c => new Dictionary<string, object?>(StringComparer.Ordinal) { ["id"] = c.Id.Entry, ["type"] = c.Type.ToString() })
                 .ToList();
-            // 抽選・CreateCard・RNGには触らない。列挙完了後だけknownを立てる。
+            // Do not touch the draw, CreateCard, or the RNG; only flag `known` after the
+            // enumeration has finished.
             result["cards"] = cards;
             result["known"] = true;
         });

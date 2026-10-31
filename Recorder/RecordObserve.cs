@@ -164,9 +164,10 @@ internal static class RecordObserve
     };
 
     /// <summary>
-    /// The action the way docs/native-ipc.md "行動" writes it (play_card / end_turn), read off the
-    /// INetAction the game itself put in its replay - never re-derived from the live action.
-    /// Other kinds come out as {"type": "&lt;net action class&gt;", ...its public fields}.
+    /// The action as the native IPC format writes it (<c>play_card</c> / <c>end_turn</c>), read
+    /// off the <c>INetAction</c> the game itself put in its replay - never re-derived from the
+    /// live action. Other kinds come out as <c>{"type": "&lt;net action class&gt;", ...}</c> with
+    /// the action's public fields.
     /// </summary>
     internal static JsonObject DescribeNetAction(INetAction? net, Func<ulong?, int?> slotOf)
     {
@@ -218,7 +219,9 @@ internal static class RecordObserve
         }
     }
 
-    /// <summary>A field that holds a platform player id (NetId). Written as the player's slot.</summary>
+    /// <summary>
+    /// A field that holds a platform player id (NetId). Written as the player's slot.
+    /// </summary>
     private static bool IsPlayerIdField(string name) =>
         name.EndsWith("playerId", StringComparison.OrdinalIgnoreCase)
         || name.EndsWith("PlayerId", StringComparison.Ordinal)

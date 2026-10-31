@@ -15,14 +15,14 @@ public static partial class McpMod
     /// <see cref="FastModeType.Instant" /> is active, because under Instant the game's own
     /// loop never yields and hangs the process.
     ///
-    /// <para><c>PunchOff.PunchEachOther</c> is an endless decorative loop — two constructs
-    /// trade punches for as long as the event screen is up — and every await in its body is
+    /// <para><c>PunchOff.PunchEachOther</c> is an endless decorative loop - two constructs
+    /// trade punches for as long as the event screen is up - and every await in its body is
     /// a no-op under Instant: <c>Cmd.Wait</c> guards its whole body on
     /// <c>FastMode != Instant</c>, and <c>CreatureCmd.TriggerAnim(.., 0f)</c> delegates to
     /// <c>Cmd.CustomScaledWait</c>, which has the same guard. With nothing left to suspend
     /// on, the <c>while</c> runs to completion inside the state machine's first
     /// <c>AsyncMethodBuilderCore.Start</c> and never returns to the engine. The main thread
-    /// stops servicing frames the instant the event opens — so our own HTTP reads time out —
+    /// stops servicing frames the instant the event opens - so our own HTTP reads time out -
     /// while each iteration instantiates an <c>NHitSparkVfx</c> (three <c>GpuParticles2D</c>)
     /// into the VFX container that can never be freed, since <c>FlashAndFree</c> waits on a
     /// particle signal that needs a frame. Within seconds the renderer's particle RID pool is
@@ -31,7 +31,7 @@ public static partial class McpMod
     /// minutes, observed live, with node and memory use climbing until the process is killed.
     /// </para>
     ///
-    /// <para>Skipping the loop is what Instant Mode means everywhere else — it is an
+    /// <para>Skipping the loop is what Instant Mode means everywhere else - it is an
     /// animation, and Instant's whole contract is that animations do not play; the game
     /// simply never gave this one an Instant path. Nothing in the loop touches run state:
     /// it mirrors one sprite's scale and spawns hit sparks, and the event's options, curse

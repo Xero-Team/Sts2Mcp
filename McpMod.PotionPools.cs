@@ -18,8 +18,8 @@ namespace Sts2Mcp;
 // poll keeps the ~10 Hz state build off the enumeration entirely.
 //
 // This is the missing half of predicting a merchant's shelf. Everything else it
-// stocks is already derivable — cards and prices off `player.rng.shops`, relics
-// out of /api/v1/relicbag — but PotionFactory.CreateRandomPotion does
+// stocks is already derivable - cards and prices off `player.rng.shops`, relics
+// out of /api/v1/relicbag - but PotionFactory.CreateRandomPotion does
 // `rng.NextItem(list.Where(rarity))` over the *unlocked* pool, so without the
 // list in declaration order a client can predict a potion's rarity and price
 // but never which potion it is.
@@ -36,7 +36,7 @@ public static partial class McpMod
     private static Dictionary<string, object?>? s_potionPoolsCache;
 
     /// <summary>
-    /// GET /api/v1/potionpools — every unlocked potion pool, in draw order.
+    /// GET /api/v1/potionpools - every unlocked potion pool, in draw order.
     /// </summary>
     private static void HandleGetPotionPools(HttpListenerResponse response)
         => RunHandler(response, () => SendJson(response, RunOnMainThreadBlocking(BuildPotionPools)),
@@ -65,7 +65,7 @@ public static partial class McpMod
         foreach (PotionPoolModel pool in ModelDb.AllPotionPools)
         {
             // PotionPoolModel has no Title (unlike CardPoolModel), so the
-            // ModelId entry is the stable key — "SHARED_POTION_POOL" and so on.
+            // ModelId entry is the stable key - "SHARED_POTION_POOL" and so on.
             string? title = SafeGet(() => (object?)pool.Id?.Entry) as string;
             if (string.IsNullOrWhiteSpace(title) || pools.ContainsKey(title))
                 continue;
@@ -124,7 +124,7 @@ public static partial class McpMod
 
     /// <summary>
     /// The run's unlock state, falling back to the profile between runs.
-    /// Mirrors ResolveCardPoolUnlockState, minus the multiplayer constraint —
+    /// Mirrors ResolveCardPoolUnlockState, minus the multiplayer constraint -
     /// PotionPoolModel.GetUnlockedPotions does not take one.
     /// </summary>
     private static UnlockState? ResolvePotionPoolUnlockState(out string source)

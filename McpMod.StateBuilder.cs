@@ -151,7 +151,7 @@ public static partial class McpMod
 
     /// <summary>
     /// Powers that cap how much HP a creature can lose, per hit. Damage modifiers do not
-    /// see these — they are applied when the damage lands — so a 18-damage card against
+    /// see these - they are applied when the damage lands - so a 18-damage card against
     /// Slippery takes the enemy down by 1, and reporting 18 sends the caller into a
     /// fight it cannot win. Keyed by power type because that survives an id rename.
     /// </summary>
@@ -216,7 +216,7 @@ public static partial class McpMod
 
     private static readonly FieldInfo? s_specialRewardCardField = typeof(SpecialCardReward).GetField("_card", BindingFlags.NonPublic | BindingFlags.Instance);
 
-    /// <summary>`NChooseACardSelectionScreen._noSelectionTimeMsec`.</summary>
+    /// <summary><c>NChooseACardSelectionScreen._noSelectionTimeMsec</c>.</summary>
     private const ulong ChooseCardScreenInputDeadzoneMsec = 350uL;
 
     /// <summary>
@@ -224,7 +224,7 @@ public static partial class McpMod
     ///
     /// Seeded at creation rather than stamped on the way out because the state builders have
     /// ~20 return paths (menu, unknown, error, FTUE); anything added at the end is missed by the
-    /// early ones. `state_type` is seeded first so it keeps its leading position when a caller
+    /// early ones. <c>state_type</c> is seeded first so it keeps its leading position when a caller
     /// overwrites it, and "unknown" is the right answer for a path that never sets one.
     /// </summary>
     internal static Dictionary<string, object?> NewStateResult(
@@ -241,14 +241,16 @@ public static partial class McpMod
         };
     }
 
-    /// <summary>Called through BuildGameState(), which brackets it with the warning collector.</summary>
+    /// <summary>
+    /// Called through BuildGameState(), which brackets it with the warning collector.
+    /// </summary>
     private static Dictionary<string, object?> BuildGameStateCore()
     {
         Dictionary<string, object?> result = NewStateResult();
         var tree = (Godot.Engine.GetMainLoop()) as SceneTree;
 
         // Completed async room entries. A harness embarking runs back to back waits for
-        // this to advance before touching the run again — see TrackRoomEntries.
+        // this to advance before touching the run again - see TrackRoomEntries.
         result["rooms_entered"] = RoomsEntered;
 
         if (tree?.Root != null)
@@ -335,7 +337,9 @@ public static partial class McpMod
         Func<EventRoom, RunState, Dictionary<string, object?>> BuildEvent,
         Func<RunState, Dictionary<string, object?>> BuildTreasure)
     {
-        /// <summary>One static instance per mode, so a state read allocates nothing extra.</summary>
+        /// <summary>
+        /// One static instance per mode, so a state read allocates nothing extra.
+        /// </summary>
         internal static readonly ScreenPolicy Singleplayer = new(
             CheckRunMenus: true,
             MaskPendingRooms: true,
@@ -349,7 +353,9 @@ public static partial class McpMod
             BuildEvent: (eventRoom, _) => BuildEventState(eventRoom),
             BuildTreasure: _ => BuildTreasureState());
 
-        /// <summary>The co-op payload, which reports the run in its own shape on every screen.</summary>
+        /// <summary>
+        /// The co-op payload, which reports the run in its own shape on every screen.
+        /// </summary>
         internal static readonly ScreenPolicy Multiplayer = new(
             CheckRunMenus: false,
             MaskPendingRooms: false,
@@ -464,7 +470,7 @@ public static partial class McpMod
         // Mirror the NRewardsScreen guard: the Crystal Sphere overlay lingers on
         // the stack after proceed is clicked (only ClearScreens on the next room
         // transition pops it). Once the map opens on top, report "map" so state
-        // matches the screen the player can interact with. See issue #73.
+        // matches the screen the player can interact with.
         //
         // ...but only once it HAS been answered. `CrystalSphere.UncoverFuture`
         // awaits `PlayMinigame()` before `SetEventFinished`, so a sphere still
@@ -675,7 +681,7 @@ public static partial class McpMod
         //
         // Outside that the mask still has to come off, because the singleton
         // is not a finished signal: NMerchantRoom.Instance is NRun's current
-        // room scene, and proceeding out only calls NMapScreen.Open() — the
+        // room scene, and proceeding out only calls NMapScreen.Open() - the
         // scene is replaced when the NEXT room is entered, which cannot happen
         // until we travel. Meanwhile ActiveScreenContext hands the map the
         // focus, so NMerchantRoom.OnActiveScreenUpdated disables the
@@ -686,7 +692,7 @@ public static partial class McpMod
         //
         // The signal for that is the map being DELIBERATELY open, not merely
         // on screen. IsMapScreenOpenOrVisible() also answers true through
-        // Close()'s animate-out, which is exactly the arrival window — so
+        // Close()'s animate-out, which is exactly the arrival window - so
         // gating on it unmasked the shop about 0.75s after arriving, as soon as
         // IsRunTransitionInFlight() went false, and every merchant reported
         // "map" for the rest of the visit. Measured over a full seeded run:
@@ -698,7 +704,7 @@ public static partial class McpMod
         result["state_type"] = StateTypes.Shop;
         Dictionary<string, object?> shopState = BuildShopState(pendingShop, runState);
         // Still exported for a client that wants to leave by travelling rather
-        // than by proceeding — the map's next nodes stay travelable from a
+        // than by proceeding - the map's next nodes stay travelable from a
         // merchant node whether or not the map screen is up.
         shopState["next_options"] = BuildMapNextOptions();
         result["shop"] = shopState;
@@ -751,7 +757,7 @@ public static partial class McpMod
 
         if (CombatManager.Instance.IsInProgress)
         {
-            // Check for in-combat hand card selection (e.g., "Select a card to exhaust")
+            // A card-selection prompt inside combat outranks the normal battle state.
             NPlayerHand? playerHand = NPlayerHand.Instance;
             if (playerHand != null && playerHand.IsInCardSelection)
             {
@@ -908,7 +914,7 @@ public static partial class McpMod
     private static void AppendCommonRunState(
         Dictionary<string, object?> result, RunState runState)
     {
-        // Common run info
+        // The run block every screen carries.
         var runInfo = new Dictionary<string, object?>(StringComparer.Ordinal)
         {
             ["act"] = runState.CurrentActIndex + 1,
@@ -951,7 +957,8 @@ public static partial class McpMod
         // Fork addition: save/run context so a client can tie a state read to its save files.
         result["current_run"] = BuildActiveRunContext();
 
-        // Always include full player data (relics, potions, deck, etc.) on every screen
+        // A client picks its next move from the deck and relics as much as from the screen, so
+        // the local player block rides along on every state.
         Player? localPlayer = LocalContext.GetMe(runState);
         if (localPlayer != null)
             result["player"] = BuildPlayerState(localPlayer);
@@ -959,13 +966,14 @@ public static partial class McpMod
         AddResolvingState(result, result.GetValueOrDefault("state_type")?.ToString());
     }
 
-    /// <summary>The state for a game with no run in progress: whichever menu screen is up.</summary>
+    /// <summary>
+    /// The state for a game with no run in progress: whichever menu screen is up.
+    /// </summary>
     private static Dictionary<string, object?> BuildNoRunState(
         Dictionary<string, object?> result, SceneTree? tree)
     {
         result["state_type"] = StateTypes.Menu;
 
-        // Detect which menu screen is active
         if (tree?.Root != null)
             AppendMenuScreenState(result, tree.Root);
         else
@@ -994,7 +1002,8 @@ public static partial class McpMod
 
     private static void AppendGameModeSubmenuState(Dictionary<string, object?> result, Node root)
     {
-        // Check for singleplayer submenu (Standard / Daily / Custom)
+        // The singleplayer submenu and its multiplayer host twin show the same three mode
+        // buttons, so each keeps its own menu_screen name.
         NSingleplayerSubmenu? spSubmenu = FindFirst<NSingleplayerSubmenu>(root);
         if (spSubmenu != null && IsNodeVisible(spSubmenu))
         {
@@ -1004,7 +1013,6 @@ public static partial class McpMod
             return;
         }
 
-        // Check for multiplayer host submenu (Standard / Daily / Custom for multiplayer)
         NMultiplayerHostSubmenu? mpHostSubmenu = FindFirst<NMultiplayerHostSubmenu>(root);
         if (mpHostSubmenu != null && IsNodeVisible(mpHostSubmenu))
         {
@@ -1056,7 +1064,6 @@ public static partial class McpMod
     private static void AppendMultiplayerSubmenuState(
         Dictionary<string, object?> result, Node root)
     {
-        // Check for multiplayer submenu (Host / Join / Load / Abandon)
         NMultiplayerSubmenu? mpSubmenu = FindFirst<NMultiplayerSubmenu>(root);
         if (mpSubmenu == null || !IsNodeVisible(mpSubmenu))
             return;
@@ -1087,7 +1094,7 @@ public static partial class McpMod
                 AddMultiplayerJoinMenuState(result, joinScreen);
         }
 
-        // Multiplayer Load lobby — resume saved MP run. Pushed by NMultiplayerSubmenu
+        // Multiplayer Load lobby - resume saved MP run. Pushed by NMultiplayerSubmenu
         // when "load" is clicked (host) or by JoinFlow when joining a save in progress (client).
         if (!result.ContainsKey("menu_screen"))
         {
@@ -1110,7 +1117,7 @@ public static partial class McpMod
     private static void AppendCharacterOrOtherMenuState(
         Dictionary<string, object?> result, Node root)
     {
-        // Check for character select screen
+        // Character select can be mounted without the main menu, so it is checked first.
         if (result.ContainsKey("menu_screen"))
             return;
 
@@ -1128,7 +1135,8 @@ public static partial class McpMod
 
     private static void AppendOtherMenuScreens(Dictionary<string, object?> result, Node root)
     {
-        // Check for other screens
+        // Timeline, compendium and settings are overlays over the menu; whichever is visible
+        // names the screen.
         NTimelineScreen? timelineScreen = FindFirst<NTimelineScreen>(root);
         NCompendiumSubmenu? compendiumSubmenu = FindFirst<NCompendiumSubmenu>(root);
         NSettingsScreen? settingsScreen = FindFirst<NSettingsScreen>(root);
@@ -1488,10 +1496,10 @@ public static partial class McpMod
     /// the capstone container, exactly like the settings screen, so nothing else in this
     /// builder notices it. Left unreported, state describes the room underneath while
     /// the player is looking at a paused menu, and every action is aimed at a screen
-    /// that is not on top. See A-5 of the operator-side issue log.
+    /// that is not on top.
     ///
     /// Anything else pushed on that stack (the in-run compendium and the screens it
-    /// opens) is reported generically with a `back` option, so entering one can never
+    /// opens) is reported generically with a <c>back</c> option, so entering one can never
     /// become a screen the API has no way out of.
     ///
     /// Returns null when no such screen is up, so callers fall through unchanged.
@@ -1564,7 +1572,7 @@ public static partial class McpMod
 
     /// <summary>
     /// Any other screen on the run's submenu stack (compendium and what it opens).
-    /// Only `back` is modelled - the point is that the API can leave a screen it can
+    /// Only <c>back</c> is modelled - the point is that the API can leave a screen it can
     /// enter, not that it can drive the compendium.
     /// </summary>
     private static Dictionary<string, object?> BuildRunSubmenuState(NSubmenu submenu)
@@ -1590,7 +1598,7 @@ public static partial class McpMod
     /// <summary>
     /// "NCompendiumSubmenu" -> "compendium", "NCardLibrary" -> "card_library". Derived
     /// rather than listed so a screen the game adds later still gets a usable name and a
-    /// working `back`, instead of being reported as an unnamed screen with no way out.
+    /// working <c>back</c>, instead of being reported as an unnamed screen with no way out.
     /// </summary>
     private static string SubmenuScreenName(NSubmenu submenu)
     {
@@ -1699,7 +1707,7 @@ public static partial class McpMod
 
     // Shared body of the two "start a run" screens (NCharacterSelectScreen and
     // NCustomRunScreen). They are separate types but expose the same controls under
-    // the same field names — _backButton, _unreadyButton, _ascensionPanel, _lobby —
+    // the same field names - _backButton, _unreadyButton, _ascensionPanel, _lobby -
     // so everything except the confirm button's field name is identical. Fields that
     // only one screen owns (_seedInput, the modifier tickboxes) are emitted only when
     // that screen actually has them.
@@ -1722,7 +1730,7 @@ public static partial class McpMod
         AppendAscensionState(result, options, screen);
         AddStartRunButtons(options, screen, confirmField);
 
-        // MP lobby block — surfaces roster / ready state / ascension when this screen
+        // MP lobby block - surfaces roster / ready state / ascension when this screen
         // is part of a host or client lobby. SP runs leave the field absent.
         AppendLobbyBlock(result, options, screen, lobby);
 
@@ -1739,7 +1747,7 @@ public static partial class McpMod
     }
 
     /// <summary>
-    /// Seed — custom run only, gated on the screen owning a seed input. The lobby is what
+    /// Seed - custom run only, gated on the screen owning a seed input. The lobby is what
     /// the run actually uses and both directions flow through it (SetSeed -> SeedChanged
     /// -> _seedInput.Text, and a human submitting the field -> SetSeed), so read it from
     /// there rather than off the LineEdit.
@@ -1752,10 +1760,10 @@ public static partial class McpMod
     }
 
     /// <summary>
-    /// Run modifiers — custom run only. Each is a tickbox; surface it as read info (id,
+    /// Run modifiers - custom run only. Each is a tickbox; surface it as read info (id,
     /// title, description, ticked) plus a toggle option named "modifier_&lt;key&gt;", which
-    /// menu_select flips via ForceClick. `key` is the id except for the per-character
-    /// "character cards" modifiers, which all share one id — see GetRunModifierEntries.
+    /// menu_select flips via ForceClick. <c>key</c> is the id except for the per-character
+    /// "character cards" modifiers, which all share one id - see GetRunModifierEntries.
     /// </summary>
     private static List<string> AppendRunModifiers(
         Dictionary<string, object?> result,
@@ -1799,7 +1807,7 @@ public static partial class McpMod
 
     /// <summary>
     /// Ascension. The panel is shared by both screens and drives the run's ascension level
-    /// in SP as well as MP (the MP `lobby` block carries the synced value). The arrows hide
+    /// in SP as well as MP (the MP <c>lobby</c> block carries the synced value). The arrows hide
     /// themselves at the ends of the range and for MP clients, so their visibility is what
     /// says whether the level can still be changed.
     /// </summary>
@@ -1813,7 +1821,7 @@ public static partial class McpMod
 
         TryDo(() =>
         {
-            // Flat fields, as documented in docs/raw-full.md: `ascension` is the level
+            // Flat fields, as documented in the state contract: `ascension` is the level
             // the run will start at, `max_ascension` the unlocked cap, and
             // `ascension_selectable` says whether the panel is on screen right now.
             result["ascension"] = ascensionPanel.Ascension;
@@ -1976,7 +1984,7 @@ public static partial class McpMod
         // v0.111 renamed the roster's element type (LobbyPlayer ->
         // StartRunLobbyPlayer) and dropped the public MaxPlayers. Naming either
         // one directly would bake a typeref/memberref this DLL cannot resolve on
-        // the main branch — and the rename is worse than a failed call, because
+        // the main branch - and the rename is worse than a failed call, because
         // the lambdas over the roster put the element type on a compiler-
         // generated closure, which fails the whole assembly's type enumeration
         // and takes the entire mod down at load. Both are read reflectively; the
@@ -2035,7 +2043,7 @@ public static partial class McpMod
             // We can only positively identify the host as "us" when we ARE the host;
             // a client doesn't know which remote id is the host without inspecting
             // the net service. Keep it simple and only flag is_host=true for self
-            // when hosting — clients can infer host-ness by player_id when needed.
+            // when hosting - clients can infer host-ness by player_id when needed.
             ["is_host"] = p.Id == hostId && hostId != 0,
             ["character"] = SafeGetText(() => p.Character?.Title)
                             ?? p.Character?.Id.Entry,
@@ -2077,7 +2085,7 @@ public static partial class McpMod
     }
 
     /// <summary>
-    /// The local player's seat. `LocalPlayer` returns the roster struct itself,
+    /// The local player's seat. <c>LocalPlayer</c> returns the roster struct itself,
     /// so it is read the same reflective way; a build that ever stops exposing
     /// it falls back to matching the roster against our own net id.
     /// </summary>
@@ -2088,7 +2096,7 @@ public static partial class McpMod
         {
             StartRunLobbySeat? seat = ReadStartRunLobbySeat(local);
             // A struct roster returns default(T) rather than null for a missing
-            // seat, which reads as id 0 — not a real player.
+            // seat, which reads as id 0 - not a real player.
             if (seat != null && seat.Id != 0)
                 return seat;
         }
@@ -2273,7 +2281,7 @@ public static partial class McpMod
         info["all_ready"] = aboutToBegin;
         info["is_about_to_begin"] = aboutToBegin;
 
-        // Per-player ready/connected breakdown
+        // The lobby's player rows, in the order the screen shows them.
         info["players"] = BuildLoadLobbyPlayers(lobby, connectedPlayerIds);
         return info;
     }
@@ -2393,14 +2401,13 @@ public static partial class McpMod
             battle["rng_streams"] = rngStreams;
         }
 
-        // Gold Axe and other combat-wide counters include every player's card plays.
+        // Gold Axe and other combat-wide counters include every player's card plays. Combat
+        // history is unavailable while combat tears down.
         TryDo(() => { battle["card_plays"] = BuildCardPlaysState(combatState); });
-        /* history unavailable while combat is tearing down */
 
-        // Where every card went this turn and last — drawn/discarded/exhausted/generated, not
-        // just played. See BuildCardHistoryState.
+        // Where every card went this turn and last - drawn/discarded/exhausted/generated, not
+        // just played. See BuildCardHistoryState. The same history teardown applies.
         TryDo(() => { battle["card_history"] = BuildCardHistoryState(combatState); });
-        /* history unavailable while combat is tearing down */
     }
 
     private static Dictionary<string, object?> BuildBattleState(RunState runState, CombatRoom combatRoom)
@@ -2464,7 +2471,7 @@ public static partial class McpMod
     }
 
     /// <summary>
-    /// The player's side of the board. Only `enemies` was reported, so Osty was invisible
+    /// The player's side of the board. Only <c>enemies</c> was reported, so Osty was invisible
     /// to anything reading this: a Necrobinder capture could not see the pet at all. Built
     /// with the same shape as an enemy so a consumer can treat them alike.
     /// </summary>
@@ -2491,7 +2498,7 @@ public static partial class McpMod
         // The encounter's slot list, in declaration order. `EncounterModel
         // .GetNextSlot` is `Slots.FirstOrDefault(s => Enemies.All(c => c.SlotName
         // != s), "")`, so a consumer holding this plus each enemy's own slot can
-        // reproduce where a summoned creature lands — and, more importantly,
+        // reproduce where a summoned creature lands - and, more importantly,
         // when the board is full and a move that summons produces nothing at
         // all. Without it a simulated Living Fog would keep bloating forever.
         TryDo(() =>
@@ -2598,9 +2605,9 @@ public static partial class McpMod
 
         // The run deck (with its master-deck `index`) is emitted further down by
         // BuildDeckCardList, which reads the same deck through the player model.
-        // PlayerCombatState can linger after combat while on map/rest/shop. Energy/MaxEnergy getters
-        // run hooks (e.g. Hook.ModifyMaxEnergy) that null-ref without a live combat - only serialize
-        // combat fields when a fight is actually in progress.
+        // PlayerCombatState can linger after combat while on map/rest/shop. Energy/MaxEnergy
+        // getters run hooks (e.g. Hook.ModifyMaxEnergy) that null-ref without a live combat,
+        // so only serialize combat fields when a fight is actually in progress.
         bool inCombat = combatState != null && CombatManager.Instance.IsInProgress;
         if (inCombat)
             AppendPlayerCombatState(state, player, creature, combatState!);
@@ -2803,6 +2810,7 @@ public static partial class McpMod
     /// Alchemize uses this exact ordered unlocked domain before its rarity and item rolls on
     /// CombatPotionGeneration.
     /// </summary>
+    // An unavailable potion pool must not break combat state, so the read is best-effort.
     private static void AppendCombatPotionPool(
         Dictionary<string, object?> state, Player player)
         => TryDo(() =>
@@ -2814,11 +2822,10 @@ public static partial class McpMod
                 .Select(BuildPotionInfo)
                 .ToList();
         });
-    /* an unavailable pool must not break combat state */
 
     /// <summary>
     /// FORK ADDITION - true pile order (index 0 = top of pile, drawn next), with raw entry
-    /// ids rather than localized titles. `draw_pile` above is sorted by rarity/id to match
+    /// ids rather than localized titles. <c>draw_pile</c> above is sorted by rarity/id to match
     /// the in-game display, so it cannot be used to compare card *sequences* against the
     /// emulator. Used by the draw-pile differential test; keep both, since existing
     /// consumers rely on the sorted view.
@@ -3161,8 +3168,8 @@ public static partial class McpMod
     /// <summary>
     /// One row in a "choose a relic" list: the shared relic summary plus the two fields those
     /// screens add. Every row is visible by construction (the holders were filtered on it), and
-    /// `canKey` names the screen's own flag - the relic-select screen says `can_select`, the
-    /// treasure chest says `can_claim`.
+    /// <c>canKey</c> names the screen's own flag - the relic-select screen says
+    /// <c>can_select</c>, the treasure chest says <c>can_claim</c>.
     /// </summary>
     private static Dictionary<string, object?> BuildRelicChoiceEntry(
         RelicModel relic, int index, string canKey, bool can,
@@ -3431,7 +3438,9 @@ public static partial class McpMod
         return info;
     }
 
-    /// <summary>The display fields every card payload carries, whatever context asked for it.</summary>
+    /// <summary>
+    /// The display fields every card payload carries, whatever context asked for it.
+    /// </summary>
     private static Dictionary<string, object?> BuildCardBaseInfo(CardModel card, PileType pile)
     {
         CardModel? upgradedPreview = SafeBuildUpgradedCardPreview(card);
@@ -3519,12 +3528,12 @@ public static partial class McpMod
         // The multiplayer synchronizer already assigns every mutable combat
         // card a stable 16-bit identity. Export the same identity so an MCTS
         // selection can distinguish physical copies with equal card IDs.
+        // Immutable and deck cards intentionally have no combat identity.
         TryDo(() =>
         {
             if (card.Pile?.IsCombatPile == true)
                 info["combat_card_id"] = NetCombatCard.FromModel(card).CombatCardIndex;
         });
-        /* immutable/deck cards intentionally have no combat identity */
     }
 
     private static Dictionary<string, object?>? BuildEnchantmentState(CardModel card)
@@ -3684,7 +3693,7 @@ public static partial class McpMod
     /// Strength and Pen Nib show up, Vulnerable and Weak sometimes do and sometimes
     /// don't, because the game only folds target-side modifiers in while the card is
     /// hovered over that target. So a caller reading the card text had to guess which
-    /// multipliers were already applied — 60 expected, 43 dealt.
+    /// multipliers were already applied - 60 expected, 43 dealt.
     ///
     /// This runs the same preview the UI runs on hover (CardModel.UpdateDynamicVarPreview,
     /// whose CalculatedDamageVar goes through Hook.ModifyDamage with the target) once per
@@ -3856,7 +3865,7 @@ public static partial class McpMod
         return list;
     }
 
-    // FORK ADDITION — see the draw_pile_ordered call site. Raw entry ids in true pile
+    // FORK ADDITION - see the draw_pile_ordered call site. Raw entry ids in true pile
     // order, deliberately minimal so the readout is stable and cheap to diff.
     private static List<Dictionary<string, object?>> BuildOrderedPileList(IEnumerable<CardModel> cards)
     {
@@ -4337,7 +4346,7 @@ public static partial class McpMod
             if (!s_monsterStatProps.TryGetValue(t, out PropertyInfo[]? props))
             {
                 // NonPublic too: move-stat getters (SeaKickDamage, BubbleBlock,
-                // ...) are typically protected — only the move definitions
+                // ...) are typically protected - only the move definitions
                 // read them.
                 props = t.GetProperties(BindingFlags.Public | BindingFlags.NonPublic
                                         | BindingFlags.Instance | BindingFlags.DeclaredOnly)
@@ -4583,7 +4592,7 @@ public static partial class McpMod
         if (string.Equals(eventModel.Id.Entry, "ABYSSAL_BATHS", StringComparison.Ordinal) && eventRoom.LocalMutableEvent is { } mutableBaths)
             state["next_damage"] = mutableBaths.DynamicVars.Damage.BaseValue;
 
-        // Check dialogue state for ancients
+        // Ancients show their lines before the options; the hitbox is the only visible signal.
         bool inDialogue = false;
         NEventRoom? uiRoom = NEventRoom.Instance;
         if (isAncient && uiRoom != null)
@@ -4597,7 +4606,6 @@ public static partial class McpMod
         }
         state["in_dialogue"] = inDialogue;
 
-        // Event body text
         state["body"] = SafeGetText(() => eventModel.Description);
 
         // A run transition in flight makes ExecuteChooseEventOption refuse EVERY
@@ -4615,7 +4623,7 @@ public static partial class McpMod
         state["transition_in_flight"] = transitionInFlight;
         // The two halves of IsMapScreenOpenOrVisible(), separately, because the
         // difference between them decides whether a room behind a lingering map
-        // is masked or reported as "map" — and when that goes wrong the symptom
+        // is masked or reported as "map" - and when that goes wrong the symptom
         // is a room the client never sees at all, with nothing in the state
         // saying why. Close() clears IsOpen and only then animates out, so
         // screen_open false with screen_visible true IS the arrival window.
@@ -4701,7 +4709,7 @@ public static partial class McpMod
 
         if (fakeMerchant.StartedFight)
         {
-            // After the foul potion fight, merchant is gone - just show proceed
+            // After the foul potion fight the merchant is gone - just show proceed.
             state["shop"] = new Dictionary<string, object?>(StringComparer.Ordinal)
             {
                 ["items"] = new List<Dictionary<string, object?>>(),
@@ -4736,7 +4744,6 @@ public static partial class McpMod
     private static Dictionary<string, object?> BuildFakeMerchantShop(
         FakeMerchant fakeMerchant, NFakeMerchant? fakeMerchantNode)
     {
-        // Build shop inventory from the FakeMerchant model
         Dictionary<string, object?> shopState = BuildFakeMerchantShopItems(fakeMerchant.Inventory);
         bool isOpen = fakeMerchantNode != null
             && FindFirst<NMerchantInventory>(fakeMerchantNode)?.IsOpen == true;
@@ -5172,7 +5179,7 @@ public static partial class McpMod
         Dictionary<(int, int), List<string>> marks,
         Dictionary<(int col, int row), Vector2> drawingNodePositions)
     {
-        // Full map - all nodes organized for planning
+        // Every node, starting point included, with its marks and drawings attached.
         var nodes = new List<Dictionary<string, object?>>();
 
         // Starting point
@@ -5226,16 +5233,17 @@ public static partial class McpMod
     /// player: hovering a travelled node on the map opens NMapPointHistoryHoverTip, which
     /// prints the encounter's title. So this is information the human already has.
     ///
-    /// This deliberately replaces the old `next_encounters` field, which peeked at the act's
+    /// This deliberately replaces the old <c>next_encounters</c> field, which peeked at the act's
     /// pre-rolled RoomSet and reported which monster / elite / event would come NEXT. The game
     /// does not reveal that until the room is entered, so reporting it let an agent route
     /// around matchups no human could see. Removing it is why schema_version went to 3.
     ///
     /// We report what was fought, never what remains: listing the unused pool would let a
     /// caller deduce the next encounter by elimination, which is the same leak by another name.
-    /// `elite_cycle` is the exception and is safe - it is a count, derivable by any player from
-    /// (a) what they have fought and (b) how many elites the act has, and it encodes the rule
-    /// the user cares about: an elite already fought does not return until the pool wraps.
+    /// <c>elite_cycle</c> is the exception and is safe - it is a count, derivable by any
+    /// player from (a) what they have fought and (b) how many elites the act has, and it
+    /// encodes the rule the user cares about: an elite already fought does not return until
+    /// the pool wraps.
     /// </summary>
     private static Dictionary<string, object?> BuildEncountersSeen(RunState runState)
     {
@@ -5353,7 +5361,7 @@ public static partial class McpMod
     /// <summary>
     /// Attaches whatever has marked this node. Relics such as Fur Coat mark rooms when
     /// picked up (marked combats spawn enemies at 1 HP), and events attach quests to
-    /// nodes — neither was visible anywhere in state or in the save, so the whole point
+    /// nodes - neither was visible anywhere in state or in the save, so the whole point
     /// of the relic (route towards the free fights) could not be acted on.
     /// </summary>
     private static void AddMapNodeMarks(
@@ -5482,7 +5490,7 @@ public static partial class McpMod
     /// The map fallback is the only branch reachable while the run is provably
     /// stuck, and it had no guard of its own: every "is this screen actionable"
     /// test above it is per-screen, so a screen nobody thought to guard falls
-    /// through to a map with `travel_enabled: false` and no `next_options` -
+    /// through to a map with <c>travel_enabled: false</c> and no <c>next_options</c> -
     /// which is honest about the map and says nothing about the room that is
     /// still awaiting an answer. Three separate stalls reached the client that
     /// way (Tiny Mailbox's potions, Brain Leech's card reward, and the Crystal
@@ -5490,8 +5498,8 @@ public static partial class McpMod
     ///
     /// This does not fix the masking - only the missing per-screen guard can -
     /// but it turns the next occurrence from a silent hang into a state that
-    /// names the room and the overlay responsible. An empty `next_options` with
-    /// nothing in flight means `GetTravelableMapPoints` found nothing because
+    /// names the room and the overlay responsible. An empty <c>next_options</c> with
+    /// nothing in flight means <c>GetTravelableMapPoints</c> found nothing because
     /// the current room is unfinished, so anything here is a real blocker.
     /// </remarks>
     private static void AddBlockedMapDiagnostics(
@@ -5524,10 +5532,10 @@ public static partial class McpMod
     /// </summary>
     /// <remarks>
     /// The third of the "answered yet?" checks, and the same rule as the other
-    /// two: `CrystalSphere.UncoverFuture` and `PaymentPlan` both await
-    /// `PlayMinigame()` before `SetEventFinished`, and that await IS the
-    /// minigame's own `_completionSource`. The screen holds the minigame in
-    /// `_entity`, so the signal is two private fields down; any reflection
+    /// two: <c>CrystalSphere.UncoverFuture</c> and <c>PaymentPlan</c> both await
+    /// <c>PlayMinigame()</c> before <c>SetEventFinished</c>, and that await IS the
+    /// minigame's own <c>_completionSource</c>. The screen holds the minigame in
+    /// <c>_entity</c>, so the signal is two private fields down; any reflection
     /// failure answers false and leaves the mask as it behaved before.
     /// </remarks>
     private static bool CrystalSphereIsOutstanding(NCrystalSphereScreen screen)
@@ -5556,7 +5564,7 @@ public static partial class McpMod
     /// so the map is allowed to win THEN - but a pick the run is blocked on must
     /// win over the map, or the state reports a map that cannot be travelled.
     ///
-    /// `_completionSource` is the await the screen resolves: non-null and
+    /// <c>_completionSource</c> is the await the screen resolves: non-null and
     /// incomplete means nobody has chosen yet. Any reflection failure answers
     /// false, which leaves the mask exactly as it behaved before.
     /// </remarks>
@@ -5605,7 +5613,7 @@ public static partial class McpMod
         state["selection_history"] = s_rewardSession.Entries.Select(e =>
             e.Describe(s_rewardSession.Claimable.Contains(e))).ToList();
 
-        // Proceed button
+        // The screen's own proceed button decides whether the client may leave.
         NProceedButton? proceedButton = FindFirst<NProceedButton>(rewardsScreen);
         state["can_proceed"] = IsControlVisibleOrActionable(proceedButton);
 
@@ -5758,7 +5766,7 @@ public static partial class McpMod
 
         // Alternatives are the row of buttons beside the cards. "Skip" is only one of
         // them: relics add their own (Pael's Wing adds SACRIFICE, a reroll relic adds
-        // REROLL), and skipping is NOT the same as taking one of those — Pael's Wing
+        // REROLL), and skipping is NOT the same as taking one of those - Pael's Wing
         // counts sacrifices, and skip_card_reward does not count. State used to report
         // a single can_skip boolean, so the other options were invisible from the API
         // and the relic's whole function was unreachable.
@@ -5821,7 +5829,7 @@ public static partial class McpMod
         // Which cards the screen has selected right now. Read from the screen's own
         // `_selectedCards` set - the one OnCardClicked toggles - so `selected` cannot drift
         // from what the game will act on. Without it a caller driving a multi-card screen
-        // (the enchant screens) is blind to its own selection (A-7).
+        // (the enchant screens) is blind to its own selection.
         HashSet<CardModel>? selection = GetCardSelectSelection(screen);
         if (selection == null)
             Warn("card_select.selected", "screen has no readable _selectedCards field");
@@ -5864,7 +5872,7 @@ public static partial class McpMod
             _ => screen.GetType().Name
         };
 
-        // Prompt text from UI label
+        // The prompt is a rich-text label, so tags are stripped like every other text value.
         Node bottomLabel = screen.GetNodeOrNull("%BottomLabel");
         if (bottomLabel != null)
         {
@@ -5925,9 +5933,9 @@ public static partial class McpMod
     }
 
     /// <summary>
-    /// How many are selected and how many the screen wants. `selected_count` is the
+    /// How many are selected and how many the screen wants. <c>selected_count</c> is the
     /// screen's own count (it can exceed what the visible grid window shows);
-    /// `required_count` is the "select N" of the prompt, null when the screen accepts a
+    /// <c>required_count</c> is the "select N" of the prompt, null when the screen accepts a
     /// range ("up to N"), where min_select/max_select give the two ends.
     /// </summary>
     private static void AppendCardSelectCounts(
@@ -6068,11 +6076,11 @@ public static partial class McpMod
     /// the screen keeps no such set.
     /// </summary>
     /// <remarks>
-    /// Every `NCardGridSelectionScreen` subclass that allows more than one pick
-    /// keeps its own `private readonly HashSet&lt;CardModel&gt; _selectedCards`
-    /// (see `NDeckEnchantSelectScreen`), and nothing public exposes it — the
+    /// Every <c>NCardGridSelectionScreen</c> subclass that allows more than one pick
+    /// keeps its own <c>private readonly HashSet&lt;CardModel&gt; _selectedCards</c>
+    /// (see <c>NDeckEnchantSelectScreen</c>), and nothing public exposes it - the
     /// game's own AutoSlay handlers track a local list rather than read it. A
-    /// client needs it because `select_card` TOGGLES a holder: without knowing
+    /// client needs it because <c>select_card</c> TOGGLES a holder: without knowing
     /// what is already selected it cannot converge on a screen that wants three
     /// picks, since re-sending one turns it back off.
     ///
@@ -6128,22 +6136,22 @@ public static partial class McpMod
     }
 
     /// <summary>
-    /// Whether `NChooseACardSelectionScreen.SelectHolder` would act on a press
+    /// Whether <c>NChooseACardSelectionScreen.SelectHolder</c> would act on a press
     /// right now, rather than swallow it.
     /// </summary>
     /// <remarks>
-    /// The screen opens with a 350 ms deadzone — `SelectHolder` returns without
-    /// touching its `TaskCompletionSource` unless
-    /// `Time.GetTicksMsec() - _openedTicks > 350` — so that a click still in
+    /// The screen opens with a 350 ms deadzone - <c>SelectHolder</c> returns without
+    /// touching its <c>TaskCompletionSource</c> unless
+    /// <c>Time.GetTicksMsec() - _openedTicks > 350</c> - so that a click still in
     /// flight when the overlay animates in cannot pick a card the player never
     /// saw. Nothing about the press fails: the signal fires, the handler runs,
     /// and it simply does nothing.
     ///
-    /// That is invisible to a client, and silently fatal to one: `select_card`
-    /// reports `ok` either way, so an engine that keys the observation it acted
+    /// That is invisible to a client, and silently fatal to one: <c>select_card</c>
+    /// reports <c>ok</c> either way, so an engine that keys the observation it acted
     /// on then waits forever for a state that will never change. A bot polling
     /// ten times a second answers the FIRST observation of the screen by
-    /// construction, which is always inside the deadzone — so every
+    /// construction, which is always inside the deadzone - so every
     /// choose-a-card screen (Knowledge Demon's Curse of Knowledge, Attack
     /// Potion, Discovery, Toolbox) wedged the run rather than occasionally
     /// missing.
@@ -6258,7 +6266,7 @@ public static partial class McpMod
     {
         var state = new Dictionary<string, object?>(StringComparer.Ordinal);
 
-        // Mode
+        // The hand mode names which selection screen this is.
         state["mode"] = hand.CurrentMode switch
         {
             NPlayerHand.Mode.SimpleSelect => "simple_select",
@@ -6266,7 +6274,7 @@ public static partial class McpMod
             _ => hand.CurrentMode.ToString()
         };
 
-        // Prompt text from %SelectionHeader
+        // Same prompt read as the grid screens, from this screen's own label.
         Control headerLabel = hand.GetNodeOrNull<Godot.Control>("%SelectionHeader");
         if (headerLabel != null)
         {
@@ -6281,7 +6289,7 @@ public static partial class McpMod
         AddCardSelectionContext(state);
         AppendHandSelectSelections(state, hand);
 
-        // Confirm button state
+        // The confirm button is the only way out, so report whether it is usable.
         NConfirmButton confirmBtn = hand.GetNodeOrNull<NConfirmButton>("%SelectModeConfirmButton");
         state["can_confirm"] = IsControlVisibleOrActionable(confirmBtn);
 
@@ -6322,7 +6330,7 @@ public static partial class McpMod
     /// instead shows an in-place NUpgradePreview and never touches that container -- so
     /// reading only the container silently reports zero selected cards for every
     /// upgrade_select prompt, even after a real selection succeeds. The private
-    /// `_selectedCards` field (List&lt;CardModel&gt;) is what both code paths actually update,
+    /// <c>_selectedCards</c> field (List&lt;CardModel&gt;) is what both code paths actually update,
     /// so read that directly via reflection instead of the UI-only container.
     /// </summary>
     private static void AppendHandSelectSelections(
@@ -6527,7 +6535,9 @@ public static partial class McpMod
         state["can_use_small_tool"] = smallUsable;
     }
 
-    /// <summary>The text of a %-named label under <paramref name="owner"/>, or null when it has none.</summary>
+    /// <summary>
+    /// The text of a %-named label under <paramref name="owner"/>, or null when it has none.
+    /// </summary>
     private static string? ReadLabelText(Node owner, string path)
     {
         Control label = owner.GetNodeOrNull<Godot.Control>(path);
@@ -6580,7 +6590,7 @@ public static partial class McpMod
             return state;
         }
 
-        // Auto-open chest if not yet opened
+        // Open the chest as the game would, unless this is a passive read.
         NClickableControl chestButton = treasureUI.GetNodeOrNull<NClickableControl>("Chest");
         if (!s_passiveRead && chestButton is { IsEnabled: true })
         {
@@ -6589,7 +6599,7 @@ public static partial class McpMod
             return state;
         }
 
-        // Show relics available for picking
+        // Once the chest is open the room shows its relic holders.
         NTreasureRoomRelicCollection relicCollection = treasureUI.GetNodeOrNull<NTreasureRoomRelicCollection>("%RelicCollection");
         if (relicCollection?.Visible == true)
         {
@@ -6822,7 +6832,7 @@ public static partial class McpMod
         if (combatState == null)
             return pets;
 
-        // Check Osty specifically (Byrdpip/PaelsLegion are cosmetic with no real combat state)
+        // Only Osty carries a real combat state; Byrdpip and PaelsLegion are cosmetic.
         Creature? osty = combatState.GetPet<Osty>();
         if (osty != null)
         {

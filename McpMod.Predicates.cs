@@ -34,21 +34,25 @@ public static partial class McpMod
     /// <summary>What a predicate's IL was seen to read and compare.</summary>
     private sealed class PredicateScan
     {
-        /// <summary>Members read, as `DeclaringType.Name`, in IL order.</summary>
+        /// <summary>Members read, as <c>DeclaringType.Name</c>, in IL order.</summary>
         internal readonly List<string> Members = new();
         /// <summary>Methods called, in IL order, for return-type inspection.</summary>
         internal readonly List<MethodBase> Calls = new();
         /// <summary>Generic argument names of any generic call, in IL order.</summary>
         internal readonly List<string> GenericArgs = new();
-        /// <summary>Methods reached through `ldftn` (LINQ predicate lambdas).</summary>
+        /// <summary>Methods reached through <c>ldftn</c> (LINQ predicate lambdas).</summary>
         internal readonly List<MethodBase> FunctionPointers = new();
         /// <summary>Integer constants pushed, in IL order.</summary>
         internal readonly List<int> Ints = new();
         /// <summary>String literals pushed, in IL order.</summary>
         internal readonly List<string> Strings = new();
-        /// <summary>Comparison opcodes, as `ceq` / `cgt` / `clt`, in IL order.</summary>
+        /// <summary>
+        /// Comparison opcodes, as <c>ceq</c> / <c>cgt</c> / <c>clt</c>, in IL order.
+        /// </summary>
         internal readonly List<string> Comparisons = new();
-        /// <summary>Whether the body branches (a `||`, `&amp;&amp;` or ternary).</summary>
+        /// <summary>
+        /// Whether the body branches (a <c>||</c>, <c>&amp;&amp;</c> or ternary).
+        /// </summary>
         internal bool HasBranch;
 
         internal bool Reads(string member) => Members.Contains(member);
@@ -164,7 +168,7 @@ public static partial class McpMod
         });
     }
 
-    /// <summary>Resolves an `ldstr` token into the literal it pushes.</summary>
+    /// <summary>Resolves an <c>ldstr</c> token into the literal it pushes.</summary>
     private static void AddString(Module module, byte[] il, int tokenOffset, PredicateScan scan)
     {
         if (tokenOffset + 4 > il.Length)
@@ -197,9 +201,9 @@ public static partial class McpMod
     /// The comparison the predicate makes, normalized against its constant.
     /// </summary>
     /// <remarks>
-    /// C# lowers `a &gt;= k` to `a &lt; k` followed by a boolean negation, so the
-    /// raw opcode alone is not the source comparison. `negated` folds the
-    /// trailing `ldc.i4.0; ceq` back in.
+    /// C# lowers <c>a &gt;= k</c> to <c>a &lt; k</c> followed by a boolean negation, so the
+    /// raw opcode alone is not the source comparison. <c>negated</c> folds the
+    /// trailing <c>ldc.i4.0; ceq</c> back in.
     /// </remarks>
     private static string? SourceComparison(PredicateScan scan, bool negated)
     {
@@ -215,8 +219,8 @@ public static partial class McpMod
 
     /// <summary>The threshold the predicate compares against.</summary>
     /// <remarks>
-    /// The negation `a &gt;= k` lowers to `clt` against the same `k` plus
-    /// `ldc.i4.0; ceq`, so the trailing zero is dropped before taking the last
+    /// The negation <c>a &gt;= k</c> lowers to <c>clt</c> against the same <c>k</c> plus
+    /// <c>ldc.i4.0; ceq</c>, so the trailing zero is dropped before taking the last
     /// constant.
     /// </remarks>
     private static int? Threshold(PredicateScan scan)
@@ -229,10 +233,10 @@ public static partial class McpMod
 
     /// <summary>Whether the predicate's final result is inverted.</summary>
     /// <remarks>
-    /// `!x` and the `&gt;=` / `&lt;=` lowerings all end in `ldc.i4.0; ceq`. A lone
-    /// trailing `ceq` is ambiguous: it is C#'s `!` over a bool, but it is the
-    /// source's own `== 0` over an int (`GetAllyCount() == 0`). The value's type
-    /// separates the two.
+    /// <c>!x</c> and the <c>&gt;=</c> / <c>&lt;=</c> lowerings all end in
+    /// <c>ldc.i4.0; ceq</c>. A lone trailing <c>ceq</c> is ambiguous: it is C#'s <c>!</c> over
+    /// a bool, but it is the source's own <c>== 0</c> over an int (<c>GetAllyCount() == 0</c>).
+    /// The value's type separates the two.
     /// </remarks>
     private static bool IsNegated(PredicateScan scan)
     {
@@ -251,7 +255,7 @@ public static partial class McpMod
     /// Scans the monster member a predicate delegates to, if it has one.
     /// </summary>
     /// <remarks>
-    /// `() =&gt; CanFabricate` says nothing about a threshold — the comparison and
+    /// <c>() =&gt; CanFabricate</c> says nothing about a threshold - the comparison and
     /// its constant live in the property body. One level of inlining recovers
     /// them from the source instead of restating them here.
     /// </remarks>
@@ -275,9 +279,9 @@ public static partial class McpMod
     /// Whether a teammate-count expression excludes the counting monster.
     /// </summary>
     /// <remarks>
-    /// `CombatState.GetTeammatesOf` returns everyone on the creature's side,
+    /// <c>CombatState.GetTeammatesOf</c> returns everyone on the creature's side,
     /// the owner included, so a count is self-inclusive unless its LINQ
-    /// predicate rejects the owner with a `!=` against it. Reading that from
+    /// predicate rejects the owner with a <c>!=</c> against it. Reading that from
     /// the lambda keeps the two shapes apart without naming either monster.
     /// </remarks>
     private static bool CountExcludesSelf(params PredicateScan?[] scans)
@@ -305,9 +309,9 @@ public static partial class McpMod
     /// Whether a weight lambda can change during combat.
     /// </summary>
     /// <remarks>
-    /// `AddBranch(state, repeatType, float weight)` wraps a constant in
-    /// `() =&gt; weight`, whose body only loads a captured field. A weight that
-    /// calls anything (Two-Tailed Rat consults `CanSummon`) is live state, and
+    /// <c>AddBranch(state, repeatType, float weight)</c> wraps a constant in
+    /// <c>() =&gt; weight</c>, whose body only loads a captured field. A weight that
+    /// calls anything (Two-Tailed Rat consults <c>CanSummon</c>) is live state, and
     /// the single sample taken at export time cannot stand in for it.
     /// </remarks>
     private static bool IsDynamicWeight(Delegate? weightLambda)
@@ -448,9 +452,9 @@ public static partial class McpMod
     /// sample it.
     /// </summary>
     /// <remarks>
-    /// Five monsters open on `Creature.SlotName == "<c>first</c>"` and its
+    /// Five monsters open on <c>Creature.SlotName == "first"</c> and its
     /// siblings, where the literal comes straight out of the predicate's own
-    /// `ldstr`. Toadpole and Nibbit instead read `IsFront` / `IsAlone`, which
+    /// <c>ldstr</c>. Toadpole and Nibbit instead read <c>IsFront</c> / <c>IsAlone</c>, which
     /// the encounter stamps on the monster instance it generates rather than on
     /// the slot, so those travel as flags of their own.
     ///
@@ -511,7 +515,9 @@ public static partial class McpMod
     private static Dictionary<string, object?> Negate(Dictionary<string, object?> condition, bool negated) =>
         negated ? Condition("not", ("arg", condition)) : condition;
 
-    /// <summary>`AsleepPower` -&gt; `ASLEEP`, matching the consumer's power ids.</summary>
+    /// <summary>
+    /// <c>AsleepPower</c> -&gt; <c>ASLEEP</c>, matching the consumer's power ids.
+    /// </summary>
     private static string PowerIdFromClass(string className)
     {
         string stripped = className.EndsWith("Power", StringComparison.Ordinal) ? className[..^"Power".Length] : className;
