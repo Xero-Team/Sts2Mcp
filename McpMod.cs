@@ -914,7 +914,7 @@ public static partial class McpMod
             return false;
 
         string? stateType = state.GetValueOrDefault("state_type") as string;
-        if (stateType is "monster" or "elite" or "boss")
+        if (stateType is StateTypes.Monster or StateTypes.Elite or StateTypes.Boss)
         {
             // The enemies' turn drains the action queue in bursts, so `is_resolving` blinks false
             // between two enemy moves. Only the play phase means the caller may act again.

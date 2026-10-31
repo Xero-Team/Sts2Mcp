@@ -5,7 +5,7 @@
   "entries": [
     {
       "file": "McpMod.Actions.cs",
-      "line": 702,
+      "line": 692,
       "api": "GetField",
       "member": "Item1",
       "kind": "field",
@@ -16,7 +16,7 @@
     },
     {
       "file": "McpMod.Actions.cs",
-      "line": 1325,
+      "line": 1315,
       "api": "GetInstanceFieldValue",
       "member": "_extraOptions",
       "kind": "field",
@@ -26,7 +26,7 @@
     },
     {
       "file": "McpMod.Actions.cs",
-      "line": 1429,
+      "line": 1419,
       "api": "GetMethod",
       "member": "Close",
       "kind": "method",
@@ -36,7 +36,7 @@
     },
     {
       "file": "McpMod.Actions.cs",
-      "line": 2245,
+      "line": 2235,
       "api": "ClickMenuButtonField",
       "member": "_timelineButton",
       "kind": "field",
@@ -46,7 +46,7 @@
     },
     {
       "file": "McpMod.Actions.cs",
-      "line": 2315,
+      "line": 2305,
       "api": "GetMethod",
       "member": "RevealEpoch",
       "kind": "method",
@@ -56,7 +56,7 @@
     },
     {
       "file": "McpMod.Actions.cs",
-      "line": 2406,
+      "line": 2396,
       "api": "ClickMenuButtonField",
       "member": "_mainMenuButton",
       "kind": "field",
@@ -66,7 +66,7 @@
     },
     {
       "file": "McpMod.Actions.cs",
-      "line": 2410,
+      "line": 2400,
       "api": "GetMethod",
       "member": "ReturnToMainMenu",
       "kind": "method",
@@ -76,7 +76,7 @@
     },
     {
       "file": "McpMod.Actions.cs",
-      "line": 2439,
+      "line": 2429,
       "api": "GetField",
       "member": "_verticalPopup",
       "kind": "field",
@@ -86,7 +86,7 @@
     },
     {
       "file": "McpMod.Actions.cs",
-      "line": 2568,
+      "line": 2558,
       "api": "GetField",
       "member": "_acknowledgeButton",
       "kind": "field",
@@ -96,7 +96,7 @@
     },
     {
       "file": "McpMod.Actions.cs",
-      "line": 2605,
+      "line": 2595,
       "api": "GetField",
       "member": "_closeButton",
       "kind": "field",
@@ -106,7 +106,7 @@
     },
     {
       "file": "McpMod.Actions.cs",
-      "line": 2620,
+      "line": 2610,
       "api": "GetField",
       "member": "_backButton",
       "kind": "field",
@@ -116,7 +116,7 @@
     },
     {
       "file": "McpMod.Actions.cs",
-      "line": 2628,
+      "line": 2618,
       "api": "GetField",
       "member": "_stack",
       "kind": "field",
@@ -126,7 +126,7 @@
     },
     {
       "file": "McpMod.Actions.cs",
-      "line": 2631,
+      "line": 2621,
       "api": "GetMethod",
       "member": "Pop",
       "kind": "method",
@@ -137,7 +137,7 @@
     },
     {
       "file": "McpMod.Actions.cs",
-      "line": 2714,
+      "line": 2704,
       "api": "ClickMenuButtonField",
       "member": "_backButton",
       "kind": "field",
@@ -147,7 +147,7 @@
     },
     {
       "file": "McpMod.Actions.cs",
-      "line": 2778,
+      "line": 2768,
       "api": "GetInstanceFieldValue",
       "member": "_backButton",
       "kind": "field",
@@ -157,7 +157,7 @@
     },
     {
       "file": "McpMod.Actions.cs",
-      "line": 2829,
+      "line": 2819,
       "api": "GetInstanceFieldValue",
       "member": "_stack",
       "kind": "field",
@@ -167,7 +167,7 @@
     },
     {
       "file": "McpMod.Actions.cs",
-      "line": 3025,
+      "line": 3015,
       "api": "GetInstanceFieldValue",
       "member": "_refreshButton",
       "kind": "field",
@@ -177,7 +177,7 @@
     },
     {
       "file": "McpMod.Actions.cs",
-      "line": 3034,
+      "line": 3024,
       "api": "GetInstanceFieldValue",
       "member": "_buttonContainer",
       "kind": "field",
@@ -187,7 +187,7 @@
     },
     {
       "file": "McpMod.Actions.cs",
-      "line": 3083,
+      "line": 3073,
       "api": "GetInstanceFieldValue",
       "member": "_confirmButton",
       "kind": "field",
@@ -197,7 +197,7 @@
     },
     {
       "file": "McpMod.Actions.cs",
-      "line": 3094,
+      "line": 3084,
       "api": "GetInstanceFieldValue",
       "member": "_unreadyButton",
       "kind": "field",
@@ -207,7 +207,7 @@
     },
     {
       "file": "McpMod.Actions.cs",
-      "line": 3119,
+      "line": 3109,
       "api": "GetInstanceFieldValue",
       "member": "_ascensionPanel",
       "kind": "field",
@@ -217,7 +217,7 @@
     },
     {
       "file": "McpMod.Actions.cs",
-      "line": 3123,
+      "line": 3113,
       "api": "GetInstanceFieldValue",
       "member": "_maxAscension",
       "kind": "field",
@@ -227,7 +227,7 @@
     },
     {
       "file": "McpMod.Actions.cs",
-      "line": 3289,
+      "line": 3279,
       "api": "GetInstanceFieldValue",
       "member": "_lobby",
       "kind": "field",
@@ -237,7 +237,7 @@
     },
     {
       "file": "McpMod.Actions.cs",
-      "line": 3523,
+      "line": 3513,
       "api": "GetInstanceFieldValue",
       "member": "_unlockConfirmButton",
       "kind": "field",
@@ -247,7 +247,7 @@
     },
     {
       "file": "McpMod.Actions.cs",
-      "line": 3655,
+      "line": 3645,
       "api": "GetInstanceFieldValue",
       "member": "_unlockScreens",
       "kind": "field",
@@ -257,7 +257,7 @@
     },
     {
       "file": "McpMod.Actions.cs",
-      "line": 3659,
+      "line": 3649,
       "api": "GetProperty",
       "member": "Count",
       "kind": "property",
@@ -268,7 +268,7 @@
     },
     {
       "file": "McpMod.Actions.cs",
-      "line": 3663,
+      "line": 3653,
       "api": "GetMethod",
       "member": "Peek",
       "kind": "method",
@@ -279,7 +279,7 @@
     },
     {
       "file": "McpMod.Actions.cs",
-      "line": 3671,
+      "line": 3661,
       "api": "GetInstanceFieldValue",
       "member": "_isUiVisible",
       "kind": "field",
@@ -289,7 +289,7 @@
     },
     {
       "file": "McpMod.Actions.cs",
-      "line": 3675,
+      "line": 3665,
       "api": "GetInstanceFieldValue",
       "member": "_inputBlocker",
       "kind": "field",
@@ -299,7 +299,7 @@
     },
     {
       "file": "McpMod.Actions.cs",
-      "line": 3693,
+      "line": 3683,
       "api": "GetInstanceFieldValue",
       "member": "_epoch",
       "kind": "field",
@@ -309,7 +309,7 @@
     },
     {
       "file": "McpMod.Actions.cs",
-      "line": 3694,
+      "line": 3684,
       "api": "GetInstanceFieldValue",
       "member": "_unlockedEpochs",
       "kind": "field",
@@ -319,7 +319,7 @@
     },
     {
       "file": "McpMod.Actions.cs",
-      "line": 3695,
+      "line": 3685,
       "api": "GetInstanceFieldValue",
       "member": "_erasToUnlock",
       "kind": "field",
@@ -329,7 +329,7 @@
     },
     {
       "file": "McpMod.Actions.cs",
-      "line": 3718,
+      "line": 3708,
       "api": "GetProperty",
       "member": "Model",
       "kind": "property",
@@ -339,7 +339,7 @@
     },
     {
       "file": "McpMod.Actions.cs",
-      "line": 3719,
+      "line": 3709,
       "api": "GetProperty",
       "member": "Id",
       "kind": "property",
@@ -530,7 +530,7 @@
     },
     {
       "file": "McpMod.Helpers.cs",
-      "line": 709,
+      "line": 752,
       "api": "GetProperty",
       "member": "IsEnabled",
       "kind": "property",
@@ -540,19 +540,9 @@
     },
     {
       "file": "McpMod.Helpers.cs",
-      "line": 787,
+      "line": 830,
       "api": "GetInstanceFieldValue",
       "member": "_selectedCards",
-      "kind": "field",
-      "scope": "assembly",
-      "type": null,
-      "required": true
-    },
-    {
-      "file": "McpMod.Helpers.cs",
-      "line": 796,
-      "api": "GetInstanceFieldValue",
-      "member": "_prefs",
       "kind": "field",
       "scope": "assembly",
       "type": null,
@@ -590,7 +580,17 @@
     },
     {
       "file": "McpMod.Helpers.cs",
-      "line": 1196,
+      "line": 839,
+      "api": "GetInstanceFieldValue",
+      "member": "_prefs",
+      "kind": "field",
+      "scope": "assembly",
+      "type": null,
+      "required": true
+    },
+    {
+      "file": "McpMod.Helpers.cs",
+      "line": 1239,
       "api": "GetInstanceFieldValue",
       "member": "_confirmButton",
       "kind": "field",
@@ -693,7 +693,7 @@
     },
     {
       "file": "McpMod.Helpers.cs",
-      "line": 1392,
+      "line": 1435,
       "api": "GetInstanceFieldValue",
       "member": "_label",
       "kind": "field",
@@ -1105,7 +1105,7 @@
     },
     {
       "file": "McpMod.StateBuilder.cs",
-      "line": 99,
+      "line": 101,
       "api": "GetField",
       "member": "_nextCreatureId",
       "kind": "field",
@@ -1115,7 +1115,7 @@
     },
     {
       "file": "McpMod.StateBuilder.cs",
-      "line": 103,
+      "line": 105,
       "api": "GetField",
       "member": "_cardOrPotionEffectDepth",
       "kind": "field",
@@ -1125,7 +1125,7 @@
     },
     {
       "file": "McpMod.StateBuilder.cs",
-      "line": 122,
+      "line": 124,
       "api": "GetField",
       "member": "_localModifiers",
       "kind": "field",
@@ -1135,7 +1135,7 @@
     },
     {
       "file": "McpMod.StateBuilder.cs",
-      "line": 126,
+      "line": 128,
       "api": "GetField",
       "member": "_temporaryStarCosts",
       "kind": "field",
@@ -1145,7 +1145,7 @@
     },
     {
       "file": "McpMod.StateBuilder.cs",
-      "line": 129,
+      "line": 131,
       "api": "GetField",
       "member": "_passiveVal",
       "kind": "field",
@@ -1155,7 +1155,7 @@
     },
     {
       "file": "McpMod.StateBuilder.cs",
-      "line": 134,
+      "line": 136,
       "api": "GetField",
       "member": "_hasSingleTurnRetain",
       "kind": "field",
@@ -1165,7 +1165,7 @@
     },
     {
       "file": "McpMod.StateBuilder.cs",
-      "line": 138,
+      "line": 140,
       "api": "GetField",
       "member": "_hasSingleTurnSly",
       "kind": "field",
@@ -1175,7 +1175,7 @@
     },
     {
       "file": "McpMod.StateBuilder.cs",
-      "line": 196,
+      "line": 198,
       "api": "GetProperty",
       "member": "IntentLabelFormat",
       "kind": "property",
@@ -1185,7 +1185,7 @@
     },
     {
       "file": "McpMod.StateBuilder.cs",
-      "line": 215,
+      "line": 217,
       "api": "GetField",
       "member": "_card",
       "kind": "field",
@@ -1205,7 +1205,7 @@
     },
     {
       "file": "McpMod.StateBuilder.cs",
-      "line": 966,
+      "line": 968,
       "api": "GetProperty",
       "member": "IsEnabled",
       "kind": "property",
@@ -1215,7 +1215,7 @@
     },
     {
       "file": "McpMod.StateBuilder.cs",
-      "line": 1095,
+      "line": 1097,
       "api": "GetInstanceFieldValue",
       "member": "_profileButtons",
       "kind": "field",
@@ -1225,7 +1225,7 @@
     },
     {
       "file": "McpMod.StateBuilder.cs",
-      "line": 1100,
+      "line": 1102,
       "api": "GetInstanceFieldValue",
       "member": "_profileId",
       "kind": "field",
@@ -1235,7 +1235,7 @@
     },
     {
       "file": "McpMod.StateBuilder.cs",
-      "line": 1113,
+      "line": 1115,
       "api": "GetInstanceFieldValue",
       "member": "_backButton",
       "kind": "field",
@@ -1325,7 +1325,7 @@
     },
     {
       "file": "McpMod.StateBuilder.cs",
-      "line": 1193,
+      "line": 1195,
       "api": "GetInstanceFieldValue",
       "member": "_actionQueueSet",
       "kind": "field",
@@ -1335,7 +1335,7 @@
     },
     {
       "file": "McpMod.StateBuilder.cs",
-      "line": 1194,
+      "line": 1196,
       "api": "GetPropertyValue",
       "member": "IsEmpty",
       "kind": "property",
@@ -1345,7 +1345,7 @@
     },
     {
       "file": "McpMod.StateBuilder.cs",
-      "line": 1308,
+      "line": 1310,
       "api": "GetInstanceFieldValue",
       "member": "_actionsWaitingForResumption",
       "kind": "field",
@@ -1355,7 +1355,7 @@
     },
     {
       "file": "McpMod.StateBuilder.cs",
-      "line": 1636,
+      "line": 1638,
       "api": "GetInstanceFieldValue",
       "member": "_lobby",
       "kind": "field",
@@ -1365,7 +1365,7 @@
     },
     {
       "file": "McpMod.StateBuilder.cs",
-      "line": 1668,
+      "line": 1670,
       "api": "GetInstanceFieldValue",
       "member": "_seedInput",
       "kind": "field",
@@ -1375,7 +1375,7 @@
     },
     {
       "file": "McpMod.StateBuilder.cs",
-      "line": 1729,
+      "line": 1731,
       "api": "GetInstanceFieldValue",
       "member": "_ascensionPanel",
       "kind": "field",
@@ -1385,7 +1385,7 @@
     },
     {
       "file": "McpMod.StateBuilder.cs",
-      "line": 1738,
+      "line": 1740,
       "api": "GetInstanceFieldValue",
       "member": "_maxAscension",
       "kind": "field",
@@ -1395,7 +1395,7 @@
     },
     {
       "file": "McpMod.StateBuilder.cs",
-      "line": 1809,
+      "line": 1811,
       "api": "GetInstanceFieldValue",
       "member": "_unreadyButton",
       "kind": "field",
@@ -1405,7 +1405,7 @@
     },
     {
       "file": "McpMod.StateBuilder.cs",
-      "line": 1884,
+      "line": 1886,
       "api": "GetField",
       "member": "_maxPlayers",
       "kind": "field",
@@ -1415,7 +1415,7 @@
     },
     {
       "file": "McpMod.StateBuilder.cs",
-      "line": 1983,
+      "line": 1985,
       "api": "GetInstanceMemberValue",
       "member": "Players",
       "kind": "property-or-field",
@@ -1425,7 +1425,7 @@
     },
     {
       "file": "McpMod.StateBuilder.cs",
-      "line": 2004,
+      "line": 2006,
       "api": "GetInstanceMemberValue",
       "member": "LocalPlayer",
       "kind": "property-or-field",
@@ -1435,7 +1435,7 @@
     },
     {
       "file": "McpMod.StateBuilder.cs",
-      "line": 2023,
+      "line": 2025,
       "api": "GetInstanceMemberValue",
       "member": "id",
       "kind": "property-or-field",
@@ -1445,7 +1445,7 @@
     },
     {
       "file": "McpMod.StateBuilder.cs",
-      "line": 2029,
+      "line": 2031,
       "api": "GetInstanceMemberValue",
       "member": "character",
       "kind": "property-or-field",
@@ -1455,7 +1455,7 @@
     },
     {
       "file": "McpMod.StateBuilder.cs",
-      "line": 2030,
+      "line": 2032,
       "api": "GetInstanceMemberValue",
       "member": "isReady",
       "kind": "property-or-field",
@@ -1465,7 +1465,7 @@
     },
     {
       "file": "McpMod.StateBuilder.cs",
-      "line": 2031,
+      "line": 2033,
       "api": "GetInstanceMemberValue",
       "member": "slotId",
       "kind": "property-or-field",
@@ -1475,7 +1475,7 @@
     },
     {
       "file": "McpMod.StateBuilder.cs",
-      "line": 2061,
+      "line": 2063,
       "api": "GetInstanceFieldValue",
       "member": "_loadingFriendsIndicator",
       "kind": "field",
@@ -1485,7 +1485,7 @@
     },
     {
       "file": "McpMod.StateBuilder.cs",
-      "line": 2062,
+      "line": 2064,
       "api": "GetInstanceFieldValue",
       "member": "_loadingOverlay",
       "kind": "field",
@@ -1495,7 +1495,7 @@
     },
     {
       "file": "McpMod.StateBuilder.cs",
-      "line": 2067,
+      "line": 2069,
       "api": "GetInstanceFieldValue",
       "member": "_noFriendsLabel",
       "kind": "field",
@@ -1505,7 +1505,7 @@
     },
     {
       "file": "McpMod.StateBuilder.cs",
-      "line": 2074,
+      "line": 2076,
       "api": "GetInstanceFieldValue",
       "member": "_refreshButton",
       "kind": "field",
@@ -1515,7 +1515,7 @@
     },
     {
       "file": "McpMod.StateBuilder.cs",
-      "line": 2095,
+      "line": 2097,
       "api": "GetInstanceFieldValue",
       "member": "_buttonContainer",
       "kind": "field",
@@ -1525,7 +1525,7 @@
     },
     {
       "file": "McpMod.StateBuilder.cs",
-      "line": 2149,
+      "line": 2151,
       "api": "GetInstanceFieldValue",
       "member": "_runLobby",
       "kind": "field",
@@ -1535,7 +1535,7 @@
     },
     {
       "file": "McpMod.StateBuilder.cs",
-      "line": 2752,
+      "line": 2777,
       "api": "GetField",
       "member": "_rooms",
       "kind": "field",
@@ -1545,7 +1545,7 @@
     },
     {
       "file": "McpMod.StateBuilder.cs",
-      "line": 2799,
+      "line": 2824,
       "api": "GetProperty",
       "member": "Id",
       "kind": "property",
@@ -1555,7 +1555,7 @@
     },
     {
       "file": "McpMod.StateBuilder.cs",
-      "line": 2800,
+      "line": 2825,
       "api": "GetProperty",
       "member": "Entry",
       "kind": "property",
@@ -1565,7 +1565,7 @@
     },
     {
       "file": "McpMod.StateBuilder.cs",
-      "line": 3857,
+      "line": 3931,
       "api": "GetMemberValue",
       "member": "Deck",
       "kind": "property-or-field",
@@ -1575,7 +1575,7 @@
     },
     {
       "file": "McpMod.StateBuilder.cs",
-      "line": 3861,
+      "line": 3935,
       "api": "GetMemberValue",
       "member": "Cards",
       "kind": "property-or-field",
@@ -1585,7 +1585,7 @@
     },
     {
       "file": "McpMod.StateBuilder.cs",
-      "line": 3896,
+      "line": 3970,
       "api": "GetBoolMemberValue",
       "member": "IsSelected",
       "kind": "property-or-field",
@@ -1595,7 +1595,7 @@
     },
     {
       "file": "McpMod.StateBuilder.cs",
-      "line": 3897,
+      "line": 3971,
       "api": "GetBoolMemberValue",
       "member": "_isSelected",
       "kind": "property-or-field",
@@ -1605,7 +1605,7 @@
     },
     {
       "file": "McpMod.StateBuilder.cs",
-      "line": 3906,
+      "line": 3980,
       "api": "GetBoolMemberValue",
       "member": "IsEnabled",
       "kind": "property-or-field",
@@ -1615,7 +1615,7 @@
     },
     {
       "file": "McpMod.StateBuilder.cs",
-      "line": 5158,
+      "line": 5214,
       "api": "GetInstanceFieldValue",
       "member": "_rooms",
       "kind": "field",
@@ -1625,7 +1625,7 @@
     },
     {
       "file": "McpMod.StateBuilder.cs",
-      "line": 5159,
+      "line": 5215,
       "api": "GetInstanceFieldValue",
       "member": "eliteEncountersVisited",
       "kind": "field",
@@ -1635,7 +1635,7 @@
     },
     {
       "file": "McpMod.StateBuilder.cs",
-      "line": 5269,
+      "line": 5325,
       "api": "GetMethod",
       "member": "GetMarkedCoords",
       "kind": "method",
@@ -1645,7 +1645,7 @@
     },
     {
       "file": "McpMod.StateBuilder.cs",
-      "line": 5274,
+      "line": 5330,
       "api": "GetProperty",
       "member": "FurCoatActIndex",
       "kind": "property",
@@ -1655,7 +1655,7 @@
     },
     {
       "file": "McpMod.StateBuilder.cs",
-      "line": 5275,
+      "line": 5331,
       "api": "GetProperty",
       "member": "MarkedActIndex",
       "kind": "property",
@@ -1666,7 +1666,7 @@
     },
     {
       "file": "McpMod.StateBuilder.cs",
-      "line": 5329,
+      "line": 5385,
       "api": "GetField",
       "member": "_isTerminal",
       "kind": "field",
@@ -1676,7 +1676,7 @@
     },
     {
       "file": "McpMod.StateBuilder.cs",
-      "line": 5334,
+      "line": 5390,
       "api": "GetField",
       "member": "_rewardsSet",
       "kind": "field",
@@ -1686,7 +1686,7 @@
     },
     {
       "file": "McpMod.StateBuilder.cs",
-      "line": 5401,
+      "line": 5457,
       "api": "GetField",
       "member": "_entity",
       "kind": "field",
@@ -1696,7 +1696,7 @@
     },
     {
       "file": "McpMod.StateBuilder.cs",
-      "line": 5407,
+      "line": 5463,
       "api": "GetField",
       "member": "_completionSource",
       "kind": "field",
@@ -1706,7 +1706,7 @@
     },
     {
       "file": "McpMod.StateBuilder.cs",
-      "line": 5431,
+      "line": 5487,
       "api": "GetField",
       "member": "_completionSource",
       "kind": "field",
@@ -1716,7 +1716,7 @@
     },
     {
       "file": "McpMod.StateBuilder.cs",
-      "line": 5660,
+      "line": 5706,
       "api": "GetInstanceFieldValue",
       "member": "_extraOptions",
       "kind": "field",
@@ -1726,7 +1726,7 @@
     },
     {
       "file": "McpMod.StateBuilder.cs",
-      "line": 5664,
+      "line": 5710,
       "api": "GetPropertyValue",
       "member": "OptionId",
       "kind": "property",
@@ -1736,7 +1736,7 @@
     },
     {
       "file": "McpMod.StateBuilder.cs",
-      "line": 5673,
+      "line": 5719,
       "api": "GetInstanceFieldValue",
       "member": "_optionName",
       "kind": "field",
@@ -1746,7 +1746,7 @@
     },
     {
       "file": "McpMod.StateBuilder.cs",
-      "line": 5962,
+      "line": 6008,
       "api": "GetField",
       "member": "_selectedCards",
       "kind": "field",
@@ -1756,7 +1756,7 @@
     },
     {
       "file": "McpMod.StateBuilder.cs",
-      "line": 6033,
+      "line": 6079,
       "api": "GetInstanceFieldValue",
       "member": "_openedTicks",
       "kind": "field",
@@ -1766,7 +1766,7 @@
     },
     {
       "file": "McpMod.StateBuilder.cs",
-      "line": 6205,
+      "line": 6251,
       "api": "GetInstanceFieldValue",
       "member": "_selectedCards",
       "kind": "field",
@@ -1776,7 +1776,7 @@
     },
     {
       "file": "McpMod.StateBuilder.cs",
-      "line": 6622,
+      "line": 6650,
       "api": "GetField",
       "member": "_internalData",
       "kind": "field",

@@ -1250,7 +1250,7 @@ public static partial class McpMod
         NAcceptTutorialsFtue? tutorialFtue = FindVisibleAcceptTutorialsFtue(root);
         if (tutorialFtue != null && IsFtueNodeActive(tutorialFtue))
         {
-            Dictionary<string, object?> state = NewStateResult("menu");
+            Dictionary<string, object?> state = NewStateResult(StateTypes.Menu);
             state["menu_screen"] = "tutorial_prompt";
             state["message"] = "Enable Tutorials? Choose yes or no.";
             state["options"] = new List<Dictionary<string, object?>>
@@ -1265,7 +1265,7 @@ public static partial class McpMod
         if (ftue != null)
         {
             bool canAdvance = FindFtueAdvanceButton(ftue) != null;
-            Dictionary<string, object?> state = NewStateResult("menu");
+            Dictionary<string, object?> state = NewStateResult(StateTypes.Menu);
             state["menu_screen"] = "tutorial";
             state["message"] = "Tutorial popup active. Use advance to dismiss.";
             state["options"] = new List<Dictionary<string, object?>>
@@ -1303,7 +1303,7 @@ public static partial class McpMod
         if (stateOptions.Count == 0)
             return null;
 
-        Dictionary<string, object?> state = NewStateResult("menu");
+        Dictionary<string, object?> state = NewStateResult(StateTypes.Menu);
         state["menu_screen"] = "popup";
         state["message"] = popup != null ? GetVerticalPopupText(popup, "TitleLabel") ?? "Popup active." : "Popup active.";
         state["body"] = popup != null ? GetVerticalPopupText(popup, "BodyLabel") : null;
