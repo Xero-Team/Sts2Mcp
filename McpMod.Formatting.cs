@@ -11,7 +11,7 @@ public static partial class McpMod
     private static string FormatAsMarkdown(Dictionary<string, object?> state)
     {
         var sb = new StringBuilder();
-        string stateType = state.TryGetValue("state_type", out object? st) ? st?.ToString() ?? "unknown" : "unknown";
+        string stateType = state.TryGetValue("state_type", out object? st) ? st?.ToString() ?? StateTypes.Unknown : StateTypes.Unknown;
         bool isMultiplayer = state.TryGetValue("game_mode", out object? gm) && string.Equals(gm?.ToString(), "multiplayer", StringComparison.Ordinal);
 
         AppendStateHeader(sb, state, stateType, isMultiplayer);
@@ -19,13 +19,13 @@ public static partial class McpMod
         AppendResolvingWarning(sb, state);
         AppendStateWarnings(sb, state);
 
-        if (string.Equals(stateType, "menu", StringComparison.Ordinal))
+        if (string.Equals(stateType, StateTypes.Menu, StringComparison.Ordinal))
         {
             FormatMenuMarkdown(sb, state);
             return sb.ToString();
         }
 
-        if (string.Equals(stateType, "game_over", StringComparison.Ordinal))
+        if (string.Equals(stateType, StateTypes.GameOver, StringComparison.Ordinal))
         {
             FormatGameOverMarkdown(sb, state);
             return sb.ToString();

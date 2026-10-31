@@ -570,6 +570,49 @@ public static partial class McpMod
         return TryRead<bool?>(() => !manager.PlayerActionsDisabled) ?? false;
     }
 
+    /// <summary>
+    /// Why a combat action cannot run right now, or null when nothing at the gate blocks it.
+    ///
+    /// The codes are the vocabulary the state's `*_blocked_reason` fields already publish
+    /// ("NotInCombat", "NotInPlayPhase", "PlayerActionsDisabled", "PlayerDead"), so a refusal and
+    /// a state read cannot disagree about why the same action is unavailable. They used to be
+    /// five hand-copied ladders: two in the state builders and three more in the action
+    /// executors, each free to drift from the others.
+    ///
+    /// `player` is null on the singleplayer end-turn path, which answers for a client rather
+    /// than acting for one: the singleplayer state has no "PlayerDead" code to publish, and a
+    /// dead player there is already over the run.
+    /// </summary>
+    private static string? GetCombatActionBlockedReason(
+        MegaCrit.Sts2.Core.Entities.Players.Player? player)
+    {
+        if (!CombatManager.Instance.IsInProgress)
+            return "NotInCombat";
+        if (!IsCombatPlayPhase())
+            return "NotInPlayPhase";
+        if (CombatManager.Instance.PlayerActionsDisabled)
+            return "PlayerActionsDisabled";
+        if (player != null && !player.Creature.IsAlive)
+            return "PlayerDead";
+        return null;
+    }
+
+    /// <summary>
+    /// The sentence a client gets for a <see cref="GetCombatActionBlockedReason"/> code.
+    ///
+    /// One wording per condition, because the string is shown to whoever asked: the executors
+    /// used to phrase the same refusal four ways ("cannot play cards", "cannot end turn",
+    /// "cannot act"), which made an agent parse prose to tell them apart.
+    /// </summary>
+    private static string DescribeCombatRefusal(string reason) => reason switch
+    {
+        "NotInCombat" => "Not in combat",
+        "NotInPlayPhase" => "Not in play phase - cannot act during enemy turn",
+        "PlayerActionsDisabled" => "Player actions are currently disabled",
+        "PlayerDead" => "Player creature is dead - cannot act",
+        _ => reason
+    };
+
     private static MerchantInventory? GetMerchantInventory(object? owner)
     {
         return TryGetMerchantInventory(owner) ??
@@ -1207,7 +1250,7 @@ public static partial class McpMod
         NAcceptTutorialsFtue? tutorialFtue = FindVisibleAcceptTutorialsFtue(root);
         if (tutorialFtue != null && IsFtueNodeActive(tutorialFtue))
         {
-            Dictionary<string, object?> state = NewStateResult("menu");
+            Dictionary<string, object?> state = NewStateResult(StateTypes.Menu);
             state["menu_screen"] = "tutorial_prompt";
             state["message"] = "Enable Tutorials? Choose yes or no.";
             state["options"] = new List<Dictionary<string, object?>>
@@ -1222,7 +1265,7 @@ public static partial class McpMod
         if (ftue != null)
         {
             bool canAdvance = FindFtueAdvanceButton(ftue) != null;
-            Dictionary<string, object?> state = NewStateResult("menu");
+            Dictionary<string, object?> state = NewStateResult(StateTypes.Menu);
             state["menu_screen"] = "tutorial";
             state["message"] = "Tutorial popup active. Use advance to dismiss.";
             state["options"] = new List<Dictionary<string, object?>>
@@ -1260,7 +1303,7 @@ public static partial class McpMod
         if (stateOptions.Count == 0)
             return null;
 
-        Dictionary<string, object?> state = NewStateResult("menu");
+        Dictionary<string, object?> state = NewStateResult(StateTypes.Menu);
         state["menu_screen"] = "popup";
         state["message"] = popup != null ? GetVerticalPopupText(popup, "TitleLabel") ?? "Popup active." : "Popup active.";
         state["body"] = popup != null ? GetVerticalPopupText(popup, "BodyLabel") : null;

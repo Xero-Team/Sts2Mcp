@@ -623,47 +623,81 @@ public static partial class McpMod
                 && MegaCrit.Sts2.Core.Runs.RunManager.Instance.NetService.Type.IsMultiplayer()) ?? false;
     }
 
+    /// <summary>
+    /// The query parameters a state read accepts, parsed once at the transport boundary.
+    ///
+    /// Defaults are decisions, so they are written down here: `format=json` (the bridge parses
+    /// JSON), `values=powered` (the numbers the game itself shows), and `detail=summary` for the
+    /// multiplayer payload. Both state handlers validated these fields by hand, in the same
+    /// order, with the same 400s; `detail` is the one field they disagree on, because the
+    /// singleplayer payload always carries the full player and has no detail levels.
+    /// </summary>
+    private readonly record struct StateQuery(
+        string Format, string Values, bool Unpowered, string Detail, bool FullDetail)
+    {
+        /// <summary>
+        /// Reads and validates the query. On failure the 400 is already sent, so the caller
+        /// only has to return.
+        /// </summary>
+        internal static bool TryParse(
+            HttpListenerRequest request, HttpListenerResponse response,
+            bool acceptsDetail, bool pretty, out StateQuery query)
+        {
+            query = default;
+            string format = request.QueryString["format"] ?? "json";
+            if (!TryValidateStateFormat(response, format))
+                return false;
+
+            // A `detail` the endpoint does not implement is ignored rather than refused: that is
+            // what the singleplayer handler did before this type existed, and a client that
+            // guesses at a parameter should not lose the read over it.
+            string detail = acceptsDetail ? request.QueryString["detail"] ?? "summary" : "summary";
+            if (acceptsDetail && detail is not ("summary" or "full"))
+            {
+                SendError(response, 400, "detail must be either 'summary' or 'full'.", pretty);
+                return false;
+            }
+
+            // Card descriptions and enemy intent labels are rendered by the game with the
+            // player's standing powers and relics already applied. "unpowered" strips that
+            // baking back to base + enchantment; see UnpoweredCardVars in McpMod.Helpers.cs.
+            string values = request.QueryString["values"] ?? "powered";
+            if (values is not ("powered" or "unpowered"))
+            {
+                SendError(response, 400, "values must be either 'powered' or 'unpowered'.", pretty);
+                return false;
+            }
+
+            query = new StateQuery(
+                format,
+                values,
+                string.Equals(values, "unpowered", StringComparison.Ordinal),
+                detail,
+                string.Equals(detail, "full", StringComparison.Ordinal));
+            return true;
+        }
+    }
+
     private static void HandleGetMultiplayerState(HttpListenerRequest request, HttpListenerResponse response)
     {
-        string format = request.QueryString["format"] ?? "json";
         bool pretty = WantsPretty(request);
-
-        if (!TryValidateStateFormat(response, format))
+        if (!StateQuery.TryParse(request, response, acceptsDetail: true, pretty, out StateQuery query))
             return;
-
-        string detail = request.QueryString["detail"] ?? "summary";
-        if (detail is not ("summary" or "full"))
-        {
-            SendError(response, 400, "detail must be either 'summary' or 'full'.", pretty);
-            return;
-        }
-        bool fullDetail = string.Equals(detail, "full", StringComparison.Ordinal);
-
-        // Card descriptions and enemy intent labels are rendered by the game with the
-        // player's standing powers and relics already applied. "unpowered" strips that
-        // baking back to base + enchantment; see UnpoweredCardVars in McpMod.Helpers.cs.
-        string values = request.QueryString["values"] ?? "powered";
-        if (values is not ("powered" or "unpowered"))
-        {
-            SendError(response, 400, "values must be either 'powered' or 'unpowered'.", pretty);
-            return;
-        }
-        bool unpowered = string.Equals(values, "unpowered", StringComparison.Ordinal);
 
         RunHandler(response, () =>
         {
-            Dictionary<string, object?> state = RunOnMainThreadBlocking(() => WithCardValues(unpowered, () =>
+            Dictionary<string, object?> state = RunOnMainThreadBlocking(() => WithCardValues(query.Unpowered, () =>
             {
-                Dictionary<string, object?> s = BuildMultiplayerGameState(fullDetail);
-                s["detail"] = detail;
-                if (fullDetail)
+                Dictionary<string, object?> s = BuildMultiplayerGameState(query.FullDetail);
+                s["detail"] = query.Detail;
+                if (query.FullDetail)
                     s["relic_bag_generation"] = RelicBagGeneration;
                 s["game_version"] = GameVersion();
-                s["values"] = values;
+                s["values"] = query.Values;
                 return s;
             }));
 
-            if (string.Equals(format, "markdown", StringComparison.Ordinal))
+            if (string.Equals(query.Format, "markdown", StringComparison.Ordinal))
             {
                 string md = FormatAsMarkdown(state);
                 SendText(response, md, "text/markdown");
@@ -758,22 +792,9 @@ public static partial class McpMod
 
     private static void HandleGetState(HttpListenerRequest request, HttpListenerResponse response)
     {
-        string format = request.QueryString["format"] ?? "json";
         bool pretty = WantsPretty(request);
-
-        if (!TryValidateStateFormat(response, format))
+        if (!StateQuery.TryParse(request, response, acceptsDetail: false, pretty, out StateQuery query))
             return;
-
-        // Card descriptions and enemy intent labels are rendered by the game with the
-        // player's standing powers and relics already applied. "unpowered" strips that
-        // baking back to base + enchantment; see UnpoweredCardVars in McpMod.Helpers.cs.
-        string values = request.QueryString["values"] ?? "powered";
-        if (values is not ("powered" or "unpowered"))
-        {
-            SendError(response, 400, "values must be either 'powered' or 'unpowered'.", pretty);
-            return;
-        }
-        bool unpowered = string.Equals(values, "unpowered", StringComparison.Ordinal);
 
         RunHandler(response, () =>
         {
@@ -786,7 +807,7 @@ public static partial class McpMod
                 s_passiveRead = passive;
                 try
                 {
-                    return WithCardValues(unpowered, () => ReadSingleplayerState(values, passive));
+                    return WithCardValues(query.Unpowered, () => ReadSingleplayerState(query.Values, passive));
                 }
                 finally
                 {
@@ -794,7 +815,7 @@ public static partial class McpMod
                 }
             });
 
-            if (string.Equals(format, "markdown", StringComparison.Ordinal))
+            if (string.Equals(query.Format, "markdown", StringComparison.Ordinal))
             {
                 // Markdown is a rendering of the same state; if it fails, the JSON is more
                 // useful than an error, so fall back rather than fail the request.
@@ -893,7 +914,7 @@ public static partial class McpMod
             return false;
 
         string? stateType = state.GetValueOrDefault("state_type") as string;
-        if (stateType is "monster" or "elite" or "boss")
+        if (stateType is StateTypes.Monster or StateTypes.Elite or StateTypes.Boss)
         {
             // The enemies' turn drains the action queue in bursts, so `is_resolving` blinks false
             // between two enemy moves. Only the play phase means the caller may act again.

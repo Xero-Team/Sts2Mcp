@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using System.Reflection;
+using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
 using Godot;
 using MegaCrit.Sts2.Core.CardSelection;
@@ -91,9 +92,10 @@ public static partial class McpMod
     /// </summary>
     private static readonly HashSet<string> s_playerInputStates = new(StringComparer.Ordinal)
     {
-        "card_select", "hand_select", "bundle_select", "relic_select", "card_reward",
-        "rewards", "event", "rest_site", "shop", "fake_merchant", "treasure",
-        "crystal_sphere", "map", "menu", "game_over"
+        StateTypes.CardSelect, StateTypes.HandSelect, StateTypes.BundleSelect,
+        StateTypes.RelicSelect, StateTypes.CardReward, StateTypes.Rewards, StateTypes.Event,
+        StateTypes.RestSite, StateTypes.Shop, StateTypes.FakeMerchant, StateTypes.Treasure,
+        StateTypes.CrystalSphere, StateTypes.Map, StateTypes.Menu, StateTypes.GameOver
     };
 
     private static readonly FieldInfo s_nextCreatureIdField = typeof(CombatState)
@@ -226,7 +228,7 @@ public static partial class McpMod
     /// overwrites it, and "unknown" is the right answer for a path that never sets one.
     /// </summary>
     internal static Dictionary<string, object?> NewStateResult(
-        string stateType = "unknown", string kind = "singleplayer_state")
+        string stateType = StateTypes.Unknown, string kind = "singleplayer_state")
     {
         return new Dictionary<string, object?>(StringComparer.Ordinal)
         {
@@ -269,7 +271,8 @@ public static partial class McpMod
         IOverlayScreen? topOverlay = NOverlayStack.Instance?.Peek();
         AbstractRoom? currentRoom = runState.CurrentRoom;
         bool mapIsOpen = IsMapScreenOpenOrVisible();
-        AppendScreenState(result, tree, runState, currentRoom, topOverlay, mapIsOpen);
+        ScreenPolicy policy = ScreenPolicy.Singleplayer;
+        AppendScreenState(result, tree, runState, currentRoom, topOverlay, mapIsOpen, policy);
 
         // Overlay-first detection must not hide the combat snapshot. The Rust
         // planner needs the enemies, turn, history, and RNG streams both for a
@@ -279,9 +282,9 @@ public static partial class McpMod
             && CombatManager.Instance.IsInProgress
             && result.TryGetValue("state_type", out object? overlayStateType)
             && overlayStateType is string overlayType
-            && overlayType is "card_select" or "bundle_select")
+            && overlayType is StateTypes.CardSelect or StateTypes.BundleSelect)
         {
-            result["battle"] = BuildBattleState(runState, overlayCombat);
+            result["battle"] = policy.BuildBattle(runState, overlayCombat);
         }
 
         AppendCommonRunState(result, runState);
@@ -305,13 +308,66 @@ public static partial class McpMod
             }
         }
 
-        result["state_type"] = "unknown";
+        result["state_type"] = StateTypes.Unknown;
         return result;
     }
 
     /// <summary>
+    /// Where the two state payloads legitimately differ, in one place.
+    ///
+    /// Both builders walk the same stack in the same priority order - run submenu, overlay,
+    /// room arrival, room - and each of the delegations below is a difference the two hand-copied
+    /// chains actually had: the in-run settings/pause screens, the four room-arrival masks and
+    /// the shop auto-open existed in singleplayer only; co-op reports a lingering Crystal Sphere
+    /// over the map and never lets a card reward outrank it. Naming them here is what lets the
+    /// ladder itself exist once.
+    /// </summary>
+    private sealed record ScreenPolicy(
+        bool CheckRunMenus,
+        bool MaskPendingRooms,
+        bool MaskMapBeforeCombat,
+        bool AutoOpenShop,
+        bool ReportNoRoomCharacterSelect,
+        bool CrystalSphereOutranksMap,
+        bool CardRewardDefersToMap,
+        Func<RunState, CombatRoom, Dictionary<string, object?>> BuildBattle,
+        Func<RunState, Dictionary<string, object?>> BuildMap,
+        Func<EventRoom, RunState, Dictionary<string, object?>> BuildEvent,
+        Func<RunState, Dictionary<string, object?>> BuildTreasure)
+    {
+        /// <summary>One static instance per mode, so a state read allocates nothing extra.</summary>
+        internal static readonly ScreenPolicy Singleplayer = new(
+            CheckRunMenus: true,
+            MaskPendingRooms: true,
+            MaskMapBeforeCombat: true,
+            AutoOpenShop: true,
+            ReportNoRoomCharacterSelect: true,
+            CrystalSphereOutranksMap: false,
+            CardRewardDefersToMap: false,
+            BuildBattle: BuildBattleState,
+            BuildMap: BuildMapState,
+            BuildEvent: (eventRoom, _) => BuildEventState(eventRoom),
+            BuildTreasure: _ => BuildTreasureState());
+
+        /// <summary>The co-op payload, which reports the run in its own shape on every screen.</summary>
+        internal static readonly ScreenPolicy Multiplayer = new(
+            CheckRunMenus: false,
+            MaskPendingRooms: false,
+            MaskMapBeforeCombat: false,
+            AutoOpenShop: false,
+            ReportNoRoomCharacterSelect: false,
+            CrystalSphereOutranksMap: true,
+            CardRewardDefersToMap: true,
+            BuildBattle: (runState, _) => BuildMultiplayerBattleState(runState),
+            BuildMap: BuildMultiplayerMapState,
+            BuildEvent: BuildMultiplayerEventState,
+            BuildTreasure: BuildMultiplayerTreasureState);
+    }
+
+    /// <summary>
     /// Decides what the player is looking at: a pushed menu (settings/pause), an overlay, or
-    /// the room underneath.
+    /// the room underneath. The same ladder answers for both payloads; <paramref name="policy"/>
+    /// carries the differences.
     /// </summary>
     private static void AppendScreenState(
         Dictionary<string, object?> result,
@@ -319,31 +375,39 @@ public static partial class McpMod
         RunState runState,
         AbstractRoom? currentRoom,
         IOverlayScreen? topOverlay,
-        bool mapIsOpen)
+        bool mapIsOpen,
+        ScreenPolicy policy)
     {
-        // The settings screen is pushed on the run's submenu stack, over everything below.
-        // It is checked first so the room underneath is not reported as the live screen.
-        Dictionary<string, object?>? settingsState = TryBuildSettingsMenuState(tree?.Root, inRun: true);
-        // The pause menu shares that stack, and settings can be pushed on top of the
-        // pause menu, so settings has to keep winning when both are up.
-        Dictionary<string, object?>? pauseState = settingsState == null ? TryBuildPauseMenuState(tree?.Root) : null;
-        if (settingsState != null)
+        if (policy.CheckRunMenus)
         {
-            foreach (KeyValuePair<string, object?> entry in settingsState)
-                result[entry.Key] = entry.Value;
-            return;
-        }
-        if (pauseState != null)
-        {
-            foreach (KeyValuePair<string, object?> entry in pauseState)
-                result[entry.Key] = entry.Value;
-            return;
+            // The settings screen is pushed on the run's submenu stack, over everything below.
+            // It is checked first so the room underneath is not reported as the live screen.
+            Dictionary<string, object?>? settingsState = TryBuildSettingsMenuState(tree?.Root, inRun: true);
+            // The pause menu shares that stack, and settings can be pushed on top of the
+            // pause menu, so settings has to keep winning when both are up.
+            Dictionary<string, object?>? pauseState = settingsState == null ? TryBuildPauseMenuState(tree?.Root) : null;
+            if (settingsState != null)
+            {
+                foreach (KeyValuePair<string, object?> entry in settingsState)
+                {
+                    result[entry.Key] = entry.Value;
+                }
+                return;
+            }
+            if (pauseState != null)
+            {
+                foreach (KeyValuePair<string, object?> entry in pauseState)
+                {
+                    result[entry.Key] = entry.Value;
+                }
+                return;
+            }
         }
 
-        if (topOverlay != null && TryAppendOverlayState(result, topOverlay, mapIsOpen))
+        if (topOverlay != null && TryAppendOverlayState(result, topOverlay, mapIsOpen, policy))
             return;
 
-        AppendRoomState(result, tree, runState, currentRoom, topOverlay, mapIsOpen);
+        AppendRoomState(result, tree, runState, currentRoom, topOverlay, mapIsOpen, policy);
     }
 
     /// <summary>
@@ -352,12 +416,13 @@ public static partial class McpMod
     /// while the run is still waiting on it.
     /// </summary>
     private static bool TryAppendOverlayState(
-        Dictionary<string, object?> result, IOverlayScreen topOverlay, bool mapIsOpen)
+        Dictionary<string, object?> result, IOverlayScreen topOverlay, bool mapIsOpen,
+        ScreenPolicy policy)
         => TryAppendSelectionOverlayState(result, topOverlay)
-           || TryAppendCrystalSphereOverlay(result, topOverlay, mapIsOpen)
-           || TryAppendCardRewardOverlay(result, topOverlay, mapIsOpen)
+           || TryAppendCrystalSphereOverlay(result, topOverlay, mapIsOpen, policy)
+           || TryAppendCardRewardOverlay(result, topOverlay, mapIsOpen, policy)
            || TryAppendRewardsOverlay(result, topOverlay, mapIsOpen)
-           || TryAppendFallbackOverlayState(result, topOverlay);
+           || TryAppendFallbackOverlayState(result, topOverlay, policy);
 
     private static bool TryAppendSelectionOverlayState(
         Dictionary<string, object?> result, IOverlayScreen topOverlay)
@@ -365,19 +430,19 @@ public static partial class McpMod
         switch (topOverlay)
         {
             case NCardGridSelectionScreen cardSelectScreen:
-                result["state_type"] = "card_select";
+                result["state_type"] = StateTypes.CardSelect;
                 result["card_select"] = BuildCardSelectState(cardSelectScreen);
                 return true;
             case NChooseACardSelectionScreen chooseCardScreen:
-                result["state_type"] = "card_select";
+                result["state_type"] = StateTypes.CardSelect;
                 result["card_select"] = BuildChooseCardState(chooseCardScreen);
                 return true;
             case NChooseABundleSelectionScreen bundleScreen:
-                result["state_type"] = "bundle_select";
+                result["state_type"] = StateTypes.BundleSelect;
                 result["bundle_select"] = BuildBundleSelectState(bundleScreen);
                 return true;
             case NChooseARelicSelection relicSelectScreen:
-                result["state_type"] = "relic_select";
+                result["state_type"] = StateTypes.RelicSelect;
                 result["relic_select"] = BuildRelicSelectState(relicSelectScreen);
                 return true;
             default:
@@ -386,10 +451,14 @@ public static partial class McpMod
     }
 
     private static bool TryAppendCrystalSphereOverlay(
-        Dictionary<string, object?> result, IOverlayScreen topOverlay, bool mapIsOpen)
+        Dictionary<string, object?> result, IOverlayScreen topOverlay, bool mapIsOpen,
+        ScreenPolicy policy)
     {
-        if (topOverlay is not NCrystalSphereScreen crystalSphereScreen
-            || (mapIsOpen && !CrystalSphereIsOutstanding(crystalSphereScreen)))
+        if (topOverlay is not NCrystalSphereScreen crystalSphereScreen)
+            return false;
+        // Co-op reports the sphere over a visible map; singleplayer only until the map takes over.
+        if (!policy.CrystalSphereOutranksMap
+            && mapIsOpen && !CrystalSphereIsOutstanding(crystalSphereScreen))
             return false;
 
         // Mirror the NRewardsScreen guard: the Crystal Sphere overlay lingers on
@@ -402,16 +471,19 @@ public static partial class McpMod
         // being played blocks its event room, and masking it reported an
         // un-travellable map with nothing on it - the same deadlock Brain
         // Leech's card reward and Tiny Mailbox's potions produced.
-        result["state_type"] = "crystal_sphere";
+        result["state_type"] = StateTypes.CrystalSphere;
         result["crystal_sphere"] = BuildCrystalSphereState(crystalSphereScreen);
         return true;
     }
 
     private static bool TryAppendCardRewardOverlay(
-        Dictionary<string, object?> result, IOverlayScreen topOverlay, bool mapIsOpen)
+        Dictionary<string, object?> result, IOverlayScreen topOverlay, bool mapIsOpen,
+        ScreenPolicy policy)
     {
-        if (topOverlay is not NCardRewardSelectionScreen cardRewardScreen
-            || (mapIsOpen && !CardRewardIsOutstanding(cardRewardScreen)))
+        if (topOverlay is not NCardRewardSelectionScreen cardRewardScreen)
+            return false;
+        // Co-op always defers to the map here; singleplayer only once the pick is answered.
+        if (mapIsOpen && (policy.CardRewardDefersToMap || !CardRewardIsOutstanding(cardRewardScreen)))
             return false;
 
         // The map deference is only correct for a card reward that has already
@@ -424,7 +496,7 @@ public static partial class McpMod
         // unfinished) with nothing a client could act on. Observed live at act 1
         // floor 14: `[STALL] map unchanged` with "No map options" for the rest
         // of the run.
-        result["state_type"] = "card_reward";
+        result["state_type"] = StateTypes.CardReward;
         result["card_reward"] = BuildCardRewardState(cardRewardScreen);
         return true;
     }
@@ -445,17 +517,17 @@ public static partial class McpMod
         // with its (still enabled) options and nothing a client could act on -
         // the run cannot proceed until the potions are taken or skipped, so
         // nothing ever changed again.
-        result["state_type"] = "rewards";
+        result["state_type"] = StateTypes.Rewards;
         result["rewards"] = BuildRewardsState(rewardsScreen);
         return true;
     }
 
     private static bool TryAppendFallbackOverlayState(
-        Dictionary<string, object?> result, IOverlayScreen topOverlay)
+        Dictionary<string, object?> result, IOverlayScreen topOverlay, ScreenPolicy policy)
     {
         if (topOverlay is NGameOverScreen)
         {
-            result["state_type"] = "game_over";
+            result["state_type"] = StateTypes.GameOver;
             result["game_over"] = new Dictionary<string, object?>(StringComparer.Ordinal)
             {
                 ["message"] = "Run ended.",
@@ -467,13 +539,14 @@ public static partial class McpMod
         // Catch-all for unhandled overlays - prevents soft-locks. Overlays that
         // linger on the stack while the map takes over (rewards, card reward,
         // Crystal Sphere) are excluded so the fallback below reports "map" once
-        // mapIsOpen is true.
-        if (topOverlay is NRewardsScreen
-            or NCardRewardSelectionScreen
-            or NCrystalSphereScreen)
+        // mapIsOpen is true. Co-op keeps the Crystal Sphere branch authoritative,
+        // so it is not excluded there.
+        if (topOverlay is NRewardsScreen or NCardRewardSelectionScreen)
+            return false;
+        if (!policy.CrystalSphereOutranksMap && topOverlay is NCrystalSphereScreen)
             return false;
 
-        result["state_type"] = "overlay";
+        result["state_type"] = StateTypes.Overlay;
         result["overlay"] = new Dictionary<string, object?>(StringComparer.Ordinal)
         {
             ["screen_type"] = topOverlay.GetType().Name,
@@ -488,40 +561,44 @@ public static partial class McpMod
         RunState runState,
         AbstractRoom? currentRoom,
         IOverlayScreen? topOverlay,
-        bool mapIsOpen)
+        bool mapIsOpen,
+        ScreenPolicy policy)
     {
-        if (TryAppendPendingRoomState(result, runState, currentRoom))
+        if (policy.MaskPendingRooms && TryAppendPendingRoomState(result, runState, currentRoom))
             return;
 
-        if (mapIsOpen)
+        if (TryAppendLoadingCombat(result, currentRoom))
+            return;
+
+        if (policy.MaskMapBeforeCombat && mapIsOpen)
         {
-            result["state_type"] = "map";
-            result["map"] = BuildMapState(runState);
+            result["state_type"] = StateTypes.Map;
+            result["map"] = policy.BuildMap(runState);
             AddBlockedMapDiagnostics(result, currentRoom, topOverlay);
             return;
         }
 
-        if (TryAppendCombatRoomState(result, runState, currentRoom))
+        if (TryAppendCombatRoomState(result, runState, currentRoom, policy))
             return;
-        if (TryAppendEventOrMapRoomState(result, runState, currentRoom))
+        if (TryAppendEventOrMapRoomState(result, runState, currentRoom, policy))
             return;
-        if (TryAppendSimpleRoomState(result, runState, currentRoom))
+        if (TryAppendSimpleRoomState(result, runState, currentRoom, policy))
             return;
-        AppendNoRoomState(result, tree, currentRoom);
+        AppendNoRoomState(result, tree, currentRoom, policy);
     }
 
     /// <summary>
     /// Rooms that are still being entered or finished, in priority order. Each of these
     /// exists because the map screen can linger visible over the room it just travelled to;
-    /// reporting "map" there makes a client travel straight past the room.
+    /// reporting "map" there makes a client travel straight past the room. Co-op has no
+    /// arrival masks, so only singleplayer walks this list.
     /// </summary>
     private static bool TryAppendPendingRoomState(
         Dictionary<string, object?> result, RunState runState, AbstractRoom? currentRoom)
         => TryAppendPendingRest(result, currentRoom)
            || TryAppendPendingEvent(result, currentRoom)
            || TryAppendPendingTreasure(result, currentRoom)
-           || TryAppendPendingShop(result, runState, currentRoom)
-           || TryAppendLoadingCombat(result, currentRoom);
+           || TryAppendPendingShop(result, runState, currentRoom);
 
     private static bool TryAppendPendingRest(
         Dictionary<string, object?> result, AbstractRoom? currentRoom)
@@ -541,7 +618,7 @@ public static partial class McpMod
         // rest_site regardless of the lingering map. Once the rest is used the
         // options disable and we fall through to "map" so the next node can be
         // chosen. See handle_rest_site / handle_map in the bot.
-        result["state_type"] = "rest_site";
+        result["state_type"] = StateTypes.RestSite;
         result["rest_site"] = BuildRestSiteState(pendingRest);
         return true;
     }
@@ -561,7 +638,7 @@ public static partial class McpMod
         // the event. Report "event" while the event still has an actionable
         // choice or live dialogue; once it resolves (no pending action) we fall
         // through to "map" so the next node can be chosen (no deadlock).
-        result["state_type"] = "event";
+        result["state_type"] = StateTypes.Event;
         result["event"] = BuildEventState(pendingEvent);
         return true;
     }
@@ -578,7 +655,7 @@ public static partial class McpMod
         // report "map" and the bot would skip the chest. Report "treasure"
         // while there is a chest still to open or a relic still to pick; once
         // the room is finished (nothing pending) we fall through to "map".
-        result["state_type"] = "treasure";
+        result["state_type"] = StateTypes.Treasure;
         result["treasure"] = BuildTreasureState();
         return true;
     }
@@ -618,7 +695,7 @@ public static partial class McpMod
         // unspent at death. NMerchantRoom._Ready only calls SetTravelEnabled;
         // the one merchant path to NMapScreen.Open() is HideScreen on the
         // ProceedButton, so IsOpen means the shop is done and nothing else.
-        result["state_type"] = "shop";
+        result["state_type"] = StateTypes.Shop;
         Dictionary<string, object?> shopState = BuildShopState(pendingShop, runState);
         // Still exported for a client that wants to leave by travelling rather
         // than by proceeding — the map's next nodes stay travelable from a
@@ -659,14 +736,15 @@ public static partial class McpMod
         // map's IsTraveling is set and only the run-transition handle is.
         // It flips to a real battle in about a second, so clients only ever
         // have to wait.
-        result["state_type"] = loadingCombat.RoomType.ToString().ToLowerInvariant();
+        result["state_type"] = CombatRoomStateType(loadingCombat);
         result["combat_starting"] = true;
         result["message"] = "Combat is starting. Wait for the battle state; do not send actions yet.";
         return true;
     }
 
     private static bool TryAppendCombatRoomState(
-        Dictionary<string, object?> result, RunState runState, AbstractRoom? currentRoom)
+        Dictionary<string, object?> result, RunState runState, AbstractRoom? currentRoom,
+        ScreenPolicy policy)
     {
         if (currentRoom is not CombatRoom combatRoom)
             return false;
@@ -677,14 +755,14 @@ public static partial class McpMod
             NPlayerHand? playerHand = NPlayerHand.Instance;
             if (playerHand != null && playerHand.IsInCardSelection)
             {
-                result["state_type"] = "hand_select";
+                result["state_type"] = StateTypes.HandSelect;
                 result["hand_select"] = BuildHandSelectState(playerHand);
-                result["battle"] = BuildBattleState(runState, combatRoom);
+                result["battle"] = policy.BuildBattle(runState, combatRoom);
             }
             else
             {
-                result["state_type"] = combatRoom.RoomType.ToString().ToLowerInvariant(); // monster, elite, boss
-                result["battle"] = BuildBattleState(runState, combatRoom);
+                result["state_type"] = CombatRoomStateType(combatRoom); // monster, elite, boss
+                result["battle"] = policy.BuildBattle(runState, combatRoom);
             }
             return true;
         }
@@ -693,44 +771,45 @@ public static partial class McpMod
         // Only handle map and the brief transition before rewards appear.
         if (IsMapScreenOpenOrVisible())
         {
-            result["state_type"] = "map";
-            result["map"] = BuildMapState(runState);
+            result["state_type"] = StateTypes.Map;
+            result["map"] = policy.BuildMap(runState);
         }
         else
         {
-            result["state_type"] = combatRoom.RoomType.ToString().ToLowerInvariant();
+            result["state_type"] = CombatRoomStateType(combatRoom);
             result["message"] = "Combat ended. Waiting for rewards...";
         }
         return true;
     }
 
     private static bool TryAppendEventOrMapRoomState(
-        Dictionary<string, object?> result, RunState runState, AbstractRoom? currentRoom)
+        Dictionary<string, object?> result, RunState runState, AbstractRoom? currentRoom,
+        ScreenPolicy policy)
     {
         if (currentRoom is EventRoom eventRoom)
         {
             if (IsMapScreenOpenOrVisible())
             {
-                result["state_type"] = "map";
-                result["map"] = BuildMapState(runState);
+                result["state_type"] = StateTypes.Map;
+                result["map"] = policy.BuildMap(runState);
             }
             else if (eventRoom.CanonicalEvent is FakeMerchant)
             {
-                result["state_type"] = "fake_merchant";
+                result["state_type"] = StateTypes.FakeMerchant;
                 result["fake_merchant"] = BuildFakeMerchantState(eventRoom);
             }
             else
             {
-                result["state_type"] = "event";
-                result["event"] = BuildEventState(eventRoom);
+                result["state_type"] = StateTypes.Event;
+                result["event"] = policy.BuildEvent(eventRoom, runState);
             }
             return true;
         }
 
         if (currentRoom is MapRoom)
         {
-            result["state_type"] = "map";
-            result["map"] = BuildMapState(runState);
+            result["state_type"] = StateTypes.Map;
+            result["map"] = policy.BuildMap(runState);
             return true;
         }
 
@@ -738,26 +817,28 @@ public static partial class McpMod
     }
 
     private static bool TryAppendSimpleRoomState(
-        Dictionary<string, object?> result, RunState runState, AbstractRoom? currentRoom)
+        Dictionary<string, object?> result, RunState runState, AbstractRoom? currentRoom,
+        ScreenPolicy policy)
     {
         if (currentRoom is MerchantRoom merchantRoom)
         {
             if (IsMapScreenOpenOrVisible())
             {
-                result["state_type"] = "map";
-                result["map"] = BuildMapState(runState);
+                result["state_type"] = StateTypes.Map;
+                result["map"] = policy.BuildMap(runState);
             }
             else
             {
-                // Auto-open the shopkeeper's inventory if not already open.
+                // Auto-open the shopkeeper's inventory if not already open. Co-op leaves the
+                // UI alone: the merchant is a shared screen, so the read does not touch it.
                 // NMerchantRoom.Inventory (UI node) can be null before the scene is fully ready;
                 // OpenInventory() itself accesses Inventory.IsOpen, so guard against null.
                 NMerchantRoom? merchUI = NMerchantRoom.Instance;
-                if (!s_passiveRead && merchUI?.Inventory != null && !merchUI.Inventory.IsOpen)
+                if (policy.AutoOpenShop && !s_passiveRead && merchUI?.Inventory != null && !merchUI.Inventory.IsOpen)
                 {
                     merchUI.OpenInventory();
                 }
-                result["state_type"] = "shop";
+                result["state_type"] = StateTypes.Shop;
                 result["shop"] = BuildShopState(merchantRoom, runState);
             }
             return true;
@@ -767,12 +848,12 @@ public static partial class McpMod
         {
             if (IsMapScreenOpenOrVisible())
             {
-                result["state_type"] = "map";
-                result["map"] = BuildMapState(runState);
+                result["state_type"] = StateTypes.Map;
+                result["map"] = policy.BuildMap(runState);
             }
             else
             {
-                result["state_type"] = "rest_site";
+                result["state_type"] = StateTypes.RestSite;
                 result["rest_site"] = BuildRestSiteState(restSiteRoom);
             }
             return true;
@@ -782,13 +863,13 @@ public static partial class McpMod
         {
             if (IsMapScreenOpenOrVisible())
             {
-                result["state_type"] = "map";
-                result["map"] = BuildMapState(runState);
+                result["state_type"] = StateTypes.Map;
+                result["map"] = policy.BuildMap(runState);
             }
             else
             {
-                result["state_type"] = "treasure";
-                result["treasure"] = BuildTreasureState();
+                result["state_type"] = StateTypes.Treasure;
+                result["treasure"] = policy.BuildTreasure(runState);
             }
             return true;
         }
@@ -797,9 +878,10 @@ public static partial class McpMod
     }
 
     private static void AppendNoRoomState(
-        Dictionary<string, object?> result, SceneTree? tree, AbstractRoom? currentRoom)
+        Dictionary<string, object?> result, SceneTree? tree, AbstractRoom? currentRoom,
+        ScreenPolicy policy)
     {
-        if (currentRoom == null && tree?.Root != null)
+        if (policy.ReportNoRoomCharacterSelect && currentRoom == null && tree?.Root != null)
         {
             NCharacterSelectScreen? activeCharSelect = FindFirst<NCharacterSelectScreen>(tree.Root);
             if (activeCharSelect != null && IsNodeVisible(activeCharSelect))
@@ -808,13 +890,13 @@ public static partial class McpMod
                 return;
             }
 
-            result["state_type"] = "unknown";
+            result["state_type"] = StateTypes.Unknown;
             // This branch only runs when currentRoom is null.
             result["room_type"] = null;
             return;
         }
 
-        result["state_type"] = "unknown";
+        result["state_type"] = StateTypes.Unknown;
         result["room_type"] = currentRoom?.GetType().Name;
     }
 
@@ -881,7 +963,7 @@ public static partial class McpMod
     private static Dictionary<string, object?> BuildNoRunState(
         Dictionary<string, object?> result, SceneTree? tree)
     {
-        result["state_type"] = "menu";
+        result["state_type"] = StateTypes.Menu;
 
         // Detect which menu screen is active
         if (tree?.Root != null)
@@ -1225,7 +1307,7 @@ public static partial class McpMod
 
         // A submitted reward choice is resolving until the public completion signal or the
         // next OptionSelected wait. Merely displaying a choice is still an input boundary.
-        if (stateType is "rewards" or "card_reward" && s_rewardSession.Entries.Any(e => e.Resolving))
+        if (stateType is StateTypes.Rewards or StateTypes.CardReward && s_rewardSession.Entries.Any(e => e.Resolving))
             reasons.Add("reward_selection_resolving");
 
         result["is_resolving"] = reasons.Count > 0;
@@ -1344,7 +1426,7 @@ public static partial class McpMod
 
         return new Dictionary<string, object?>(StringComparer.Ordinal)
         {
-            ["state_type"] = "menu",
+            ["state_type"] = StateTypes.Menu,
             ["menu_screen"] = "settings",
             ["in_run"] = inRun,
             ["message"] = inRun
@@ -1468,7 +1550,7 @@ public static partial class McpMod
     {
         return new Dictionary<string, object?>(StringComparer.Ordinal)
         {
-            ["state_type"] = "menu",
+            ["state_type"] = StateTypes.Menu,
             ["menu_screen"] = "pause",
             ["in_run"] = true,
             ["message"] =
@@ -1492,7 +1574,7 @@ public static partial class McpMod
 
         return new Dictionary<string, object?>(StringComparer.Ordinal)
         {
-            ["state_type"] = "menu",
+            ["state_type"] = StateTypes.Menu,
             ["menu_screen"] = screen,
             ["in_run"] = true,
             ["screen_class"] = submenu.GetType().Name,
@@ -1595,7 +1677,7 @@ public static partial class McpMod
         Dictionary<string, object?> result,
         NCharacterSelectScreen charSelect)
     {
-        result["state_type"] = "menu";
+        result["state_type"] = StateTypes.Menu;
         result["menu_screen"] = "character_select";
         result["message"] = "Select a character.";
         AddStartRunScreenState(result, charSelect, "_embarkButton");
@@ -1608,7 +1690,7 @@ public static partial class McpMod
         Dictionary<string, object?> result,
         NCustomRunScreen customRun)
     {
-        result["state_type"] = "menu";
+        result["state_type"] = StateTypes.Menu;
         result["menu_screen"] = "custom_run";
         result["message"] = "Custom run setup. Select a character, optionally toggle run modifiers "
                             + "(modifier_<key>) and adjust ascension, then confirm to embark.";
@@ -2049,7 +2131,7 @@ public static partial class McpMod
         Dictionary<string, object?> result,
         NJoinFriendScreen joinScreen)
     {
-        result["state_type"] = "menu";
+        result["state_type"] = StateTypes.Menu;
         result["menu_screen"] = "multiplayer_join";
 
         // FastMP: when Steam isn't initialized OR --fastmp is set, OnSubmenuOpened auto-
@@ -2143,7 +2225,7 @@ public static partial class McpMod
         Dictionary<string, object?> result,
         NMultiplayerLoadGameScreen loadLobby)
     {
-        result["state_type"] = "menu";
+        result["state_type"] = StateTypes.Menu;
         result["menu_screen"] = "multiplayer_load_lobby";
 
         if (GetInstanceFieldValue(loadLobby, "_runLobby") is LoadRunLobby lobby)
@@ -2280,6 +2362,47 @@ public static partial class McpMod
         }
     }
 
+    /// <summary>
+    /// The opening of every battle payload: the identity the next summoned creature will get, the
+    /// round, whose side it is, and whether the local player can act. Both the singleplayer and
+    /// the co-op builder emitted these four fields, in this order, from the same reads.
+    /// </summary>
+    private static void AppendBattleCore(Dictionary<string, object?> battle, CombatState combatState)
+    {
+        battle["next_creature_id"] = NextCreatureId(combatState);
+        battle["round"] = combatState.RoundNumber;
+        battle["turn"] = combatState.CurrentSide.ToString().ToLowerInvariant();
+        battle["is_play_phase"] = IsCombatPlayPhase();
+    }
+
+    /// <summary>
+    /// The RNG and combat-history blocks both battle payloads carry: the run's stream counters so a
+    /// planner can resolve shuffle and target randomness, every card played (singleplayer exposes
+    /// the same shape co-op does), and where each card went this turn and last.
+    ///
+    /// Each block gets its own <c>TryDo</c>: history can vanish while combat tears down, and the
+    /// co-op builder used to wrap all three in one block, so one failure lost two good fields.
+    /// </summary>
+    private static void AppendBattleHistory(
+        Dictionary<string, object?> battle, CombatState combatState, RunState runState)
+    {
+        // Run RNG stream coordinates (seed/counter per stream). See McpMod.RngStreams.cs.
+        Dictionary<string, object?>? rngStreams = BuildRngStreams(runState);
+        if (rngStreams != null)
+        {
+            battle["rng_streams"] = rngStreams;
+        }
+
+        // Gold Axe and other combat-wide counters include every player's card plays.
+        TryDo(() => { battle["card_plays"] = BuildCardPlaysState(combatState); });
+        /* history unavailable while combat is tearing down */
+
+        // Where every card went this turn and last — drawn/discarded/exhausted/generated, not
+        // just played. See BuildCardHistoryState.
+        TryDo(() => { battle["card_history"] = BuildCardHistoryState(combatState); });
+        /* history unavailable while combat is tearing down */
+    }
+
     private static Dictionary<string, object?> BuildBattleState(RunState runState, CombatRoom combatRoom)
     {
         CombatState? combatState = CombatManager.Instance.DebugOnlyGetState();
@@ -2296,11 +2419,7 @@ public static partial class McpMod
         battle["special_card_rewards"] = localPlayer != null && combatRoom.ExtraRewards.TryGetValue(localPlayer, out List<Reward>? extraRewards)
             ? extraRewards.OfType<SpecialCardReward>().Select(BuildSpecialCardReward).ToList()
             : new List<Dictionary<string, object?>>();
-        battle["next_creature_id"] = NextCreatureId(combatState);
-
-        battle["round"] = combatState.RoundNumber;
-        battle["turn"] = combatState.CurrentSide.ToString().ToLowerInvariant();
-        battle["is_play_phase"] = IsCombatPlayPhase();
+        AppendBattleCore(battle, combatState);
         ApplyBattleReadiness(battle);
 
         battle["enemies"] = BuildEnemyList(combatState);
@@ -2382,17 +2501,7 @@ public static partial class McpMod
                 battle["encounter_slots"] = new List<string>(slots);
         });
 
-        // Run RNG stream coordinates (seed/counter per stream) so the planner
-        // can resolve shuffle/target randomness exactly. See McpMod.RngStreams.cs.
-        Dictionary<string, object?>? rngStreams = BuildRngStreams(runState);
-        if (rngStreams != null)
-            battle["rng_streams"] = rngStreams;
-
-        // Gold Axe and other combat-wide counters include every player's card
-        // plays. Singleplayer now exposes the same history shape as MP.
-        TryDo(() => battle["card_plays"] = BuildCardPlaysState(combatState));
-        TryDo(() => battle["card_history"] = BuildCardHistoryState(combatState));
-        /* both are unavailable while combat is tearing down */
+        AppendBattleHistory(battle, combatState, runState);
     }
 
     /// <summary>
@@ -2450,12 +2559,8 @@ public static partial class McpMod
 
     private static string? GetEndTurnBlockedReason()
     {
-        if (!CombatManager.Instance.IsInProgress)
-            return "NotInCombat";
-        if (!IsCombatPlayPhase())
-            return "NotInPlayPhase";
-        if (CombatManager.Instance.PlayerActionsDisabled)
-            return "PlayerActionsDisabled";
+        if (GetCombatActionBlockedReason(null) is { } blocked)
+            return blocked;
 
         NPlayerHand? hand = NCombatRoom.Instance?.Ui?.Hand;
         if (hand != null && hand.InCardPlay)
@@ -3032,6 +3137,55 @@ public static partial class McpMod
             ["target_type"] = potion.TargetType.ToString(),
             ["keywords"] = BuildHoverTips(potion.ExtraHoverTips)
         };
+    }
+
+    // The "here is a relic/potion" block that merchant stock, event options, reward items and
+    // shop previews all publish. `prefix` picks the key names: a payload that mixes item kinds in
+    // one list namespaces its fields (`relic_id`), one that holds only relics does not (`id`), and
+    // an event option's hover tips are `relic_keywords` even though the rest is namespaced. Kept
+    // in one place so a field added to "what a relic summary is" is added once.
+    //
+    // `caller` is passed through so a warning about a vanished member still names the builder that
+    // asked for the text, not this helper.
+    private static void AddRelicSummary(
+        Dictionary<string, object?> target, RelicModel relic,
+        string prefix = "", string keywordsKey = "keywords", [CallerMemberName] string caller = "")
+    {
+        target[prefix + "id"] = relic.Id.Entry;
+        target[prefix + "name"] = SafeGetText(() => relic.Title, caller);
+        target[prefix + "description"] = SafeGetText(() => relic.DynamicDescription, caller);
+        target[prefix + "rarity"] = relic.Rarity.ToString();
+        target[keywordsKey] = BuildHoverTips(relic.HoverTipsExcludingRelic);
+    }
+
+    /// <summary>
+    /// One row in a "choose a relic" list: the shared relic summary plus the two fields those
+    /// screens add. Every row is visible by construction (the holders were filtered on it), and
+    /// `canKey` names the screen's own flag - the relic-select screen says `can_select`, the
+    /// treasure chest says `can_claim`.
+    /// </summary>
+    private static Dictionary<string, object?> BuildRelicChoiceEntry(
+        RelicModel relic, int index, string canKey, bool can,
+        [CallerMemberName] string caller = "")
+    {
+        var entry = new Dictionary<string, object?>(StringComparer.Ordinal) { ["index"] = index };
+        AddRelicSummary(entry, relic, caller: caller);
+        entry["is_visible"] = true;
+        entry[canKey] = can;
+        return entry;
+    }
+
+    private static void AddPotionSummary(
+        Dictionary<string, object?> target, PotionModel potion, string prefix = "potion_",
+        [CallerMemberName] string caller = "")
+    {
+        target[prefix + "id"] = potion.Id.Entry;
+        target[prefix + "name"] = SafeGetText(() => potion.Title, caller);
+        target[prefix + "description"] = SafeGetText(() => potion.DynamicDescription, caller);
+        target[prefix + "rarity"] = potion.Rarity.ToString();
+        target[prefix + "target_type"] = potion.TargetType.ToString();
+        target[prefix + "usage"] = potion.Usage.ToString();
+        target["keywords"] = BuildHoverTips(potion.ExtraHoverTips);
     }
 
     private static string? GetPotionEpoch(PotionModel potion)
@@ -4524,11 +4678,7 @@ public static partial class McpMod
         };
         if (opt.Relic != null)
         {
-            optData["relic_id"] = opt.Relic.Id.Entry;
-            optData["relic_name"] = SafeGetText(() => opt.Relic.Title);
-            optData["relic_description"] = SafeGetText(() => opt.Relic.DynamicDescription);
-            optData["relic_rarity"] = opt.Relic.Rarity.ToString();
-            optData["relic_keywords"] = BuildHoverTips(opt.Relic.HoverTipsExcludingRelic);
+            AddRelicSummary(optData, opt.Relic, prefix: "relic_", keywordsKey: "relic_keywords");
         }
         optData["keywords"] = BuildHoverTips(opt.HoverTips);
         return optData;
@@ -4641,11 +4791,7 @@ public static partial class McpMod
             };
             if (entry.Model is { } relic)
             {
-                item["relic_id"] = relic.Id.Entry;
-                item["relic_name"] = SafeGetText(() => relic.Title);
-                item["relic_description"] = SafeGetText(() => relic.DynamicDescription);
-                item["relic_rarity"] = relic.Rarity.ToString();
-                item["keywords"] = BuildHoverTips(relic.HoverTipsExcludingRelic);
+                AddRelicSummary(item, relic, prefix: "relic_");
             }
             items.Add(item);
             index++;
@@ -4785,11 +4931,7 @@ public static partial class McpMod
             Dictionary<string, object?> item = BuildShopRow(items.Count, "relic", entry.Cost, entry.IsStocked, entry.EnoughGold);
             if (entry.Model is { } relic)
             {
-                item["relic_id"] = relic.Id.Entry;
-                item["relic_name"] = SafeGetText(() => relic.Title);
-                item["relic_description"] = SafeGetText(() => relic.DynamicDescription);
-                item["relic_rarity"] = relic.Rarity.ToString();
-                item["keywords"] = BuildHoverTips(relic.HoverTipsExcludingRelic);
+                AddRelicSummary(item, relic, prefix: "relic_");
             }
             items.Add(item);
         }
@@ -4803,13 +4945,7 @@ public static partial class McpMod
             Dictionary<string, object?> item = BuildShopRow(items.Count, "potion", entry.Cost, entry.IsStocked, entry.EnoughGold);
             if (entry.Model is { } potion)
             {
-                item["potion_id"] = potion.Id.Entry;
-                item["potion_name"] = SafeGetText(() => potion.Title);
-                item["potion_description"] = SafeGetText(() => potion.DynamicDescription);
-                item["potion_rarity"] = potion.Rarity.ToString();
-                item["potion_target_type"] = potion.TargetType.ToString();
-                item["potion_usage"] = potion.Usage.ToString();
-                item["keywords"] = BuildHoverTips(potion.ExtraHoverTips);
+                AddPotionSummary(item, potion);
             }
             items.Add(item);
         }
@@ -5504,22 +5640,12 @@ public static partial class McpMod
         }
         if (reward is PotionReward { Potion: { } potion })
         {
-            item["potion_id"] = potion.Id.Entry;
-            item["potion_name"] = SafeGetText(() => potion.Title);
-            item["potion_description"] = SafeGetText(() => potion.DynamicDescription);
-            item["potion_rarity"] = potion.Rarity.ToString();
-            item["potion_target_type"] = potion.TargetType.ToString();
-            item["potion_usage"] = potion.Usage.ToString();
-            item["keywords"] = BuildHoverTips(potion.ExtraHoverTips);
+            AddPotionSummary(item, potion);
             return;
         }
         if (reward is RelicReward relicReward && GetRelicRewardModel(relicReward) is { } relic)
         {
-            item["relic_id"] = relic.Id.Entry;
-            item["relic_name"] = SafeGetText(() => relic.Title);
-            item["relic_description"] = SafeGetText(() => relic.DynamicDescription);
-            item["relic_rarity"] = relic.Rarity.ToString();
-            item["keywords"] = BuildHoverTips(relic.HoverTipsExcludingRelic);
+            AddRelicSummary(item, relic, prefix: "relic_");
         }
     }
 
@@ -6284,17 +6410,7 @@ public static partial class McpMod
             if (relic == null)
                 continue;
 
-            relics.Add(new Dictionary<string, object?>(StringComparer.Ordinal)
-            {
-                ["index"] = index,
-                ["id"] = relic.Id.Entry,
-                ["name"] = SafeGetText(() => relic.Title),
-                ["description"] = SafeGetText(() => relic.DynamicDescription),
-                ["rarity"] = relic.Rarity.ToString(),
-                ["is_visible"] = true,
-                ["can_select"] = holder.IsEnabled,
-                ["keywords"] = BuildHoverTips(relic.HoverTipsExcludingRelic)
-            });
+            relics.Add(BuildRelicChoiceEntry(relic, index, "can_select", holder.IsEnabled));
             index++;
         }
         state["relics"] = relics;
@@ -6487,18 +6603,10 @@ public static partial class McpMod
             {
                 RelicModel? relic = holder.Relic?.Model;
                 if (relic == null)
-                    continue;
-                relics.Add(new Dictionary<string, object?>(StringComparer.Ordinal)
                 {
-                    ["index"] = index,
-                    ["id"] = relic.Id.Entry,
-                    ["name"] = SafeGetText(() => relic.Title),
-                    ["description"] = SafeGetText(() => relic.DynamicDescription),
-                    ["rarity"] = relic.Rarity.ToString(),
-                    ["is_visible"] = true,
-                    ["can_claim"] = holder.IsEnabled,
-                    ["keywords"] = BuildHoverTips(relic.HoverTipsExcludingRelic)
-                });
+                    continue;
+                }
+                relics.Add(BuildRelicChoiceEntry(relic, index, "can_claim", holder.IsEnabled));
                 index++;
             }
             state["relics"] = relics;

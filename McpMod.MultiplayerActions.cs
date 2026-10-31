@@ -80,14 +80,8 @@ public static partial class McpMod
 
     private static Dictionary<string, object?> ExecuteMultiplayerEndTurn(Player player)
     {
-        if (!CombatManager.Instance.IsInProgress)
-            return Error("Not in combat");
-        if (!IsCombatPlayPhase())
-            return Error("Not in play phase - cannot act during enemy turn");
-        if (CombatManager.Instance.PlayerActionsDisabled)
-            return Error("Player actions are currently disabled");
-        if (!player.Creature.IsAlive)
-            return Error("Player creature is dead - cannot end turn");
+        if (GetCombatActionBlockedReason(player) is { } blocked)
+            return Error(DescribeCombatRefusal(blocked));
         if (CombatManager.Instance.IsPlayerReadyToEndTurn(player))
             return Error("Already submitted end turn - use 'undo_end_turn' to retract");
 
@@ -113,14 +107,8 @@ public static partial class McpMod
 
     private static Dictionary<string, object?> ExecuteUndoEndTurn(Player player)
     {
-        if (!CombatManager.Instance.IsInProgress)
-            return Error("Not in combat");
-        if (!IsCombatPlayPhase())
-            return Error("Not in play phase - cannot act during enemy turn");
-        if (CombatManager.Instance.PlayerActionsDisabled)
-            return Error("Player actions are currently disabled");
-        if (!player.Creature.IsAlive)
-            return Error("Player creature is dead");
+        if (GetCombatActionBlockedReason(player) is { } blocked)
+            return Error(DescribeCombatRefusal(blocked));
         if (!CombatManager.Instance.IsPlayerReadyToEndTurn(player))
             return Error("Not ready to end turn - nothing to undo");
 
