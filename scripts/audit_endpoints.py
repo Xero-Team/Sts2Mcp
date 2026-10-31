@@ -1195,6 +1195,8 @@ def audit_state_surface(repo: Path) -> None:
     multiplayer_state = (repo / "McpMod.MultiplayerState.cs").read_text(encoding="utf-8")
     formatting = (repo / "McpMod.Formatting.cs").read_text(encoding="utf-8")
     actions = (repo / "McpMod.Actions.cs").read_text(encoding="utf-8")
+    helpers = (repo / "McpMod.Helpers.cs").read_text(encoding="utf-8")
+    state_type_source = (repo / "McpMod.StateTypes.cs").read_text(encoding="utf-8")
     docs = "\n".join(
         [
             (repo / "docs" / "raw-simplified.md").read_text(encoding="utf-8"),
@@ -1203,9 +1205,50 @@ def audit_state_surface(repo: Path) -> None:
         ]
     )
 
-    state_types = set(re.findall(r'\["state_type"\]\s*=\s*"([^"]+)"', state_builder))
-    multiplayer_state_types = set(re.findall(r'\["state_type"\]\s*=\s*"([^"]+)"', multiplayer_state))
-    missing_mp_parity = sorted(state_types - multiplayer_state_types)
+    # The builders name the vocabulary instead of repeating the literals, so resolve both
+    # spellings back to the wire string before comparing sets.
+    state_type_constants = dict(
+        re.findall(r'internal const string (\w+) = "([^"]+)";', state_type_source)
+    )
+    if not state_type_constants:
+        fail("could not read the state_type vocabulary from McpMod.StateTypes.cs")
+    state_type_assignment = re.compile(
+        r'\["state_type"\]\s*=\s*(?:"([^"]+)"|StateTypes\.(\w+))'
+    )
+
+    def state_type_values(source: str) -> set[str]:
+        values = set()
+        for literal, constant in state_type_assignment.findall(source):
+            name = literal or constant
+            if literal:
+                values.add(literal)
+            elif name in state_type_constants:
+                values.add(state_type_constants[name])
+            else:
+                fail(f"state_type assigned from unknown constant StateTypes.{name}")
+        return values
+
+    state_types = state_type_values(state_builder)
+    multiplayer_state_types = state_type_values(multiplayer_state)
+    # The multiplayer builder walks the same screen ladder as singleplayer (AppendScreenState
+    # with ScreenPolicy.Multiplayer), so parity is structural; only the states the co-op
+    # builder writes itself still have to be listed here.
+    uses_shared_ladder = (
+        "ScreenPolicy.Multiplayer" in multiplayer_state
+        and "AppendScreenState(" in multiplayer_state
+    )
+    if uses_shared_ladder:
+        # A second ladder alongside the shared one would make the parity structural claim false,
+        # so a leftover private overlay/screen ladder fails here rather than silently diverging.
+        leftover_ladder = re.findall(
+            r"private static (?:bool|void) (TryAppendMultiplayer\w*(?:Overlay|Screen|State)\w*)\(",
+            multiplayer_state,
+        )
+        if leftover_ladder:
+            fail(f"multiplayer state keeps a duplicate screen ladder: {sorted(leftover_ladder)}")
+        missing_mp_parity = []
+    else:
+        missing_mp_parity = sorted(state_types - multiplayer_state_types)
     if missing_mp_parity:
         fail(f"multiplayer state surface missing singleplayer states: {missing_mp_parity}")
 
@@ -1254,6 +1297,11 @@ def audit_state_surface(repo: Path) -> None:
 
     formatter_refs = {match for match in re.findall(r'TryGetValue\("([a-z_]+)"', formatting)}
     formatter_refs |= extract_equality_values(formatting, "stateType")
+    # `string.Equals(stateType, StateTypes.X, ...)` and `stateType is StateTypes.X` name the
+    # vocabulary rather than the wire string, so map those back before comparing.
+    for constant in re.findall(r"StateTypes\.(\w+)", formatting):
+        if constant in state_type_constants:
+            formatter_refs.add(state_type_constants[constant])
     covered_by_battle = {"monster", "elite", "boss"}
     intentionally_unformatted = {"unknown"}
     missing_formatters = sorted(state_types - formatter_refs - covered_by_battle - intentionally_unformatted)
@@ -1434,8 +1482,21 @@ def audit_state_surface(repo: Path) -> None:
     if not relic_action_match:
         fail("could not locate relic selection actions for relic-select audit")
     relic_action_body = relic_action_match.group(0)
+    # The row itself is assembled by a shared helper now, so the metadata check follows the
+    # helper when the builder delegates to it - otherwise this audit would only be satisfied by
+    # keeping a second copy of the fields it is here to guarantee.
+    relic_row_helper_match = re.search(
+        r"private static Dictionary<string, object\?> BuildRelicChoiceEntry\(.*?\n    private static",
+        state_builder,
+        re.S,
+    )
+    relic_row_body = relic_state_body
+    if relic_row_helper_match:
+        if "BuildRelicChoiceEntry(" not in relic_state_body:
+            fail("relic_select state does not use the shared relic row helper")
+        relic_row_body += relic_row_helper_match.group(0)
     for required_fragment in ["IsVisibleInTree", "is_visible", "can_select"]:
-        if required_fragment not in relic_state_body:
+        if required_fragment not in relic_row_body:
             fail(f"relic_select state missing visibility/enabled metadata: {required_fragment}")
     for required_fragment in ["IsVisibleInTree", "IsEnabled"]:
         if required_fragment not in relic_action_body:
@@ -1541,9 +1602,15 @@ def audit_state_surface(repo: Path) -> None:
     if not treasure_action_match:
         fail("could not locate ExecuteClaimTreasureRelic for treasure audit")
     treasure_action_body = treasure_action_match.group(0)
+    treasure_row_body = treasure_state_body
+    if relic_row_helper_match:
+        if "BuildRelicChoiceEntry(" not in treasure_state_body:
+            fail("treasure state does not use the shared relic row helper")
+        treasure_row_body += relic_row_helper_match.group(0)
     for required_fragment in ["IsVisibleInTree", "is_visible", "can_claim"]:
-        if required_fragment not in treasure_state_body:
+        if required_fragment not in treasure_row_body:
             fail(f"treasure state missing visibility/enabled metadata: {required_fragment}")
+
     if "can_proceed" not in treasure_state_body or "IsControlVisibleOrActionable" not in treasure_state_body:
         fail("treasure state must gate can_proceed on a visible enabled proceed button")
     for required_fragment in ["IsVisibleInTree", "IsEnabled"]:
@@ -1645,7 +1712,22 @@ def audit_state_surface(repo: Path) -> None:
     for required_fragment in ["can_end_turn", "end_turn_blocked_reason", "GetEndTurnBlockedReason"]:
         if required_fragment not in battle_state_body:
             fail(f"battle state missing end-turn readiness metadata: {required_fragment}")
-    for required_fragment in ["PlayerActionsDisabled", "InCardPlay", "CurrentMode != NPlayerHand.Mode.Play"]:
+    # The readiness codes live in the shared gate, so the executor only has to route through it.
+    # The hand-mode guard stays inline because the game's own end-turn button applies it on top
+    # of the gate (NEndTurnButton.CanTurnBeEnded).
+    gate_match = re.search(
+        r"private static string\? GetCombatActionBlockedReason\(.*?\n    private static string DescribeCombatRefusal\(",
+        helpers,
+        re.S,
+    )
+    if not gate_match:
+        fail("could not locate the shared combat action gate for end-turn audit")
+    for required_fragment in ["NotInCombat", "NotInPlayPhase", "PlayerActionsDisabled"]:
+        if required_fragment not in gate_match.group(0):
+            fail(f"combat action gate missing readiness code: {required_fragment}")
+    if "GetCombatActionBlockedReason(" not in end_turn_action_body:
+        fail("end_turn action must answer through the shared combat action gate")
+    for required_fragment in ["InCardPlay", "CurrentMode != NPlayerHand.Mode.Play"]:
         if required_fragment not in end_turn_action_body:
             fail(f"end_turn action missing readiness guard: {required_fragment}")
 

@@ -271,7 +271,8 @@ public static partial class McpMod
         IOverlayScreen? topOverlay = NOverlayStack.Instance?.Peek();
         AbstractRoom? currentRoom = runState.CurrentRoom;
         bool mapIsOpen = IsMapScreenOpenOrVisible();
-        AppendScreenState(result, tree, runState, currentRoom, topOverlay, mapIsOpen);
+        ScreenPolicy policy = ScreenPolicy.Singleplayer;
+        AppendScreenState(result, tree, runState, currentRoom, topOverlay, mapIsOpen, policy);
 
         // Overlay-first detection must not hide the combat snapshot. The Rust
         // planner needs the enemies, turn, history, and RNG streams both for a
@@ -281,9 +282,9 @@ public static partial class McpMod
             && CombatManager.Instance.IsInProgress
             && result.TryGetValue("state_type", out object? overlayStateType)
             && overlayStateType is string overlayType
-            && overlayType is "card_select" or "bundle_select")
+            && overlayType is StateTypes.CardSelect or StateTypes.BundleSelect)
         {
-            result["battle"] = BuildBattleState(runState, overlayCombat);
+            result["battle"] = policy.BuildBattle(runState, overlayCombat);
         }
 
         AppendCommonRunState(result, runState);
@@ -312,8 +313,61 @@ public static partial class McpMod
     }
 
     /// <summary>
+    /// Where the two state payloads legitimately differ, in one place.
+    ///
+    /// Both builders walk the same stack in the same priority order - run submenu, overlay,
+    /// room arrival, room - and each of the delegations below is a difference the two hand-copied
+    /// chains actually had: the in-run settings/pause screens, the four room-arrival masks and
+    /// the shop auto-open existed in singleplayer only; co-op reports a lingering Crystal Sphere
+    /// over the map and never lets a card reward outrank it. Naming them here is what lets the
+    /// ladder itself exist once.
+    /// </summary>
+    private sealed record ScreenPolicy(
+        bool CheckRunMenus,
+        bool MaskPendingRooms,
+        bool MaskMapBeforeCombat,
+        bool AutoOpenShop,
+        bool ReportNoRoomCharacterSelect,
+        bool CrystalSphereOutranksMap,
+        bool CardRewardDefersToMap,
+        Func<RunState, CombatRoom, Dictionary<string, object?>> BuildBattle,
+        Func<RunState, Dictionary<string, object?>> BuildMap,
+        Func<EventRoom, RunState, Dictionary<string, object?>> BuildEvent,
+        Func<RunState, Dictionary<string, object?>> BuildTreasure)
+    {
+        /// <summary>One static instance per mode, so a state read allocates nothing extra.</summary>
+        internal static readonly ScreenPolicy Singleplayer = new(
+            CheckRunMenus: true,
+            MaskPendingRooms: true,
+            MaskMapBeforeCombat: true,
+            AutoOpenShop: true,
+            ReportNoRoomCharacterSelect: true,
+            CrystalSphereOutranksMap: false,
+            CardRewardDefersToMap: false,
+            BuildBattle: BuildBattleState,
+            BuildMap: BuildMapState,
+            BuildEvent: (eventRoom, _) => BuildEventState(eventRoom),
+            BuildTreasure: _ => BuildTreasureState());
+
+        /// <summary>The co-op payload, which reports the run in its own shape on every screen.</summary>
+        internal static readonly ScreenPolicy Multiplayer = new(
+            CheckRunMenus: false,
+            MaskPendingRooms: false,
+            MaskMapBeforeCombat: false,
+            AutoOpenShop: false,
+            ReportNoRoomCharacterSelect: false,
+            CrystalSphereOutranksMap: true,
+            CardRewardDefersToMap: true,
+            BuildBattle: (runState, _) => BuildMultiplayerBattleState(runState),
+            BuildMap: BuildMultiplayerMapState,
+            BuildEvent: BuildMultiplayerEventState,
+            BuildTreasure: BuildMultiplayerTreasureState);
+    }
+
+    /// <summary>
     /// Decides what the player is looking at: a pushed menu (settings/pause), an overlay, or
-    /// the room underneath.
+    /// the room underneath. The same ladder answers for both payloads; <paramref name="policy"/>
+    /// carries the differences.
     /// </summary>
     private static void AppendScreenState(
         Dictionary<string, object?> result,
@@ -321,31 +375,39 @@ public static partial class McpMod
         RunState runState,
         AbstractRoom? currentRoom,
         IOverlayScreen? topOverlay,
-        bool mapIsOpen)
+        bool mapIsOpen,
+        ScreenPolicy policy)
     {
-        // The settings screen is pushed on the run's submenu stack, over everything below.
-        // It is checked first so the room underneath is not reported as the live screen.
-        Dictionary<string, object?>? settingsState = TryBuildSettingsMenuState(tree?.Root, inRun: true);
-        // The pause menu shares that stack, and settings can be pushed on top of the
-        // pause menu, so settings has to keep winning when both are up.
-        Dictionary<string, object?>? pauseState = settingsState == null ? TryBuildPauseMenuState(tree?.Root) : null;
-        if (settingsState != null)
+        if (policy.CheckRunMenus)
         {
-            foreach (KeyValuePair<string, object?> entry in settingsState)
-                result[entry.Key] = entry.Value;
-            return;
-        }
-        if (pauseState != null)
-        {
-            foreach (KeyValuePair<string, object?> entry in pauseState)
-                result[entry.Key] = entry.Value;
-            return;
+            // The settings screen is pushed on the run's submenu stack, over everything below.
+            // It is checked first so the room underneath is not reported as the live screen.
+            Dictionary<string, object?>? settingsState = TryBuildSettingsMenuState(tree?.Root, inRun: true);
+            // The pause menu shares that stack, and settings can be pushed on top of the
+            // pause menu, so settings has to keep winning when both are up.
+            Dictionary<string, object?>? pauseState = settingsState == null ? TryBuildPauseMenuState(tree?.Root) : null;
+            if (settingsState != null)
+            {
+                foreach (KeyValuePair<string, object?> entry in settingsState)
+                {
+                    result[entry.Key] = entry.Value;
+                }
+                return;
+            }
+            if (pauseState != null)
+            {
+                foreach (KeyValuePair<string, object?> entry in pauseState)
+                {
+                    result[entry.Key] = entry.Value;
+                }
+                return;
+            }
         }
 
-        if (topOverlay != null && TryAppendOverlayState(result, topOverlay, mapIsOpen))
+        if (topOverlay != null && TryAppendOverlayState(result, topOverlay, mapIsOpen, policy))
             return;
 
-        AppendRoomState(result, tree, runState, currentRoom, topOverlay, mapIsOpen);
+        AppendRoomState(result, tree, runState, currentRoom, topOverlay, mapIsOpen, policy);
     }
 
     /// <summary>
@@ -354,12 +416,13 @@ public static partial class McpMod
     /// while the run is still waiting on it.
     /// </summary>
     private static bool TryAppendOverlayState(
-        Dictionary<string, object?> result, IOverlayScreen topOverlay, bool mapIsOpen)
+        Dictionary<string, object?> result, IOverlayScreen topOverlay, bool mapIsOpen,
+        ScreenPolicy policy)
         => TryAppendSelectionOverlayState(result, topOverlay)
-           || TryAppendCrystalSphereOverlay(result, topOverlay, mapIsOpen)
-           || TryAppendCardRewardOverlay(result, topOverlay, mapIsOpen)
+           || TryAppendCrystalSphereOverlay(result, topOverlay, mapIsOpen, policy)
+           || TryAppendCardRewardOverlay(result, topOverlay, mapIsOpen, policy)
            || TryAppendRewardsOverlay(result, topOverlay, mapIsOpen)
-           || TryAppendFallbackOverlayState(result, topOverlay);
+           || TryAppendFallbackOverlayState(result, topOverlay, policy);
 
     private static bool TryAppendSelectionOverlayState(
         Dictionary<string, object?> result, IOverlayScreen topOverlay)
@@ -388,10 +451,14 @@ public static partial class McpMod
     }
 
     private static bool TryAppendCrystalSphereOverlay(
-        Dictionary<string, object?> result, IOverlayScreen topOverlay, bool mapIsOpen)
+        Dictionary<string, object?> result, IOverlayScreen topOverlay, bool mapIsOpen,
+        ScreenPolicy policy)
     {
-        if (topOverlay is not NCrystalSphereScreen crystalSphereScreen
-            || (mapIsOpen && !CrystalSphereIsOutstanding(crystalSphereScreen)))
+        if (topOverlay is not NCrystalSphereScreen crystalSphereScreen)
+            return false;
+        // Co-op reports the sphere over a visible map; singleplayer only until the map takes over.
+        if (!policy.CrystalSphereOutranksMap
+            && mapIsOpen && !CrystalSphereIsOutstanding(crystalSphereScreen))
             return false;
 
         // Mirror the NRewardsScreen guard: the Crystal Sphere overlay lingers on
@@ -410,10 +477,13 @@ public static partial class McpMod
     }
 
     private static bool TryAppendCardRewardOverlay(
-        Dictionary<string, object?> result, IOverlayScreen topOverlay, bool mapIsOpen)
+        Dictionary<string, object?> result, IOverlayScreen topOverlay, bool mapIsOpen,
+        ScreenPolicy policy)
     {
-        if (topOverlay is not NCardRewardSelectionScreen cardRewardScreen
-            || (mapIsOpen && !CardRewardIsOutstanding(cardRewardScreen)))
+        if (topOverlay is not NCardRewardSelectionScreen cardRewardScreen)
+            return false;
+        // Co-op always defers to the map here; singleplayer only once the pick is answered.
+        if (mapIsOpen && (policy.CardRewardDefersToMap || !CardRewardIsOutstanding(cardRewardScreen)))
             return false;
 
         // The map deference is only correct for a card reward that has already
@@ -453,7 +523,7 @@ public static partial class McpMod
     }
 
     private static bool TryAppendFallbackOverlayState(
-        Dictionary<string, object?> result, IOverlayScreen topOverlay)
+        Dictionary<string, object?> result, IOverlayScreen topOverlay, ScreenPolicy policy)
     {
         if (topOverlay is NGameOverScreen)
         {
@@ -469,10 +539,11 @@ public static partial class McpMod
         // Catch-all for unhandled overlays - prevents soft-locks. Overlays that
         // linger on the stack while the map takes over (rewards, card reward,
         // Crystal Sphere) are excluded so the fallback below reports "map" once
-        // mapIsOpen is true.
-        if (topOverlay is NRewardsScreen
-            or NCardRewardSelectionScreen
-            or NCrystalSphereScreen)
+        // mapIsOpen is true. Co-op keeps the Crystal Sphere branch authoritative,
+        // so it is not excluded there.
+        if (topOverlay is NRewardsScreen or NCardRewardSelectionScreen)
+            return false;
+        if (!policy.CrystalSphereOutranksMap && topOverlay is NCrystalSphereScreen)
             return false;
 
         result["state_type"] = StateTypes.Overlay;
@@ -490,40 +561,44 @@ public static partial class McpMod
         RunState runState,
         AbstractRoom? currentRoom,
         IOverlayScreen? topOverlay,
-        bool mapIsOpen)
+        bool mapIsOpen,
+        ScreenPolicy policy)
     {
-        if (TryAppendPendingRoomState(result, runState, currentRoom))
+        if (policy.MaskPendingRooms && TryAppendPendingRoomState(result, runState, currentRoom))
             return;
 
-        if (mapIsOpen)
+        if (TryAppendLoadingCombat(result, currentRoom))
+            return;
+
+        if (policy.MaskMapBeforeCombat && mapIsOpen)
         {
             result["state_type"] = StateTypes.Map;
-            result["map"] = BuildMapState(runState);
+            result["map"] = policy.BuildMap(runState);
             AddBlockedMapDiagnostics(result, currentRoom, topOverlay);
             return;
         }
 
-        if (TryAppendCombatRoomState(result, runState, currentRoom))
+        if (TryAppendCombatRoomState(result, runState, currentRoom, policy))
             return;
-        if (TryAppendEventOrMapRoomState(result, runState, currentRoom))
+        if (TryAppendEventOrMapRoomState(result, runState, currentRoom, policy))
             return;
-        if (TryAppendSimpleRoomState(result, runState, currentRoom))
+        if (TryAppendSimpleRoomState(result, runState, currentRoom, policy))
             return;
-        AppendNoRoomState(result, tree, currentRoom);
+        AppendNoRoomState(result, tree, currentRoom, policy);
     }
 
     /// <summary>
     /// Rooms that are still being entered or finished, in priority order. Each of these
     /// exists because the map screen can linger visible over the room it just travelled to;
-    /// reporting "map" there makes a client travel straight past the room.
+    /// reporting "map" there makes a client travel straight past the room. Co-op has no
+    /// arrival masks, so only singleplayer walks this list.
     /// </summary>
     private static bool TryAppendPendingRoomState(
         Dictionary<string, object?> result, RunState runState, AbstractRoom? currentRoom)
         => TryAppendPendingRest(result, currentRoom)
            || TryAppendPendingEvent(result, currentRoom)
            || TryAppendPendingTreasure(result, currentRoom)
-           || TryAppendPendingShop(result, runState, currentRoom)
-           || TryAppendLoadingCombat(result, currentRoom);
+           || TryAppendPendingShop(result, runState, currentRoom);
 
     private static bool TryAppendPendingRest(
         Dictionary<string, object?> result, AbstractRoom? currentRoom)
@@ -668,7 +743,8 @@ public static partial class McpMod
     }
 
     private static bool TryAppendCombatRoomState(
-        Dictionary<string, object?> result, RunState runState, AbstractRoom? currentRoom)
+        Dictionary<string, object?> result, RunState runState, AbstractRoom? currentRoom,
+        ScreenPolicy policy)
     {
         if (currentRoom is not CombatRoom combatRoom)
             return false;
@@ -681,12 +757,12 @@ public static partial class McpMod
             {
                 result["state_type"] = StateTypes.HandSelect;
                 result["hand_select"] = BuildHandSelectState(playerHand);
-                result["battle"] = BuildBattleState(runState, combatRoom);
+                result["battle"] = policy.BuildBattle(runState, combatRoom);
             }
             else
             {
                 result["state_type"] = CombatRoomStateType(combatRoom); // monster, elite, boss
-                result["battle"] = BuildBattleState(runState, combatRoom);
+                result["battle"] = policy.BuildBattle(runState, combatRoom);
             }
             return true;
         }
@@ -696,7 +772,7 @@ public static partial class McpMod
         if (IsMapScreenOpenOrVisible())
         {
             result["state_type"] = StateTypes.Map;
-            result["map"] = BuildMapState(runState);
+            result["map"] = policy.BuildMap(runState);
         }
         else
         {
@@ -707,14 +783,15 @@ public static partial class McpMod
     }
 
     private static bool TryAppendEventOrMapRoomState(
-        Dictionary<string, object?> result, RunState runState, AbstractRoom? currentRoom)
+        Dictionary<string, object?> result, RunState runState, AbstractRoom? currentRoom,
+        ScreenPolicy policy)
     {
         if (currentRoom is EventRoom eventRoom)
         {
             if (IsMapScreenOpenOrVisible())
             {
                 result["state_type"] = StateTypes.Map;
-                result["map"] = BuildMapState(runState);
+                result["map"] = policy.BuildMap(runState);
             }
             else if (eventRoom.CanonicalEvent is FakeMerchant)
             {
@@ -724,7 +801,7 @@ public static partial class McpMod
             else
             {
                 result["state_type"] = StateTypes.Event;
-                result["event"] = BuildEventState(eventRoom);
+                result["event"] = policy.BuildEvent(eventRoom, runState);
             }
             return true;
         }
@@ -732,7 +809,7 @@ public static partial class McpMod
         if (currentRoom is MapRoom)
         {
             result["state_type"] = StateTypes.Map;
-            result["map"] = BuildMapState(runState);
+            result["map"] = policy.BuildMap(runState);
             return true;
         }
 
@@ -740,22 +817,24 @@ public static partial class McpMod
     }
 
     private static bool TryAppendSimpleRoomState(
-        Dictionary<string, object?> result, RunState runState, AbstractRoom? currentRoom)
+        Dictionary<string, object?> result, RunState runState, AbstractRoom? currentRoom,
+        ScreenPolicy policy)
     {
         if (currentRoom is MerchantRoom merchantRoom)
         {
             if (IsMapScreenOpenOrVisible())
             {
                 result["state_type"] = StateTypes.Map;
-                result["map"] = BuildMapState(runState);
+                result["map"] = policy.BuildMap(runState);
             }
             else
             {
-                // Auto-open the shopkeeper's inventory if not already open.
+                // Auto-open the shopkeeper's inventory if not already open. Co-op leaves the
+                // UI alone: the merchant is a shared screen, so the read does not touch it.
                 // NMerchantRoom.Inventory (UI node) can be null before the scene is fully ready;
                 // OpenInventory() itself accesses Inventory.IsOpen, so guard against null.
                 NMerchantRoom? merchUI = NMerchantRoom.Instance;
-                if (!s_passiveRead && merchUI?.Inventory != null && !merchUI.Inventory.IsOpen)
+                if (policy.AutoOpenShop && !s_passiveRead && merchUI?.Inventory != null && !merchUI.Inventory.IsOpen)
                 {
                     merchUI.OpenInventory();
                 }
@@ -770,7 +849,7 @@ public static partial class McpMod
             if (IsMapScreenOpenOrVisible())
             {
                 result["state_type"] = StateTypes.Map;
-                result["map"] = BuildMapState(runState);
+                result["map"] = policy.BuildMap(runState);
             }
             else
             {
@@ -785,12 +864,12 @@ public static partial class McpMod
             if (IsMapScreenOpenOrVisible())
             {
                 result["state_type"] = StateTypes.Map;
-                result["map"] = BuildMapState(runState);
+                result["map"] = policy.BuildMap(runState);
             }
             else
             {
                 result["state_type"] = StateTypes.Treasure;
-                result["treasure"] = BuildTreasureState();
+                result["treasure"] = policy.BuildTreasure(runState);
             }
             return true;
         }
@@ -799,9 +878,10 @@ public static partial class McpMod
     }
 
     private static void AppendNoRoomState(
-        Dictionary<string, object?> result, SceneTree? tree, AbstractRoom? currentRoom)
+        Dictionary<string, object?> result, SceneTree? tree, AbstractRoom? currentRoom,
+        ScreenPolicy policy)
     {
-        if (currentRoom == null && tree?.Root != null)
+        if (policy.ReportNoRoomCharacterSelect && currentRoom == null && tree?.Root != null)
         {
             NCharacterSelectScreen? activeCharSelect = FindFirst<NCharacterSelectScreen>(tree.Root);
             if (activeCharSelect != null && IsNodeVisible(activeCharSelect))
