@@ -46,22 +46,22 @@ public sealed class MoveBodies : MegaCrit.Sts2.Core.Models.MonsterModel
 
     private IReadOnlyList<Creature> Targets => Array.Empty<Creature>();
 
-    /// <summary>`Nibbit.HissMove`: an int stat getter reaches the amount.</summary>
+    /// <summary><c>Nibbit.HissMove</c>: an int stat getter reaches the amount.</summary>
     public async Task StatGetterAmount(IReadOnlyList<Creature> targets) =>
         await PowerCmd.Apply<StrengthPower>(new ThrowingPlayerChoiceContext(), base.Creature,
             HissStrengthGain, base.Creature, null);
 
-    /// <summary>`BowlbugSilk.SpitMove`: `1m` is a Decimal field constant.</summary>
+    /// <summary><c>BowlbugSilk.SpitMove</c>: <c>1m</c> is a Decimal field constant.</summary>
     public async Task OneLiteralAmount(IReadOnlyList<Creature> targets) =>
         await PowerCmd.Apply<WeakPower>(new ThrowingPlayerChoiceContext(), targets, 1m, base.Creature, null);
 
-    /// <summary>`Flyconid.VulnerableSporesMove`: `2m` needs the Decimal ctor.</summary>
+    /// <summary><c>Flyconid.VulnerableSporesMove</c>: <c>2m</c> needs the Decimal ctor.</summary>
     public async Task TwoLiteralAmount(IReadOnlyList<Creature> targets) =>
         await PowerCmd.Apply<IntangiblePower>(new ThrowingPlayerChoiceContext(), base.Creature,
             2m, base.Creature, null);
 
     /// <summary>
-    /// `Crusher.BugStingMove`: an attack precedes two literal-amount debuffs.
+    /// <c>Crusher.BugStingMove</c>: an attack precedes two literal-amount debuffs.
     /// The attack's own damage must not leak into either.
     /// </summary>
     public async Task AttackThenTwoDebuffs(IReadOnlyList<Creature> targets)
@@ -71,29 +71,29 @@ public sealed class MoveBodies : MegaCrit.Sts2.Core.Models.MonsterModel
         await PowerCmd.Apply<FrailPower>(new ThrowingPlayerChoiceContext(), targets, 2m, base.Creature, null);
     }
 
-    /// <summary>`Toadpole.SpikeSpitMove`: a negated stat is a steal.</summary>
+    /// <summary><c>Toadpole.SpikeSpitMove</c>: a negated stat is a steal.</summary>
     public async Task NegatedAmount(IReadOnlyList<Creature> targets) =>
         await PowerCmd.Apply<StrengthPower>(new ThrowingPlayerChoiceContext(), targets,
             -SpikenAmount, base.Creature, null);
 
-    /// <summary>`Axebot.BootUpMove`: arithmetic over two stat getters.</summary>
+    /// <summary><c>Axebot.BootUpMove</c>: arithmetic over two stat getters.</summary>
     public async Task ComputedAmount(IReadOnlyList<Creature> targets) =>
         await PowerCmd.Apply<StrengthPower>(new ThrowingPlayerChoiceContext(), base.Creature,
             BootUpStrGain * (2 - StockAmount), base.Creature, null);
 
-    /// <summary>`DevotedSculptor`: the amount is a mutable counter field.</summary>
+    /// <summary><c>DevotedSculptor</c>: the amount is a mutable counter field.</summary>
     public async Task FieldAmount(IReadOnlyList<Creature> targets) =>
         await PowerCmd.Apply<StrengthPower>(new ThrowingPlayerChoiceContext(), base.Creature,
             _ritualGain, base.Creature, null);
 
     /// <summary>
-    /// `KnowledgeDemon.PonderMove`: a heal scaled by the run's player count,
+    /// <c>KnowledgeDemon.PonderMove</c>: a heal scaled by the run's player count,
     /// reached through a property chain that leaves the monster entirely.
     /// </summary>
     public async Task PlayerCountScaledHeal(IReadOnlyList<Creature> targets) =>
         await CreatureCmd.Heal(base.Creature, 30 * base.Creature.CombatState.Players.Count);
 
-    /// <summary>`WaterfallGiant.SiphonMove`: the same, over a stat getter.</summary>
+    /// <summary><c>WaterfallGiant.SiphonMove</c>: the same, over a stat getter.</summary>
     public async Task StatTimesPlayerCountHeal(IReadOnlyList<Creature> targets) =>
         await CreatureCmd.Heal(base.Creature, SiphonHeal * base.Creature.CombatState.Players.Count);
 
@@ -105,13 +105,13 @@ public sealed class MoveBodies : MegaCrit.Sts2.Core.Models.MonsterModel
             fromRuntime, base.Creature, null);
     }
 
-    /// <summary>`Nibbit.SliceMove`: block from a stat getter.</summary>
+    /// <summary><c>Nibbit.SliceMove</c>: block from a stat getter.</summary>
     public async Task BlockAmount(IReadOnlyList<Creature> targets) =>
         await CreatureCmd.GainBlock(base.Creature, 5, ValueProp.Move, null);
 
     /// <summary>
-    /// `Guardbot.GuardMove`: the one shipped move that shields somebody else.
-    /// The recipient class is readable off the `Where` predicate's type test.
+    /// <c>Guardbot.GuardMove</c>: the one shipped move that shields somebody else.
+    /// The recipient class is readable off the <c>Where</c> predicate's type test.
     /// </summary>
     public async Task AllyBlockForNamedMonster(IReadOnlyList<Creature> targets)
     {
@@ -145,7 +145,7 @@ public sealed class MoveBodies : MegaCrit.Sts2.Core.Models.MonsterModel
     }
 
     /// <summary>
-    /// `TheForgotten.MiasmaMove`: a self-block between two applies. The filter
+    /// <c>TheForgotten.MiasmaMove</c>: a self-block between two applies. The filter
     /// state left by any earlier lambda must not make this one look ally-bound.
     /// </summary>
     public async Task DebuffThenSelfBlockThenBuff(IReadOnlyList<Creature> targets)
@@ -156,16 +156,16 @@ public sealed class MoveBodies : MegaCrit.Sts2.Core.Models.MonsterModel
             2m, base.Creature, null);
     }
 
-    /// <summary>`Chomper.ScreechMove`: a bottom-of-discard status insert.</summary>
+    /// <summary><c>Chomper.ScreechMove</c>: a bottom-of-discard status insert.</summary>
     public async Task DiscardInsert(IReadOnlyList<Creature> targets) =>
         await CardPileCmd.AddToCombatAndPreview<Dazed>(targets, PileType.Discard, 3, null);
 
-    /// <summary>`MechaKnight.FlamethrowerMove`: an insert straight to hand.</summary>
+    /// <summary><c>MechaKnight.FlamethrowerMove</c>: an insert straight to hand.</summary>
     public async Task HandInsert(IReadOnlyList<Creature> targets) =>
         await CardPileCmd.AddToCombatAndPreview<Slimed>(targets, PileType.Hand, 2, null);
 
     /// <summary>
-    /// `Noisebot.NoiseMove`: two generated cards, one to the discard and one at
+    /// <c>Noisebot.NoiseMove</c>: two generated cards, one to the discard and one at
     /// a random draw-pile position.
     /// </summary>
     public async Task SplitGeneratedInserts(IReadOnlyList<Creature> targets)
@@ -177,7 +177,7 @@ public sealed class MoveBodies : MegaCrit.Sts2.Core.Models.MonsterModel
     }
 
     /// <summary>
-    /// `TheInsatiable.LiquifyGroundMove`: an instanced power applied to self
+    /// <c>TheInsatiable.LiquifyGroundMove</c>: an instanced power applied to self
     /// through the non-generic overload.
     /// </summary>
     public async Task InstancedPowerOnSelf(IReadOnlyList<Creature> targets)
@@ -187,7 +187,7 @@ public sealed class MoveBodies : MegaCrit.Sts2.Core.Models.MonsterModel
     }
 
     /// <summary>
-    /// `MagiKnight.DampenMove`: the same overload aimed at a target creature.
+    /// <c>MagiKnight.DampenMove</c>: the same overload aimed at a target creature.
     /// </summary>
     public async Task InstancedPowerOnTarget(IReadOnlyList<Creature> targets)
     {
@@ -197,8 +197,8 @@ public sealed class MoveBodies : MegaCrit.Sts2.Core.Models.MonsterModel
     }
 
     /// <summary>
-    /// `SpectralKnight.HexMove`: the GENERIC single-`Creature` overload aimed at
-    /// a loop variable over the move's targets — the player, not the mover.
+    /// <c>SpectralKnight.HexMove</c>: the GENERIC single-<c>Creature</c> overload aimed at
+    /// a loop variable over the move's targets - the player, not the mover.
     /// Reading the parameter type alone called this a self-buff.
     /// </summary>
     public async Task GenericPowerOnLoopTarget(IReadOnlyList<Creature> targets)
@@ -208,7 +208,7 @@ public sealed class MoveBodies : MegaCrit.Sts2.Core.Models.MonsterModel
     }
 
     /// <summary>
-    /// `TheObscura.WailMove`: the GENERIC collection overload aimed at the
+    /// <c>TheObscura.WailMove</c>: the GENERIC collection overload aimed at the
     /// mover's OWN side. Reading the parameter type alone handed the player 3
     /// Strength every time this move ran.
     /// </summary>
@@ -217,7 +217,7 @@ public sealed class MoveBodies : MegaCrit.Sts2.Core.Models.MonsterModel
             base.Creature.CombatState.GetTeammatesOf(base.Creature), 3m, base.Creature, null);
 
     /// <summary>
-    /// `Rocket.TargetingReticleMove`: the same overload over `GetOpponentsOf`,
+    /// <c>Rocket.TargetingReticleMove</c>: the same overload over <c>GetOpponentsOf</c>,
     /// which really is the player side and must stay one.
     /// </summary>
     public async Task GenericPowerOnOpponents(IReadOnlyList<Creature> targets) =>
@@ -237,7 +237,7 @@ public sealed class MoveBodies : MegaCrit.Sts2.Core.Models.MonsterModel
     }
 
     /// <summary>
-    /// `OwlMagistrate.VerdictMove`: an attack, a debuff, and then the removal of
+    /// <c>OwlMagistrate.VerdictMove</c>: an attack, a debuff, and then the removal of
     /// the buff its own Judicial Flight granted three turns earlier.
     /// </summary>
     public async Task AttackDebuffThenRemoveOwnBuff(IReadOnlyList<Creature> targets)
@@ -270,7 +270,7 @@ public sealed class MoveBodies : MegaCrit.Sts2.Core.Models.MonsterModel
     }
 
     /// <summary>
-    /// `ToughEgg.HatchMove` / `TestSubject`: two removals in one body, both self.
+    /// <c>ToughEgg.HatchMove</c> / <c>TestSubject</c>: two removals in one body, both self.
     /// </summary>
     public async Task RemoveTwoOwnPowers(IReadOnlyList<Creature> targets)
     {
@@ -281,7 +281,7 @@ public sealed class MoveBodies : MegaCrit.Sts2.Core.Models.MonsterModel
     /// <summary>
     /// A loop over a filtered list of the mover's OWN side, applying to each. The
     /// creature is a loop variable exactly as the Spectral Knight's is, but the
-    /// collection is not `targets`, so it must stay an honest unknown.
+    /// collection is not <c>targets</c>, so it must stay an honest unknown.
     /// </summary>
     public async Task GenericPowerOnFilteredOwnSide(IReadOnlyList<Creature> targets)
     {
@@ -306,7 +306,7 @@ public sealed class MoveBodies : MegaCrit.Sts2.Core.Models.MonsterModel
     }
 
     /// <summary>
-    /// `Entomancer.SpitMove`: the applies differ by branch, and a linear scan
+    /// <c>Entomancer.SpitMove</c>: the applies differ by branch, and a linear scan
     /// records both sides. The export is their SUM, which is why the body has to
     /// declare that it branched.
     /// </summary>
@@ -328,7 +328,7 @@ public sealed class MoveBodies : MegaCrit.Sts2.Core.Models.MonsterModel
     }
 
     /// <summary>
-    /// `LivingFog.BloatMove`: a loop that adds a creature, then an attack. The
+    /// <c>LivingFog.BloatMove</c>: a loop that adds a creature, then an attack. The
     /// class name in the generic argument is the only part of a summon a static
     /// read can recover.
     /// </summary>
@@ -344,7 +344,7 @@ public sealed class MoveBodies : MegaCrit.Sts2.Core.Models.MonsterModel
     }
 
     /// <summary>
-    /// `Fogmog.IllusionMove`: the slot is a string LITERAL, and the sound and
+    /// <c>Fogmog.IllusionMove</c>: the slot is a string LITERAL, and the sound and
     /// animation names before it must not be mistaken for one.
     /// </summary>
     public async Task SummonAtALiteralSlot(IReadOnlyList<Creature> targets)
@@ -354,7 +354,7 @@ public sealed class MoveBodies : MegaCrit.Sts2.Core.Models.MonsterModel
     }
 
     /// <summary>
-    /// `Fabricator.FabricateMove`: the non-generic overload, whose model is
+    /// <c>Fabricator.FabricateMove</c>: the non-generic overload, whose model is
     /// picked at runtime. Nothing static names the creature, so it must export
     /// no summon at all rather than a wrong one.
     /// </summary>
@@ -366,22 +366,24 @@ public sealed class MoveBodies : MegaCrit.Sts2.Core.Models.MonsterModel
 
     // --- Damage calcs, as `SingleAttackIntent` receives them ---
 
-    /// <summary>`TheForgotten.DreadDamage`: base plus the attacker's own Dexterity.</summary>
+    /// <summary><c>TheForgotten.DreadDamage</c>: base plus the attacker's own Dexterity.</summary>
     private int DreadDamage => 13 + base.Creature.GetPowerAmount<DexterityPower>();
 
-    /// <summary>`WaterfallGiant.CurrentPressureGunDamage`: a plain mutable counter.</summary>
+    /// <summary><c>WaterfallGiant.CurrentPressureGunDamage</c>: a plain mutable counter.</summary>
     private int CurrentPressureGunDamage => 9;
 
-    /// <summary>`SingleAttackIntent(() =&gt; DreadDamage)`.</summary>
+    /// <summary><c>SingleAttackIntent(() =&gt; DreadDamage)</c>.</summary>
     public Func<decimal> DamageScaledByOwnDexterity() => () => DreadDamage;
 
-    /// <summary>`SingleAttackIntent(() =&gt; CurrentPressureGunDamage)`: no power read.</summary>
+    /// <summary>
+    /// <c>SingleAttackIntent(() =&gt; CurrentPressureGunDamage)</c>: no power read.
+    /// </summary>
     public Func<decimal> DamageFromAMutableCounter() => () => CurrentPressureGunDamage;
 
-    /// <summary>`SingleAttackIntent(int)`, which wraps a captured constant.</summary>
+    /// <summary><c>SingleAttackIntent(int)</c>, which wraps a captured constant.</summary>
     public Func<decimal> DamageFromAConstant(int damage) => () => damage;
 
-    /// <summary>`Aeonglass`: the insert count is itself a stat getter.</summary>
+    /// <summary><c>Aeonglass</c>: the insert count is itself a stat getter.</summary>
     public async Task GetterCountInsert(IReadOnlyList<Creature> targets) =>
         await CardPileCmd.AddToCombatAndPreview<Beckon>(targets, PileType.Discard, WitherAmount, null);
 }
@@ -390,7 +392,7 @@ public class CombatStateStub
 {
     public CardModel CreateCard<T>(Player? player) where T : CardModel, new() => new T();
 
-    /// <summary>The player side, which is what `Rocket.TargetingReticleMove` buffs.</summary>
+    /// <summary>The player side, which is what <c>Rocket.TargetingReticleMove</c> buffs.</summary>
     public IReadOnlyList<Creature> GetOpponentsOf(Creature creature) => Array.Empty<Creature>();
 }
 

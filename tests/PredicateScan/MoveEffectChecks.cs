@@ -133,7 +133,7 @@ public static partial class McpMod
 
         // Block aimed at somebody else. Crediting it to the mover gave the
         // Guardbot 15 Block a turn it never has while the Fabricator's real
-        // Block went missing, and nothing flagged it — the move's own
+        // Block went missing, and nothing flagged it - the move's own
         // DefendIntent was satisfied by the wrong creature's number.
         CheckAllyBlock("guardbot", nameof(MoveBodies.AllyBlockForNamedMonster), 0, 15, "Fabricator");
         CheckAllyBlock("unfiltered ally block", nameof(MoveBodies.AllyBlockWithoutFilter), 0, 15, null);
@@ -221,7 +221,7 @@ public static partial class McpMod
 
         // Which of the attacker's own powers move its damage. The intent
         // label bakes the current value, so a consumer applies the rest as
-        // a delta — and without this it has no way to know Dexterity is one
+        // a delta - and without this it has no way to know Dexterity is one
         // of them for exactly one attack in the game.
         var monster = new MoveBodies();
         Check("dexterity-scaled damage",

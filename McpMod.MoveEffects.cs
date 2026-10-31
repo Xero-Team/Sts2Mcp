@@ -11,7 +11,7 @@ namespace Sts2Mcp;
 public static partial class McpMod
 {
     // Move-effect extraction: what a monster move ACTUALLY does, statically
-    // read from the move lambda's IL.  Game code funnels every effect through
+    // read from the move lambda's IL. Game code funnels every effect through
     // a handful of command methods, so the calls are recognizable:
     //   PowerCmd.Apply<StrengthPower>(ctx, target|targets, amount, ...)
     //     - generic arg = the power class. The parameter TYPE alone does not
@@ -20,7 +20,7 @@ public static partial class McpMod
     //       is "self" only when it came from the monster's own `Creature`, and
     //       a collection is "player" only when it did not come from
     //       `GetTeammatesOf` (the mover's own side). Anything else exports
-    //       "unknown", which the consumer drops and flags — SpectralKnight's
+    //       "unknown", which the consumer drops and flags - SpectralKnight's
     //       Hex aims a single-Creature apply at the player and TheObscura's
     //       Wail aims a collection apply at its own side, so assuming from the
     //       type silently buffed the wrong creature in both directions.
@@ -38,7 +38,7 @@ public static partial class McpMod
     // Anything unrecognized simply yields no data (consumers fall back to
     // heuristics), and any reflection failure degrades to null.
     //
-    // Amount recovery.  Every amount parameter is a Decimal, and C# reaches it
+    // Amount recovery. Every amount parameter is a Decimal, and C# reaches it
     // three different ways, all of which must be read or the exported number is
     // silently wrong rather than merely absent:
     //   int expression -> op_Implicit(int32)          e.g. HissStrengthGain
@@ -51,11 +51,11 @@ public static partial class McpMod
     //
     // Reading an amount means invoking the getters that produce it against the
     // live monster, which is also how ascension scaling and the run's player
-    // count come through.  A getter is therefore resolved against whatever
+    // count come through. A getter is therefore resolved against whatever
     // object the surrounding expression has reached, not only against the
     // monster: `30 * base.Creature.CombatState.Players.Count` walks
     // MonsterModel -> Creature -> ICombatState -> IReadOnlyList<Player> before
-    // it reaches an int.  Because every step of such a chain is a callvirt that
+    // it reaches an int. Because every step of such a chain is a callvirt that
     // pops its receiver and pushes its result, ignoring the non-int steps
     // entirely leaves the integer operand stack exactly as the source wrote it.
 
@@ -80,7 +80,7 @@ public static partial class McpMod
         // Amounts are read off the live monster, so a scan is only reusable
         // within the combat it was taken in: ascension-scaled stat getters
         // and the run's player count both differ between runs, and the
-        // cache is keyed only by type and move id.  Dropping the table when
+        // cache is keyed only by type and move id. Dropping the table when
         // the combat changes serves fresh numbers instead of the previous
         // fight's.
         object? scope = TryReadQuiet<object>(() => monster.CombatState);
@@ -113,24 +113,24 @@ public static partial class McpMod
         /// <summary>Powers the move takes back off a creature.</summary>
         /// <remarks>
         /// A move that grants a power for a fixed span and then removes it
-        /// exports only half of itself without this. `OwlMagistrate` is the
-        /// shipped case that matters: its Judicial Flight applies `SoarPower`
+        /// exports only half of itself without this. <c>OwlMagistrate</c> is the
+        /// shipped case that matters: its Judicial Flight applies <c>SoarPower</c>
         /// (which halves the incoming powered attacks the PLAYER deals) and its
         /// Verdict removes it again, so reading only the grant leaves a consumer
-        /// believing the Magistrate is permanently armoured — an understatement
+        /// believing the Magistrate is permanently armoured - an understatement
         /// of the player's own damage, which is the direction a search must
         /// never be wrong in.
         /// </remarks>
         internal readonly List<Dictionary<string, object?>> Removes = new();
         /// <summary>Creatures the move adds to the mover's own side.</summary>
         /// <remarks>
-        /// `CreatureCmd.Add&lt;T&gt;(combatState, slot)` names the monster in its
+        /// <c>CreatureCmd.Add&lt;T&gt;(combatState, slot)</c> names the monster in its
         /// generic argument, which is the one thing about a summon a static read
-        /// can recover — everything else (the spawn's HP roll, its powers, its
+        /// can recover - everything else (the spawn's HP roll, its powers, its
         /// move machine) is a property of the class, and the consumer looks
         /// those up in its own decomp-derived catalog. The non-generic
-        /// `Add(MonsterModel, …)` overload takes a model picked at runtime
-        /// (`Fabricator` rolls between two) and stays unreadable.
+        /// <c>Add(MonsterModel, ...)</c> overload takes a model picked at runtime
+        /// (<c>Fabricator</c> rolls between two) and stays unreadable.
         /// </remarks>
         internal readonly List<Dictionary<string, object?>> Summons = new();
         internal int? Block;
@@ -153,18 +153,18 @@ public static partial class McpMod
         /// constants belonging to a call, but it does not disturb arithmetic
         /// around it, because its own receiver pop and result push cancel.
         /// Clearing one list for the other's benefit is what previously made
-        /// `30 * chain.Count` unreadable.
+        /// <c>30 * chain.Count</c> unreadable.
         /// </remarks>
         internal readonly List<int?> Operands = new();
 
         /// <summary>
-        /// Generic argument of the most recent `CreateCard&lt;T&gt;`, naming the card a
-        /// following `AddGeneratedCardToCombat` inserts.
+        /// Generic argument of the most recent <c>CreateCard&lt;T&gt;</c>, naming the card a
+        /// following <c>AddGeneratedCardToCombat</c> inserts.
         /// </summary>
         internal string? PendingCard;
         /// <summary>
-        /// Generic argument of the most recent `ModelDb.Power&lt;T&gt;`, naming the
-        /// instanced power a following non-generic `PowerCmd.Apply` applies.
+        /// Generic argument of the most recent <c>ModelDb.Power&lt;T&gt;</c>, naming the
+        /// instanced power a following non-generic <c>PowerCmd.Apply</c> applies.
         /// </summary>
         internal string? PendingPower;
         /// <summary>
@@ -173,14 +173,14 @@ public static partial class McpMod
         /// </summary>
         /// <remarks>
         /// Survives across statements, as <see cref="PendingCard"/> and
-        /// <see cref="PendingPower"/> do: the `Where` that builds the recipient
-        /// list and the `GainBlock` inside the following `foreach` are separate
+        /// <see cref="PendingPower"/> do: the <c>Where</c> that builds the recipient
+        /// list and the <c>GainBlock</c> inside the following <c>foreach</c> are separate
         /// statements, so an argument run cannot be what carries it.
         /// </remarks>
         internal string? PendingRecipient;
         /// <summary>
         /// Whether the creature expression evaluated so far in this argument run
-        /// was the monster's own `Creature`.
+        /// was the monster's own <c>Creature</c>.
         /// </summary>
         internal bool LastCreatureIsSelf;
         /// <summary>
@@ -190,13 +190,13 @@ public static partial class McpMod
         /// Arguments evaluate left to right, and every apply overload orders
         /// them target-then-amount-then-applier. Sampling at the amount is
         /// therefore the last moment the flag still describes the TARGET; the
-        /// applier that follows is almost always `base.Creature` and would
+        /// applier that follows is almost always <c>base.Creature</c> and would
         /// otherwise make every apply look self-targeted.
         /// </remarks>
         internal bool TargetWasSelf;
         /// <summary>
         /// Whether the collection expression evaluated so far in this argument
-        /// run came from `GetTeammatesOf` — the mover's own side.
+        /// run came from <c>GetTeammatesOf</c> - the mover's own side.
         /// </summary>
         internal bool LastCollectionIsOwnSide;
         /// <summary>
@@ -217,7 +217,7 @@ public static partial class McpMod
         internal bool TargetWasOwnSide;
         /// <summary>
         /// Whether the collection reached in this argument run is the move's own
-        /// <c>targets</c> parameter — the player side, by definition.
+        /// <c>targets</c> parameter - the player side, by definition.
         /// </summary>
         internal bool LastCollectionIsTargets;
         /// <summary>
@@ -225,10 +225,10 @@ public static partial class McpMod
         /// parameter.
         /// </summary>
         /// <remarks>
-        /// Sticky, unlike the argument-run flags: `GetEnumerator` and the
-        /// `get_Current` inside the loop are separated by the whole loop header,
-        /// so an argument run cannot be what carries it. A `GetEnumerator` over
-        /// anything else clears it, which is what keeps `Guardbot`'s loop over a
+        /// Sticky, unlike the argument-run flags: <c>GetEnumerator</c> and the
+        /// <c>get_Current</c> inside the loop are separated by the whole loop header,
+        /// so an argument run cannot be what carries it. A <c>GetEnumerator</c> over
+        /// anything else clears it, which is what keeps <c>Guardbot</c>'s loop over a
         /// filtered enemy list from reading as a loop over the players.
         /// </remarks>
         internal bool EnumeratingTargets;
@@ -264,11 +264,11 @@ public static partial class McpMod
         /// The last string literal pushed in this argument run.
         /// </summary>
         /// <remarks>
-        /// `CreatureCmd.Add&lt;T&gt;` takes its slot either as a literal
-        /// (`Fogmog` and `TheObscura` both pass `"illusion"`) or as a local the
-        /// move computed from `Encounter.GetNextSlot`. A literal names the slot
+        /// <c>CreatureCmd.Add&lt;T&gt;</c> takes its slot either as a literal
+        /// (<c>Fogmog</c> and <c>TheObscura</c> both pass <c>"illusion"</c>) or as a local the
+        /// move computed from <c>Encounter.GetNextSlot</c>. A literal names the slot
         /// outright and the game performs no occupancy check on it; a computed
-        /// one means the consumer must replay `GetNextSlot` itself. Cleared by
+        /// one means the consumer must replay <c>GetNextSlot</c> itself. Cleared by
         /// <see cref="EndArgumentRun"/>, so the sound-effect and animation names
         /// every move body is full of cannot leak into the call after them.
         /// </remarks>
@@ -313,9 +313,9 @@ public static partial class McpMod
         /// </summary>
         /// <remarks>
         /// Exact for the straight-line arithmetic these amounts use
-        /// (`BootUpStrGain * (2 - StockAmount)`, `30 * Players.Count`). Anything
+        /// (<c>BootUpStrGain * (2 - StockAmount)</c>, <c>30 * Players.Count</c>). Anything
         /// with an unknown operand, or with too few operands to be sure what is
-        /// being combined, poisons instead — a computed amount must report as
+        /// being combined, poisons instead - a computed amount must report as
         /// unknown, never as an operand.
         /// </remarks>
         internal void BinaryOp(Func<int, int, int?> combine)
@@ -387,7 +387,7 @@ public static partial class McpMod
         MethodInfo stub = onPerform.Method;
 
         // Async lambdas compile to a stub that spins up a state machine nested
-        // in the same type — the real body is its MoveNext.
+        // in the same type - the real body is its MoveNext.
         var bodies = new List<MethodBase> { stub };
         Type? smType = stub.DeclaringType?
             .GetNestedTypes(BindingFlags.Public | BindingFlags.NonPublic)
@@ -826,11 +826,11 @@ public static partial class McpMod
     }
 
     /// <summary>
-    /// Which argument is the move's own `targets` list.
+    /// Which argument is the move's own <c>targets</c> list.
     /// </summary>
     /// <remarks>
-    /// Every move body is `Task XxxMove(IReadOnlyList&lt;Creature&gt; targets)`, and that
-    /// list IS the player side — so a creature taken out of it is a player-side target,
+    /// Every move body is <c>Task XxxMove(IReadOnlyList&lt;Creature&gt; targets)</c>, and that
+    /// list IS the player side - so a creature taken out of it is a player-side target,
     /// however the apply overload's parameter happens to be typed. The async rewrite
     /// hoists the parameter into a field of the same name, which is how the state
     /// machine half of the walk finds it.
@@ -896,7 +896,7 @@ public static partial class McpMod
 
     /// <summary>
     /// Argument and local traffic, tracked only to follow one creature from the move's
-    /// `targets` to the apply that consumes it. The loop variable is a plain local in a
+    /// <c>targets</c> to the apply that consumes it. The loop variable is a plain local in a
     /// sync body and a hoisted field in an async one, so both routes are followed.
     /// </summary>
     private static int? TryHandleArgumentOpcode(byte[] il, int i, byte op, int targetsArg, MoveFxScan scan)
@@ -971,7 +971,9 @@ public static partial class McpMod
         }
     }
 
-    /// <summary>Control flow: operands collected on one path cannot be combined with those on another.</summary>
+    /// <summary>
+    /// Control flow: operands collected on one path cannot be combined with those on another.
+    /// </summary>
     private static int? TryHandleBranchOpcode(byte[] il, int i, byte op, MoveFxScan scan)
     {
         switch (op)
@@ -1021,7 +1023,9 @@ public static partial class McpMod
         }
     }
 
-    /// <summary>The field reads the arithmetic can use: int counters and Decimal constants.</summary>
+    /// <summary>
+    /// The field reads the arithmetic can use: int counters and Decimal constants.
+    /// </summary>
     private static int? TryHandleFieldLoadOpcode(
         byte[] il, int i, byte op, Module module, MonsterModel monster, MoveFxScan scan)
     {
@@ -1031,9 +1035,9 @@ public static partial class McpMod
                 {
                     int tok = BitConverter.ToInt32(il, i + 1);
                     // Only an int field is an operand. Everything else loaded
-                    // this way is a reference — an async state machine reaches
+                    // this way is a reference - an async state machine reaches
                     // its monster through `<>4__this`, and its own parameters
-                    // through fields, before nearly every call — so pushing one
+                    // through fields, before nearly every call - so pushing one
                     // as an unknown int both poisons arithmetic it was never
                     // part of and shifts the argument list that pile, count and
                     // position are read out of positionally. A reference is not
@@ -1105,13 +1109,13 @@ public static partial class McpMod
     /// The monster class a lambda type-tests, when it tests exactly one.
     /// </summary>
     /// <remarks>
-    /// `Guardbot.GuardMove` does not shield itself — it shields
-    /// `Enemies.Where(c => c.Monster is Fabricator)`. The predicate is a cached
-    /// lambda the move body reaches through `ldftn`, and `x is T` lowers to a
-    /// single `isinst`, so the recipient class is statically readable.
+    /// <c>Guardbot.GuardMove</c> does not shield itself - it shields
+    /// <c>Enemies.Where(c => c.Monster is Fabricator)</c>. The predicate is a cached
+    /// lambda the move body reaches through <c>ldftn</c>, and <c>x is T</c> lowers to a
+    /// single <c>isinst</c>, so the recipient class is statically readable.
     ///
     /// Two guards keep an unrelated cast from being mistaken for a recipient:
-    /// the tested type must be a `MonsterModel`, and there must be exactly one
+    /// the tested type must be a <c>MonsterModel</c>, and there must be exactly one
     /// such test. A lambda that tests two says nothing, because which of them
     /// selects the recipient is not something a linear read can tell.
     /// </remarks>
@@ -1150,19 +1154,19 @@ public static partial class McpMod
     /// <remarks>
     /// Almost every attack's damage is a constant or a stat getter, and the
     /// intent label the game renders already bakes the attacker's current
-    /// Strength and Weak — which is why a consumer applies those as deltas from
+    /// Strength and Weak - which is why a consumer applies those as deltas from
     /// the values present when the label was read.
     ///
-    /// `TheForgotten.DreadDamage` is `13 + Creature.GetPowerAmount&lt;DexterityPower&gt;()`,
-    /// and its Miasma move steals 2 Dexterity from the player and stacks it on
-    /// itself every other turn. So a Dexterity the *simulation* introduces
-    /// raises the Dread too, and a consumer that only tracks Strength
-    /// understates every predicted Dread by the amount stolen since.
+    /// <c>TheForgotten.DreadDamage</c> is
+    /// <c>13 + Creature.GetPowerAmount&lt;DexterityPower&gt;()</c>, and its Miasma move
+    /// steals 2 Dexterity from the player and stacks it on itself every other turn. So a
+    /// Dexterity the *simulation* introduces raises the Dread too, and a consumer that only
+    /// tracks Strength understates every predicted Dread by the amount stolen since.
     ///
     /// Reading this off the calc rather than naming the monster keeps it
     /// general: any attack that reads a power of its owner's is picked up. The
     /// walk follows one level of call into methods declared on a
-    /// <c>MonsterModel</c>, because `() =&gt; DreadDamage` reaches the power
+    /// <c>MonsterModel</c>, because <c>() =&gt; DreadDamage</c> reaches the power
     /// through the monster's own property getter. Anything unreadable exports
     /// nothing, which leaves a consumer exactly as it was.
     /// </remarks>
@@ -1278,7 +1282,7 @@ public static partial class McpMod
     /// Stat getters (get_HissStrengthGain) are resolved against the live monster so
     /// ascension scaling comes through; other getters (get_Creature, get_AttackSfx) must NOT
     /// clobber the tracked int, but they do carry the chain forward so a getter further
-    /// along still has a receiver (`Creature.CombatState.Players.Count`).
+    /// along still has a receiver (<c>Creature.CombatState.Players.Count</c>).
     /// </remarks>
     private static bool TryHandleGetterCall(MethodBase mm, MonsterModel monster, MoveFxScan scan)
     {
@@ -1322,9 +1326,10 @@ public static partial class McpMod
     }
 
     /// <summary>
-    /// `CreateCard&lt;Dazed&gt;(player)` names the card the next insert adds, and
-    /// `ModelDb.Power&lt;SandpitPower&gt;()` names the instanced power the next non-generic apply
-    /// applies. Both are the only static handle on values that are otherwise built at runtime.
+    /// <c>CreateCard&lt;Dazed&gt;(player)</c> names the card the next insert adds, and
+    /// <c>ModelDb.Power&lt;SandpitPower&gt;()</c> names the instanced power the next non-generic
+    /// apply applies. Both are the only static handle on values that are otherwise built at
+    /// runtime.
     /// </summary>
     private static void TryHandleGenericNameCall(MethodBase mm, MoveFxScan scan)
     {
@@ -1367,8 +1372,8 @@ public static partial class McpMod
         // the parameter type. A collection is the player side unless it
         // came from `GetTeammatesOf`; a single Creature is the monster
         // itself only when it came from its own `Creature`. Everything
-        // else — a loop variable over the move's targets, a teammate
-        // picked out of a filtered list — is an honest unknown.
+        // else - a loop variable over the move's targets, a teammate
+        // picked out of a filtered list - is an honest unknown.
         string? side;
         if (collection)
             side = scan.TargetWasOwnSide ? "allies" : "player";
@@ -1391,7 +1396,7 @@ public static partial class McpMod
     /// <summary>
     /// Apply(ctx, PowerModel power, Creature target, ...) applies an instance built at
     /// runtime. Its target parameter is a single Creature either way, so who receives it is
-    /// read from the expression that produced that creature: the monster's own `Creature`
+    /// read from the expression that produced that creature: the monster's own <c>Creature</c>
     /// property means self, anything else (a loop variable over the move's targets) means the
     /// player side. Every shipped use of this overload does aim at the players.
     /// </summary>
@@ -1414,10 +1419,10 @@ public static partial class McpMod
     }
 
     /// <summary>
-    /// `Remove&lt;T&gt;(creature)` names the power in its generic argument, and the creature
-    /// expression says whose it is — the same rule the applies use, read from the flag sampled
+    /// <c>Remove&lt;T&gt;(creature)</c> names the power in its generic argument, and the creature
+    /// expression says whose it is - the same rule the applies use, read from the flag sampled
     /// in <see cref="HandleCall"/> because a Remove carries no amount to sample at. The
-    /// non-generic `Remove(power)` overload takes a runtime instance and stays unreadable,
+    /// non-generic <c>Remove(power)</c> overload takes a runtime instance and stays unreadable,
     /// which is silence rather than a guess.
     /// </summary>
     private static bool TryHandlePowerRemoveCall(
@@ -1451,7 +1456,7 @@ public static partial class McpMod
 
     /// <summary>
     /// CreatureCmd.Add: a literal slot is the whole answer (the game does no occupancy check on
-    /// one); a null slot means the caller computed it, and the consumer replays `GetNextSlot`
+    /// one); a null slot means the caller computed it, and the consumer replays <c>GetNextSlot</c>
     /// for itself.
     /// </summary>
     private static bool TryHandleSummonCall(
@@ -1472,8 +1477,8 @@ public static partial class McpMod
     }
 
     /// <summary>
-    /// What the loop about to run walks. Set after `EndArgumentRun` so it survives the whole
-    /// loop body, and overwritten by the next `GetEnumerator` so a second loop over something
+    /// What the loop about to run walks. Set after <c>EndArgumentRun</c> so it survives the whole
+    /// loop body, and overwritten by the next <c>GetEnumerator</c> so a second loop over something
     /// else cannot inherit it.
     /// </summary>
     private static bool TryHandleEnumeratorCall(
@@ -1490,7 +1495,7 @@ public static partial class McpMod
 
     /// <summary>
     /// The amount is consumed either way, so it can never be inherited by the next effect. Who
-    /// receives it is read from the creature expression, sampled at the amount conversion — the
+    /// receives it is read from the creature expression, sampled at the amount conversion - the
     /// same rule the non-generic apply uses, and the same reason: the argument that follows
     /// would otherwise overwrite the flag.
     /// </summary>
@@ -1521,10 +1526,10 @@ public static partial class McpMod
     }
 
     /// <summary>
-    /// `CombatState.GetTeammatesOf(c)` is the mover's OWN side, owner included. Set after
-    /// `EndArgumentRun` in <see cref="HandleCall"/> so it survives into the apply that consumes
-    /// the collection, and cleared by that apply's own run — the same lifetime
-    /// `LastCreatureIsSelf` has.
+    /// <c>CombatState.GetTeammatesOf(c)</c> is the mover's OWN side, owner included. Set
+    /// after <c>EndArgumentRun</c> in <see cref="HandleCall"/> so it survives into the apply
+    /// that consumes the collection, and cleared by that apply's own run - the same lifetime
+    /// <c>LastCreatureIsSelf</c> has.
     /// </summary>
     private static bool TryHandleTeammatesCall(MethodBase mm, MoveFxScan scan)
     {
@@ -1561,8 +1566,8 @@ public static partial class McpMod
     }
 
     /// <summary>
-    /// One call inserts the single card the preceding `CreateCard&lt;T&gt;` built, so the count is
-    /// fixed at one and the pile and position come from the call's own arguments.
+    /// One call inserts the single card the preceding <c>CreateCard&lt;T&gt;</c> built, so the
+    /// count is fixed at one and the pile and position come from the call's own arguments.
     /// </summary>
     private static void HandleGeneratedCardCall(MethodBase mm, string owner, MoveFxScan scan)
     {
@@ -1621,7 +1626,7 @@ public static partial class McpMod
     /// </summary>
     /// <remarks>
     /// Some amounts are plain mutable counters rather than design properties
-    /// (`DevotedSculptor._ritualGain`). Reading the field is the same live-value
+    /// (<c>DevotedSculptor._ritualGain</c>). Reading the field is the same live-value
     /// resolution the stat getters already get; a field on any other object is
     /// unknown, which poisons the amount rather than inventing one.
     /// </remarks>
@@ -1631,8 +1636,8 @@ public static partial class McpMod
     /// </summary>
     /// <remarks>
     /// Roslyn hoists a parameter into a field of the same name, so this is the
-    /// state machine's handle on the list a `foreach` in the move body walks. A
-    /// hoisted LOCAL is named `&lt;name&gt;5__N` and can never collide with it.
+    /// state machine's handle on the list a <c>foreach</c> in the move body walks. A
+    /// hoisted LOCAL is named <c>&lt;name&gt;5__N</c> and can never collide with it.
     /// </remarks>
     private static bool IsHoistedTargetsField(Module module, int token)
     {
@@ -1663,10 +1668,10 @@ public static partial class McpMod
     /// </summary>
     /// <remarks>
     /// The monster's own design properties come first, so a chain can always
-    /// restart from `base.Creature` however deep the previous one went.
+    /// restart from <c>base.Creature</c> however deep the previous one went.
     /// Otherwise the getter is offered the object the chain has reached, which
-    /// is what lets `ICombatState.Players` and `IReadOnlyList&lt;Player&gt;.Count`
-    /// resolve — both are declared on interfaces the reached object implements.
+    /// is what lets <c>ICombatState.Players</c> and <c>IReadOnlyList&lt;Player&gt;.Count</c>
+    /// resolve - both are declared on interfaces the reached object implements.
     /// A getter that matches neither has no receiver and stays unknown.
     /// </remarks>
     private static object? ReceiverFor(MethodInfo getter, MonsterModel monster, MoveFxScan scan)

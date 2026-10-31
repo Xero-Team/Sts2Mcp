@@ -14,9 +14,9 @@ namespace Sts2Mcp;
 ///
 /// Correctness rests on one property, which <see cref="McpMod"/>'s lean read documents: a lean
 /// build differs from a full build of the same game state only in its rendered-text values. Every
-/// input those text values are rendered from — powers, relics, counters, enchantments, upgrade
-/// levels, identifiers — is structural, so a digest over the lean tree cannot miss a change that
-/// the full tree would show. The `values=powered|unpowered` mode is part of the key because it
+/// input those text values are rendered from - powers, relics, counters, enchantments, upgrade
+/// levels, identifiers - is structural, so a digest over the lean tree cannot miss a change that
+/// the full tree would show. The <c>values=powered|unpowered</c> mode is part of the key because it
 /// changes the text without changing the structure.
 ///
 /// Only the singleplayer state is cached. The multiplayer state carries per-player turn

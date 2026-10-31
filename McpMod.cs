@@ -29,7 +29,7 @@ public static partial class McpMod
     public static readonly string Version = ResolveVersion();
 
     /// <summary>
-    /// Version of the state/action contract, reported as `schema_version` on every payload.
+    /// Version of the state/action contract, reported as <c>schema_version</c> on every payload.
     ///
     /// Bumped only when an existing field or action changes meaning or disappears - the cases
     /// where a client that was written against the old shape is now wrong. Adding fields,
@@ -39,7 +39,7 @@ public static partial class McpMod
     /// 2: battle.enemies is no longer "the living enemies". A corpse the game keeps in the
     ///    fight (a Decimillipede segment waiting to reattach) is now listed with
     ///    alive:false, so a client that treated every entry as a target has to filter on
-    ///    the new `alive` field.
+    ///    the new <c>alive</c> field.
     ///
     /// 3: map.next_encounters is gone. It reported which monster / elite / event the act would
     ///    serve NEXT, read out of the pre-rolled RoomSet - information the game does not show
@@ -67,7 +67,9 @@ public static partial class McpMod
     /// </summary>
     internal const int MainThreadQueueLimit = 32;
 
-    /// <summary>How often the settle wait re-reads the state, in ms. Roughly four frames at 60 fps.</summary>
+    /// <summary>
+    /// How often the settle wait re-reads the state, in ms. Roughly four frames at 60 fps.
+    /// </summary>
     private const int SettlePollIntervalMs = 60;
 
     /// <summary>
@@ -100,7 +102,7 @@ public static partial class McpMod
     private static readonly ConcurrentQueue<Action> s_mainThreadQueue = new();
 
     // The game's own release version, from the release_info.json shipped next to the executable.
-    // Fixed for the process, so it is read once — and only from the main thread (the manager is a
+    // Fixed for the process, so it is read once - and only from the main thread (the manager is a
     // lazily-constructed singleton that touches Godot file IO). Null when the build ships without
     // a release_info.json, in which case the key is omitted from the state.
     private static string? s_gameVersion;
@@ -181,8 +183,8 @@ public static partial class McpMod
             // Expose a completion signal for async room entry; see TrackRoomEntries.
             TrackRoomEntries();
 
-            // Reward-screen observation (docs/raw-full.md: rewards). Independent of the
-            // settings-detour patches skipped above.
+            // Reward-screen observation. Independent of the settings-detour patches
+            // skipped above.
             InstallRewardTracking();
 
             s_config = LoadConfig();
@@ -191,12 +193,13 @@ public static partial class McpMod
             // Needs the config above: instant_mode lives in the same file.
             LoadInstantModePreference();
 
-            // Connect to main thread process frame for action execution
+            // The queue is drained from the frame loop: Godot objects are main-thread only, so
+            // an HTTP thread must never touch one.
             var tree = (SceneTree)Engine.GetMainLoop();
             tree.Connect(SceneTree.SignalName.ProcessFrame, Callable.From(ProcessMainThreadQueue));
 
-            // Combat recorder (docs/recording.md). After LoadConfig, which feeds it the
-            // "record"/"record_dir" keys from the same file.
+            // Combat recorder. Starts after LoadConfig, which feeds it the "record" and
+            // "record_dir" keys from the same file.
             Recorder.CombatRecorder.StartIfConfigured();
 
             // Loopback only: the bridge is for the local controller, never the network.
@@ -268,7 +271,9 @@ public static partial class McpMod
         }
     }
 
-    /// <summary>Per-request flag telling a queued closure that its caller has stopped waiting.</summary>
+    /// <summary>
+    /// Per-request flag telling a queued closure that its caller has stopped waiting.
+    /// </summary>
     private sealed class MainThreadCancellation
     {
         // volatile: written on the HTTP thread, read on the game's main thread.
@@ -282,7 +287,7 @@ public static partial class McpMod
     /// the queue is drained from Godot's ProcessFrame signal, so when frames stop (scene load,
     /// hang, the OS pausing the app, a modal the engine blocks on) a plain wait never returns.
     /// That held a ThreadPool thread per request, and - worse - every request queued meanwhile
-    /// still ran once frames resumed, so an agent that retried `end_turn` five times got five
+    /// still ran once frames resumed, so an agent that retried <c>end_turn</c> five times got five
     /// end_turns.
     /// </summary>
     /// <exception cref="MainThreadUnavailableException">
@@ -344,7 +349,7 @@ public static partial class McpMod
             try
             {
                 HttpListenerContext context = s_listener.GetContext();
-                // Handle each request asynchronously so we don't block the listener
+                // One worker per request, so a slow handler cannot stall the accept loop.
                 ThreadPool.QueueUserWorkItem(_ => HandleRequest(context));
             }
             catch (HttpListenerException)
@@ -494,8 +499,8 @@ public static partial class McpMod
             return;
         }
 
-        // Hard-block singleplayer endpoint during multiplayer runs
-        // to prevent calling the non-sync-safe end_turn path
+        // This endpoint exposes the non-sync-safe end_turn path, so it must refuse a
+        // multiplayer run outright.
         if (IsMultiplayerRun())
         {
             SendError(response, 409,
@@ -521,7 +526,7 @@ public static partial class McpMod
             return;
         }
 
-        // Guard: reject multiplayer endpoint during singleplayer runs
+        // Symmetric guard: the multiplayer endpoint must not drive a singleplayer run.
         if (!IsMultiplayerRun())
         {
             SendError(response, 409,
@@ -626,11 +631,12 @@ public static partial class McpMod
     /// <summary>
     /// The query parameters a state read accepts, parsed once at the transport boundary.
     ///
-    /// Defaults are decisions, so they are written down here: `format=json` (the bridge parses
-    /// JSON), `values=powered` (the numbers the game itself shows), and `detail=summary` for the
-    /// multiplayer payload. Both state handlers validated these fields by hand, in the same
-    /// order, with the same 400s; `detail` is the one field they disagree on, because the
-    /// singleplayer payload always carries the full player and has no detail levels.
+    /// Defaults are decisions, so they are written down here: <c>format=json</c> (the bridge
+    /// parses JSON), <c>values=powered</c> (the numbers the game itself shows), and
+    /// <c>detail=summary</c> for the multiplayer payload. Both state handlers validated these
+    /// fields by hand, in the same order, with the same 400s; <c>detail</c> is the one field
+    /// they disagree on, because the singleplayer payload always carries the full player and
+    /// has no detail levels.
     /// </summary>
     private readonly record struct StateQuery(
         string Format, string Values, bool Unpowered, string Detail, bool FullDetail)
@@ -799,8 +805,8 @@ public static partial class McpMod
         RunHandler(response, () =>
         {
             // ?passive=1: read without the UI side effects some screens have (auto-opening the
-            // merchant inventory, force-clicking the fake merchant / treasure chest). A watcher that
-            // polls the state while a human plays must not reopen what the human just closed.
+            // merchant inventory, force-clicking the fake merchant / treasure chest). A watcher
+            // polling the state while a human plays must not reopen what the human just closed.
             bool passive = ReadFlagParam(new Dictionary<string, JsonElement>(StringComparer.Ordinal), request, "passive", false);
             Dictionary<string, object?> state = RunOnMainThreadBlocking(() =>
             {
@@ -834,14 +840,15 @@ public static partial class McpMod
     ///
     /// Must run on the game's main thread (the caller's <c>RunOnMainThreadBlocking</c> does that).
     /// The probe is a lean read: cheap enough to take on every poll and complete enough that a
-    /// changed digest means some structural value changed — see <c>s_leanRead</c> for why a lean
+    /// changed digest means some structural value changed - see <c>s_leanRead</c> for why a lean
     /// tree can stand in for a full one here. On a hit the caller gets the tree from the previous
     /// request, so an idle poll costs one lean build instead of a full rebuild and a serialization
     /// pass.
     ///
-    /// `values` and `passive` are both part of the key: the first changes every rendered number,
-    /// and the second changes what a read is allowed to touch (a non-passive read auto-opens the
-    /// merchant inventory, which is exactly what <c>inventory_open</c> then reports).
+    /// <c>values</c> and <c>passive</c> are both part of the key: the first changes every
+    /// rendered number, and the second changes what a read is allowed to touch (a non-passive
+    /// read auto-opens the merchant inventory, which is exactly what <c>inventory_open</c> then
+    /// reports).
     /// </summary>
     private static Dictionary<string, object?> ReadSingleplayerState(string values, bool passive)
     {
@@ -860,9 +867,9 @@ public static partial class McpMod
     }
 
     /// <summary>
-    /// `true` / `1` / `"1"` / `"true"` / `"yes"` / `"on"` in the body, or the same in the query
-    /// string (`?wait=1`, or a bare `?wait`). Anything else is false; a missing key is
-    /// <paramref name="fallback"/>.
+    /// <c>true</c> / <c>1</c> / <c>"1"</c> / <c>"true"</c> / <c>"yes"</c> / <c>"on"</c> in the
+    /// body, or the same in the query string (<c>?wait=1</c>, or a bare <c>?wait</c>). Anything
+    /// else is false; a missing key is <paramref name="fallback"/>.
     /// </summary>
     private static bool ReadFlagParam(
         Dictionary<string, JsonElement> data, HttpListenerRequest request, string key, bool fallback)
@@ -985,7 +992,8 @@ public static partial class McpMod
 
     /// <summary>
     /// Polls the state from the HTTP thread until the game has settled, then appends
-    /// `waited_ms` / `polls` / `settled` / `changed` (and `state`) to the action's own result.
+    /// <c>waited_ms</c> / <c>polls</c> / <c>settled</c> / <c>changed</c> (and <c>state</c>) to the
+    /// action's own result.
     /// </summary>
     private static void AppendSettleResult(
         Dictionary<string, object?> result, string? before, int timeoutMs, bool includeState)
@@ -1035,7 +1043,7 @@ public static partial class McpMod
                 // A lean read: the loop only needs state_type, the round/turn flags, hp/block,
                 // hand ids and the option count, and it takes this read three to ten times per
                 // action. Rendering every description on each of those polls was the most
-                // expensive thing the settle wait did — see s_leanRead.
+                // expensive thing the settle wait did - see s_leanRead.
                 state = RunOnMainThreadBlocking(BuildLeanState);
             }
             catch (MainThreadUnavailableException ex)
@@ -1122,7 +1130,7 @@ public static partial class McpMod
     }
 
     /// <summary>
-    /// Runs a singleplayer action on the main thread and, when the caller passed `wait`, keeps
+    /// Runs a singleplayer action on the main thread and, when the caller passed <c>wait</c>, keeps
     /// reading the state until the game has settled - so a single round trip answers both
     /// "was the action accepted?" and "what does the game look like now?".
     /// </summary>
@@ -1139,8 +1147,9 @@ public static partial class McpMod
             SettleMinTimeoutMs, SettleMaxTimeoutMs);
         bool includeState = ReadFlagParam(parsed, request, "include_state", true);
 
-        // Snapshot before acting, so an action that changes nothing can be recognised instead of
-        // being waited out. A MainThreadUnavailableException here is a genuine 503: nothing ran yet.
+        // Snapshot before acting, so an action that changes nothing can be recognised
+        // instead of being waited out. A MainThreadUnavailableException here is a genuine
+        // 503: nothing ran yet.
         string? before = TryReadUnless<string, MainThreadUnavailableException>(
             "request.pre_state",
             () => StateFingerprint(RunOnMainThreadBlocking(BuildLeanState)));
@@ -1243,7 +1252,7 @@ public static partial class McpMod
         }
 
         // Every other POST is listed in the combat record (when one is open), and the game
-        // actions its handler enqueues are tagged with the request - see docs/recording.md.
+        // actions its handler enqueues are tagged with the request.
         long apiRequest = Recorder.CombatRecorder.ApiBegin(action, parsed);
         string? apiStatus = null;
         try
@@ -1256,7 +1265,9 @@ public static partial class McpMod
         }
     }
 
-    /// <summary>Runs one singleplayer POST and answers it. Returns the result's status for the record.</summary>
+    /// <summary>
+    /// Runs one singleplayer POST and answers it. Returns the result's status for the record.
+    /// </summary>
     private static string? DispatchPostAction(
         HttpListenerRequest request, HttpListenerResponse response,
         Dictionary<string, JsonElement> parsed, string action, long apiRequest, bool pretty)

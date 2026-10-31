@@ -38,7 +38,7 @@ public static partial class McpMod
 
         return action switch
         {
-            // Delegated to existing sync-safe handlers
+            // These actions share the singleplayer handler; the game synchronizes them itself.
             "open_pause_menu" or "pause" => ExecuteOpenPauseMenu(runState),
             "play_card" => ExecutePlayCard(player, data),
             "use_potion" => ExecuteUsePotion(player, data),
@@ -70,7 +70,7 @@ public static partial class McpMod
             "crystal_sphere_click_cell" => ExecuteCrystalSphereClickCell(data),
             "crystal_sphere_proceed" => ExecuteCrystalSphereProceed(),
 
-            // Multiplayer-specific actions
+            // These queue a multiplayer turn action instead of a local one.
             "end_turn" => ExecuteMultiplayerEndTurn(player),
             "undo_end_turn" => ExecuteUndoEndTurn(player),
 

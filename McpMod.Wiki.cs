@@ -17,7 +17,7 @@ public static partial class McpMod
 
     // A listing is not a search: the 50-result search cap exists to keep a fuzzy
     // query from dumping the catalog, and an explicit request for the whole list
-    // has already asked for that.  Building a static card catalog is the case
+    // has already asked for that. Building a static card catalog is the case
     // this serves -- 543 fuzzy queries, one per card, was the alternative, and
     // whatever never ranked in a query's top 50 was silently absent from it.
     private const int MaxWikiListLimit = 5000;
@@ -53,7 +53,7 @@ public static partial class McpMod
     }
 
     // "discovered" (the default) keeps the profile's own spoiler gate; "all"
-    // searches ModelDb outright.  A tool building a static catalog wants "all":
+    // searches ModelDb outright. A tool building a static catalog wants "all":
     // a card the profile has not met still has a fully resolved description,
     // and without it that card reaches a deck with no text at all.
     private static Dictionary<string, object?> BuildWikiSearch(string query, string itemType, int limit,
@@ -85,14 +85,14 @@ public static partial class McpMod
             everything ? null : discoveredCards,
             everything ? null : discoveredRelics);
 
-        // No query is a LISTING: every candidate in name order, unscored.  A
+        // No query is a LISTING: every candidate in name order, unscored. A
         // fuzzy score would only impose an arbitrary order on an enumeration
         // nobody searched, and dropping the `Score > 0` filter with it is the
         // point -- that filter is what a listing must not have.
         bool listing = string.IsNullOrWhiteSpace(query);
 
         // Counted before `Take`, so `truncated` says whether the limit actually
-        // cut anything.  It has to be the ELIGIBLE count, not `candidates`: a
+        // cut anything. It has to be the ELIGIBLE count, not `candidates`: a
         // search's non-matching candidates are not results withheld.
         List<(WikiCandidate Candidate, double Score)> eligible = RankWikiCandidates(candidates, query, listing);
 

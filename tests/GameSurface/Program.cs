@@ -138,7 +138,9 @@ internal static class Program
         return 0;
     }
 
-    /// <summary>Argument, then STS2_GAME_DATA_DIR, then STS2_GAME_DIR + the platform folder.</summary>
+    /// <summary>
+    /// Argument, then STS2_GAME_DATA_DIR, then STS2_GAME_DIR + the platform folder.
+    /// </summary>
     private static string? ResolveDllPath(string[] args)
     {
         var candidates = new List<string>();

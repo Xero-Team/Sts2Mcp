@@ -155,7 +155,7 @@ public static partial class McpMod
             || tPetsObj is not List<Dictionary<string, object?>> tPets)
             return;
 
-        // Show teammate pets inline
+        // Pets are part of the teammate's combat state, so they belong in the same block.
         foreach (Dictionary<string, object?> pet in tPets)
         {
             bool petAlive = pet.TryGetValue("alive", out object? pa) && pa is true;
@@ -314,7 +314,7 @@ public static partial class McpMod
             sb.AppendLine(msg.ToString());
         sb.AppendLine();
 
-        // MP lobby block — ready/ascension/roster — same shape on character_select and load_lobby
+        // The MP lobby block has the same shape on character_select and load_lobby.
         if (state.TryGetValue("lobby", out object? lobbyObj) &&
             lobbyObj is Dictionary<string, object?> lobby)
         {
@@ -331,7 +331,7 @@ public static partial class McpMod
         AppendMenuSelectedMarkdown(sb, state);
     }
 
-    /// <summary>Multiplayer Join — friends list, with the FastMP/loading notes.</summary>
+    /// <summary>Multiplayer Join - friends list, with the FastMP/loading notes.</summary>
     private static void AppendMenuFriendsMarkdown(StringBuilder sb, Dictionary<string, object?> state)
     {
         if (!state.TryGetValue("friends", out object? friendsObj)
@@ -366,7 +366,7 @@ public static partial class McpMod
     }
 
     /// <summary>
-    /// Ascension / seed / run modifiers — the start-a-run screens (character_select and
+    /// Ascension / seed / run modifiers - the start-a-run screens (character_select and
     /// custom_run). In MP the lobby block already carries the synced ascension, but the
     /// panel is the local source of truth on both screens.
     /// </summary>
@@ -393,7 +393,7 @@ public static partial class McpMod
         sb.AppendLine("### Run Modifiers");
         foreach (Dictionary<string, object?> modifier in modifiers)
         {
-            // `key` is the selectable name — it differs from `id` only where several
+            // `key` is the selectable name - it differs from `id` only where several
             // tickboxes share one modifier id (the per-character card modifiers).
             string id = modifier.GetValueOrDefault("id")?.ToString() ?? "?";
             string key = modifier.GetValueOrDefault("key")?.ToString() ?? id;
@@ -432,7 +432,7 @@ public static partial class McpMod
         sb.AppendLine();
     }
 
-    /// <summary>What the screen currently has chosen — character_select / custom_run.</summary>
+    /// <summary>What the screen currently has chosen - character_select / custom_run.</summary>
     private static void AppendMenuSelectedMarkdown(StringBuilder sb, Dictionary<string, object?> state)
     {
         if (!state.TryGetValue("selected", out object? selectedObj)
@@ -464,7 +464,7 @@ public static partial class McpMod
         sb.AppendLine();
         sb.AppendLine($"- All ready: **{allReady}**" + (aboutToBegin ? "  \u2014 about to begin" : ""));
 
-        // MP load lobby uses act/floor/connected_player_count/expected_player_count
+        // The load lobby carries saved progress; the other lobby screens do not.
         if (lobby.TryGetValue("act", out object? actObj))
         {
             string? act = actObj?.ToString();
@@ -1027,7 +1027,7 @@ public static partial class McpMod
         sb.AppendLine("*This is a fake merchant selling dubious relics. You can browse and buy, or throw a Foul Potion (use_potion) to start a fight.*");
         sb.AppendLine();
 
-        // Reuse shop formatting for the nested shop object
+        // The nested shop object has the same shape as a normal shop.
         if (fm.TryGetValue("shop", out object? shopObj) && shopObj is Dictionary<string, object?> shopData)
             FormatShopMarkdown(sb, shopData);
     }
@@ -1043,7 +1043,7 @@ public static partial class McpMod
         AppendMapPathTaken(sb, map);
         AppendMapMarkedNodes(sb, map);
 
-        // Build node lookup for path traversal
+        // Key by "col,row" so a child key resolves to the node that owns its children.
         Dictionary<string, Dictionary<string, object?>> nodeLookup = BuildMapNodeLookup(map);
         AppendMapNextOptions(sb, map, nodeLookup);
 
@@ -1236,7 +1236,7 @@ public static partial class McpMod
     /// </summary>
     private static string BuildFuturePathTree(Dictionary<string, object?> startNode, Dictionary<string, Dictionary<string, object?>> nodeLookup)
     {
-        // Look up the canonical node (with children) from the full node list
+        // A node reached through the tree may not carry children; the full list does.
         string startKey = $"{startNode["col"]},{startNode["row"]}";
         Dictionary<string, object?> canonicalStart = nodeLookup.TryGetValue(startKey, out Dictionary<string, object?>? cs) ? cs : startNode;
         HashSet<string> currentKeys = GetChildKeys(canonicalStart);
@@ -1244,7 +1244,6 @@ public static partial class McpMod
 
         while (currentKeys.Count > 0)
         {
-            // Collect node info for this level
             var levelNodes = new List<(string type, int col, int row)>();
             var nextKeys = new HashSet<string>(StringComparer.Ordinal);
 

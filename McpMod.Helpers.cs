@@ -134,7 +134,7 @@ public static partial class McpMod
             object? result = getter();
             if (result == null)
                 return null;
-            // If it's a LocString, call GetFormattedText
+            // LocString is the one type that needs formatting before it is readable.
             if (result is MegaCrit.Sts2.Core.Localization.LocString locString)
             {
                 // Rendering is the expensive half of a lean read; identifiers stay in the tree.
@@ -336,14 +336,14 @@ public static partial class McpMod
     internal static string StripRichTextTags(string text)
     {
         // Remove BBCode-style tags like [color=red], [/color], etc.
-        // Special case: [img]res://path/to/file.png[/img] → [file.png]
+        // Special case: [img]res://path/to/file.png[/img] -> [file.png]
         var sb = new StringBuilder();
         int i = 0;
         while (i < text.Length)
         {
             if (text[i] == '[')
             {
-                // Check for [img]...[/img] pattern
+                // An image argument is a res:// path; the caller wants the file name.
                 if (text.AsSpan(i).StartsWith("[img]"))
                 {
                     int contentStart = i + 5; // length of "[img]"
@@ -447,7 +447,7 @@ public static partial class McpMod
         => SendError(response, statusCode, message, false, errorCode);
 
     /// <summary>
-    /// 503 for "the game's main thread never picked this up". `retry: true` is the contract:
+    /// 503 for "the game's main thread never picked this up". <c>retry: true</c> is the contract:
     /// the request was not executed, so a client may safely send it again - unlike a 500, where
     /// the action ran and failed.
     /// </summary>
@@ -539,7 +539,9 @@ public static partial class McpMod
         SendJson(response, result, pretty);
     }
 
-    /// <summary>The status for a read-endpoint failure: unavailable data is 503, anything else 500.</summary>
+    /// <summary>
+    /// The status for a read-endpoint failure: unavailable data is 503, anything else 500.
+    /// </summary>
     private static int ReadErrorStatus(string? errorCode) => errorCode switch
     {
         "save_manager_unavailable" or "settings_data_unavailable" or "profile_data_unavailable" => 503,
@@ -573,13 +575,13 @@ public static partial class McpMod
     /// <summary>
     /// Why a combat action cannot run right now, or null when nothing at the gate blocks it.
     ///
-    /// The codes are the vocabulary the state's `*_blocked_reason` fields already publish
+    /// The codes are the vocabulary the state's <c>*_blocked_reason</c> fields already publish
     /// ("NotInCombat", "NotInPlayPhase", "PlayerActionsDisabled", "PlayerDead"), so a refusal and
     /// a state read cannot disagree about why the same action is unavailable. They used to be
     /// five hand-copied ladders: two in the state builders and three more in the action
     /// executors, each free to drift from the others.
     ///
-    /// `player` is null on the singleplayer end-turn path, which answers for a client rather
+    /// <c>player</c> is null on the singleplayer end-turn path, which answers for a client rather
     /// than acting for one: the singleplayer state has no "PlayerDead" code to publish, and a
     /// dead player there is already over the run.
     /// </summary>
@@ -767,11 +769,11 @@ public static partial class McpMod
     // `_prefs` fields and names its preview container differently in the scene - so the
     // helpers below are the one place that knows all the spellings.
     //
-    // Getting the preview container wrong is what A-7 was: the enchant screen's containers
-    // were missing from the list, so `confirm_selection` fell through to the screen's main
-    // Confirm, which on these screens means "open the preview" (PreviewSelection), not
-    // "apply". Pressing it while the preview was already open re-ran PreviewSelection and
-    // appended a second copy of every selected card to the preview row.
+    // Getting the preview container wrong is what this list prevents: the enchant screen's
+    // containers were missing from the list, so `confirm_selection` fell through to the
+    // screen's main Confirm, which on these screens means "open the preview"
+    // (PreviewSelection), not "apply". Pressing it while the preview was already open re-ran
+    // PreviewSelection and appended a second copy of every selected card to the preview row.
 
     /// <summary>The preview panel currently covering the grid, or null when the screen is
     /// still in its card-picking step.</summary>
@@ -821,7 +823,7 @@ public static partial class McpMod
 
     /// <summary>
     /// The cards the screen currently has selected. Every subclass keeps them in its own
-    /// private `_selectedCards` HashSet - the same set OnCardClicked toggles - so this is
+    /// private <c>_selectedCards</c> HashSet - the same set OnCardClicked toggles - so this is
     /// the game's own answer, not a guess reconstructed from highlights.
     /// Null means the field could not be read (a renamed field in a future game build).
     /// </summary>
@@ -831,7 +833,7 @@ public static partial class McpMod
     }
 
     /// <summary>
-    /// How many cards the screen wants: `_prefs` carries MinSelect/MaxSelect, which is what
+    /// How many cards the screen wants: <c>_prefs</c> carries MinSelect/MaxSelect, which is what
     /// the game itself checks before it will complete the selection.
     /// </summary>
     internal static CardSelectorPrefs? GetCardSelectPrefs(NCardGridSelectionScreen screen)
@@ -848,10 +850,10 @@ public static partial class McpMod
     }
 
     /// <summary>
-    /// FindAll variant that sorts results by visual position (row-major: top-to-bottom, left-to-right).
-    /// NGridCardHolder.OnFocus() calls MoveToFront() which scrambles child order for z-rendering.
-    /// Sorting by GlobalPosition restores the correct visual order for both single-row (card rewards,
-    /// choose-a-card) and multi-row (deck selection grids) layouts.
+    /// FindAll variant that sorts results by visual position (row-major: top-to-bottom,
+    /// left-to-right). NGridCardHolder.OnFocus() calls MoveToFront() which scrambles child order
+    /// for z-rendering. Sorting by GlobalPosition restores the correct visual order for both
+    /// single-row (card rewards, choose-a-card) and multi-row (deck selection grids) layouts.
     /// </summary>
     internal static List<T> FindAllSortedByPosition<T>(Node start) where T : Control
     {
@@ -1619,7 +1621,7 @@ public static partial class McpMod
     // Modifier ids are NOT unique on that screen: the "character cards" modifier is
     // instantiated once per character and every instance reports Id.Entry ==
     // "CHARACTER_CARDS". Each entry therefore also carries a Key that is unique on the
-    // screen — the id suffixed with the character it applies to, or with an index as a
+    // screen - the id suffixed with the character it applies to, or with an index as a
     // last resort. The Key is what callers select and what `selected.modifiers` reports;
     // the raw Id is still surfaced for callers that reason about the underlying model.
     private sealed class RunModifierEntry

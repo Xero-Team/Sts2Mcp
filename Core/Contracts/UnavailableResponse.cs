@@ -8,8 +8,7 @@ namespace Sts2Mcp.Core.Contracts;
 /// <remarks>
 /// The key order (error, status, retry) is the order this body has always been written in, and is
 /// pinned by <c>tests/ContractShape</c>; it is not the same order as <see cref="ErrorResponse"/>.
-/// The contract itself is documented under "Unavailable Response (HTTP 503)" in
-/// <c>docs/raw-full.md</c>.
+/// The contract itself is documented under "Unavailable Response (HTTP 503)" in the API reference.
 /// </remarks>
 internal sealed record UnavailableResponse
 {

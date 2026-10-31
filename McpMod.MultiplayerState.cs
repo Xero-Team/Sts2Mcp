@@ -46,7 +46,9 @@ public static partial class McpMod
         typeof(CombatHistoryEntry).GetField("_playerTurnNumbers",
             BindingFlags.NonPublic | BindingFlags.Instance);
 
-    /// <summary>Called through BuildMultiplayerGameState(), which brackets it with the warning collector.</summary>
+    /// <summary>
+    /// Called through BuildMultiplayerGameState(), which brackets it with the warning collector.
+    /// </summary>
     private static Dictionary<string, object?> BuildMultiplayerGameStateCore(bool fullDetail = false)
     {
         Dictionary<string, object?> result = NewStateResult(kind: "multiplayer_state");
@@ -58,7 +60,7 @@ public static partial class McpMod
 
         AppendMultiplayerMetadata(result, runState, out Player? localPlayer);
 
-        // Same overlay-first detection logic as singleplayer
+        // Overlays are checked before the room, exactly as in singleplayer.
         IOverlayScreen? topOverlay = NOverlayStack.Instance?.Peek();
         AbstractRoom? currentRoom = runState.CurrentRoom;
         bool mapIsOpen = IsMapScreenOpenOrVisible();
@@ -83,9 +85,9 @@ public static partial class McpMod
     /// all, an unreadable run, or a run that is not multiplayer.
     /// </summary>
     /// <remarks>
-    /// Every FTUE in `Decompiled/src/Core/Nodes/Ftue/` gates only on per-profile flags, not on
+    /// Every FTUE in <c>Decompiled/src/Core/Nodes/Ftue/</c> gates only on per-profile flags, not on
     /// run mode, so they are equally reachable in multiplayer runs. Surfacing them here gives
-    /// MP automation the same dismissal contract as singleplayer (see #71).
+    /// MP automation the same dismissal contract as singleplayer.
     /// </remarks>
     private static Dictionary<string, object?>? BuildMultiplayerPreflightState(
         Dictionary<string, object?> result, SceneTree? tree, out RunState runState)
@@ -152,7 +154,7 @@ public static partial class McpMod
     private static void AppendMultiplayerRunState(
         Dictionary<string, object?> result, RunState runState, Player? localPlayer, bool fullDetail)
     {
-        // Common run info
+        // The run block every screen carries.
         var runInfo = new Dictionary<string, object?>(StringComparer.Ordinal)
         {
             ["act"] = runState.CurrentActIndex + 1,
@@ -245,7 +247,7 @@ public static partial class McpMod
 
         // Per-player damage dealt to enemies, which only the co-op payload reports.
         TryDo(() => { battle["player_damage"] = BuildPlayerDamageState(runState, combatState.RoundNumber); });
-        // History unavailable (e.g. combat tearing down) — omit the fields
+        // History is unavailable (combat tearing down), so the fields are omitted.
 
         return battle;
     }
@@ -300,16 +302,16 @@ public static partial class McpMod
         {
             CardPlay cardPlay = entry.CardPlay;
             string? target = null;
+            // The target creature may already be gone.
             TryDo(() =>
             {
                 target = cardPlay.Target?.Monster?.Id.Entry
                          ?? SafeGetText(() => cardPlay.Target?.Player?.Character.Title);
             });
-            /* target creature may be gone */
 
             plays.Add(new Dictionary<string, object?>(StringComparer.Ordinal)
             {
-                // Stable per-combat sequence number — the history only appends
+                // Stable per-combat sequence number - the history only appends
                 // within a fight, so pollers dedup with "index > last seen".
                 ["index"] = idx++,
                 ["round"] = GetEntryRound(entry),
@@ -325,7 +327,7 @@ public static partial class McpMod
                 ["card_name"] = SafeGetText(() => cardPlay.Card.Title),
                 // Joins this play to the instance-identified pile snapshots.
                 ["combat_card_id"] = GetCombatCardId(cardPlay.Card),
-                // Where the card went after resolving — the difference between
+                // Where the card went after resolving - the difference between
                 // "played and discarded" and "played and exhausted".
                 ["result_pile"] = cardPlay.ResultPile.ToString(),
                 ["play_index"] = cardPlay.PlayIndex,
@@ -342,7 +344,7 @@ public static partial class McpMod
     /// <summary>
     /// Where every card went during the current and previous player turn.
     ///
-    /// `card_plays` answers "what was played"; this answers everything else, and
+    /// <c>card_plays</c> answers "what was played"; this answers everything else, and
     /// the two together are what let a client reconstruct a whole turn's card
     /// churn without diffing pile snapshots across polls. Diffing cannot work on
     /// its own: a card drawn and discarded between two polls is never observed
@@ -352,14 +354,14 @@ public static partial class McpMod
     /// Deliberately NOT a source for "left in hand at end of turn":
     /// CombatManager.FlushPlayerHand moves the leftovers with CardPileCmd.Add
     /// rather than CardCmd.Discard, and only the latter reaches
-    /// CombatHistory.CardDiscarded — so the end-of-turn flush logs nothing here.
-    /// Every `discarded` row is therefore a mid-turn discard, and a client after
-    /// the flush must read the hand instead (see `should_retain_this_turn`).
+    /// CombatHistory.CardDiscarded - so the end-of-turn flush logs nothing here.
+    /// Every <c>discarded</c> row is therefore a mid-turn discard, and a client after
+    /// the flush must read the hand instead (see <c>should_retain_this_turn</c>).
     ///
     /// Bounded to this turn plus each owner's previous turn so a long fight does
     /// not re-serialize hundreds of rows on every poll. Reading the previous turn
-    /// is what lets a client wait until a turn is complete — the end-of-turn
-    /// cleanup resolves after the turn ends — before scoring it.
+    /// is what lets a client wait until a turn is complete - the end-of-turn
+    /// cleanup resolves after the turn ends - before scoring it.
     /// </summary>
     private static List<Dictionary<string, object?>> BuildCardHistoryState(ICombatState combatState)
     {
@@ -413,7 +415,7 @@ public static partial class McpMod
 
     /// <summary>
     /// CardKeyword enum names for a card, or null when they cannot be read.
-    /// Distinct from the localized `keywords` hover tips that card objects carry.
+    /// Distinct from the localized <c>keywords</c> hover tips that card objects carry.
     /// </summary>
     private static string[]? BuildKeywordIds(CardModel? card)
     {
@@ -425,7 +427,7 @@ public static partial class McpMod
     private static List<Dictionary<string, object?>> BuildPlayerDamageState(RunState runState, int currentRound)
     {
         // Aggregate unblocked (HP) damage dealt to enemies, per player per
-        // round.  Pet damage credits the pet's owner; unattributable sources
+        // round. Pet damage credits the pet's owner; unattributable sources
         // (dealer-less DoTs) are skipped.
         int rounds = Math.Max(1, currentRound);
         var totals = new Dictionary<Player, int[]>();
@@ -495,10 +497,9 @@ public static partial class McpMod
 
     private static Dictionary<string, object?> BuildMultiplayerMapState(RunState runState)
     {
-        // Start with the standard map state
+        // The shared map shape plus the vote each player has cast.
         Dictionary<string, object?> state = BuildMapState(runState);
 
-        // Add per-player vote data
         TryDo("map.votes", () =>
         {
             MapSelectionSynchronizer mapSync = RunManager.Instance.MapSelectionSynchronizer;
@@ -521,7 +522,7 @@ public static partial class McpMod
             state["all_voted"] = votes.All(v => v["voted"] is true);
         });
 
-        // All players summary
+        // The shared roster block every multiplayer screen carries.
         state["players"] = BuildAllPlayersState(runState);
 
         return state;
@@ -529,10 +530,9 @@ public static partial class McpMod
 
     private static Dictionary<string, object?> BuildMultiplayerEventState(EventRoom eventRoom, RunState runState)
     {
-        // Start with the standard event state
+        // The shared event shape plus the vote each player has cast.
         Dictionary<string, object?> state = BuildEventState(eventRoom);
 
-        // Add multiplayer-specific event data
         TryDo("event.votes", () =>
         {
             EventSynchronizer eventSync = RunManager.Instance.EventSynchronizer;
@@ -564,7 +564,7 @@ public static partial class McpMod
             }
         });
 
-        // All players summary
+        // The shared roster block every multiplayer screen carries.
         state["players"] = BuildAllPlayersState(runState);
 
         return state;
@@ -572,13 +572,13 @@ public static partial class McpMod
 
     private static Dictionary<string, object?> BuildMultiplayerTreasureState(RunState runState)
     {
-        // Auto-open chest same as singleplayer. BeginRelicPicking() runs during
-        // TreasureRoom.Enter(), so relics are already generated. The chest click
-        // just triggers the UI animation + gold via OneOffSynchronizer - same path
-        // as a human click or the game's own AutoSlay handler.
+        // Auto-open the chest as singleplayer does. BeginRelicPicking() runs during
+        // TreasureRoom.Enter(), so the relics are already generated; the click only triggers
+        // the UI animation and gold through OneOffSynchronizer, the same path a human click or
+        // the game's own AutoSlay handler takes.
         Dictionary<string, object?> state = BuildTreasureState();
 
-        // Add per-player bid data
+        // Treasure adds the relic bid each player has cast.
         TryDo("treasure.bids", () =>
         {
             TreasureRoomRelicSynchronizer treasureSync = RunManager.Instance.TreasureRoomRelicSynchronizer;
@@ -605,7 +605,7 @@ public static partial class McpMod
             }
         });
 
-        // All players summary
+        // The shared roster block every multiplayer screen carries.
         state["players"] = BuildAllPlayersState(runState);
 
         return state;
@@ -670,13 +670,13 @@ public static partial class McpMod
             entry["pets"] = pets;
         }
 
+        // A teammate's combat state can be mid-transition; omit the hand then.
         TryDo(() => AppendTeammateCombatState(entry, player));
-        /* teammate combat state mid-transition — omit hand */
     }
 
     /// <summary>
-    /// A teammate's combat state. MP combat is lockstep — every player's PlayerCombatState is
-    /// replicated locally — so a teammate's hand cards are known client-side even though the
+    /// A teammate's combat state. MP combat is lockstep - every player's PlayerCombatState is
+    /// replicated locally - so a teammate's hand cards are known client-side even though the
     /// game UI hides them (this mirrors the STS2-ShowPlayerHandCards mod). BuildCardInfo is
     /// used rather than BuildCardState so CanPlay hooks are not run against a non-local
     /// player's card in the local combat context.
@@ -705,13 +705,13 @@ public static partial class McpMod
 
         // Full pile contents so the teammate's turn can be forward-modelled. Draw
         // pile is in true order (index 0 = next draw), valid until their next
-        // shuffle — same guarantee as the local player's.
+        // shuffle - same guarantee as the local player's.
         entry["draw_pile"] = BuildPileCardList(cs.DrawPile.Cards, PileType.Draw);
         entry["discard_pile"] = BuildPileCardList(cs.DiscardPile.Cards, PileType.Discard);
         entry["exhaust_pile"] = BuildPileCardList(cs.ExhaustPile.Cards, PileType.Exhaust);
         entry["play_pile"] = BuildPileCardList(cs.PlayPile.Cards, PileType.Play);
 
-        // Powers/status + orbs — also needed to model their turn
+        // Powers/status + orbs - also needed to model their turn
         // (Strength/Vulnerable scaling, Defect orbs).
         entry["status"] = BuildPowersState(player.Creature);
         AddOrbsState(entry, player);
@@ -721,7 +721,7 @@ public static partial class McpMod
         entry["relics"] = BuildRelicsList(player);
         AddPotionsState(entry, player);
 
-        // Energy getters run hooks (Hook.ModifyMaxEnergy) —
+        // Energy getters run hooks (Hook.ModifyMaxEnergy) -
         // isolate them so a throw still leaves the hand intact.
         TryDo(() =>
         {

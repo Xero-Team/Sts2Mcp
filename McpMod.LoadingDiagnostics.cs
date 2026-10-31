@@ -11,7 +11,7 @@ using MegaCrit.Sts2.Core.Multiplayer.Game;
 namespace Sts2Mcp;
 
 /// <summary>
-/// Diagnostics for the <c>NetService.IsGameLoading</c> flag. Observes only — no
+/// Diagnostics for the <c>NetService.IsGameLoading</c> flag. Observes only - no
 /// game behaviour changes here.
 /// </summary>
 /// <remarks>

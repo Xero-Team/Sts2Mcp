@@ -4,7 +4,7 @@ using System.Threading.Tasks;
 
 // Stand-ins for the game's command surface. The move-effect scanner matches on
 // declaring-type and method NAMES, on parameter types (Creature vs IEnumerable,
-// decimal vs int), and on generic arguments — so these reproduce those exactly
+// decimal vs int), and on generic arguments - so these reproduce those exactly
 // while the bodies do nothing. Namespaces are irrelevant to the scanner.
 
 public class CardModel { }
@@ -54,7 +54,9 @@ public static class PowerCmd
     public static Task Remove(PowerModel? power) => Task.CompletedTask;
 }
 
-/// <summary>A monster class a `Where` predicate can type-test, as `Guardbot` does.</summary>
+/// <summary>
+/// A monster class a <c>Where</c> predicate can type-test, as <c>Guardbot</c> does.
+/// </summary>
 public class Fabricator : MegaCrit.Sts2.Core.Models.MonsterModel { }
 
 /// <summary>A second one, for the ambiguous two-test case.</summary>
@@ -76,7 +78,7 @@ public static class CreatureCmd
         int side = 0, string? slotName = null) => Task.FromResult(new Creature());
 }
 
-/// <summary>A creature a move can summon, as `LivingFog.BloatMove` does.</summary>
+/// <summary>A creature a move can summon, as <c>LivingFog.BloatMove</c> does.</summary>
 public class GasBomb : MegaCrit.Sts2.Core.Models.MonsterModel { }
 
 public static class CardPileCmd

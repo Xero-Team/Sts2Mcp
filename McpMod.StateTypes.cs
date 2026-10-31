@@ -5,7 +5,7 @@ namespace Sts2Mcp;
 public static partial class McpMod
 {
     /// <summary>
-    /// The `state_type` vocabulary: what a state read says it is looking at.
+    /// The <c>state_type</c> vocabulary: what a state read says it is looking at.
     ///
     /// The field is the first thing a client branches on, and it is written by the state builders
     /// and read by settle detection, the markdown renderer, and the "is the player being asked"
@@ -13,15 +13,18 @@ public static partial class McpMod
     /// silently disabled a branch instead of failing the build. The wire strings are part of the
     /// documented contract, which is why each constant's value is exactly the string published.
     ///
-    /// Combat state types are named after the room they came from (`monster`, `elite`, `boss`);
-    /// see <see cref="CombatRoomStateType"/> for those, since they are derived, not chosen.
+    /// Combat state types are named after the room they came from (<c>monster</c>,
+    /// <c>elite</c>, <c>boss</c>); see <see cref="CombatRoomStateType"/> for those, since they
+    /// are derived, not chosen.
     /// </summary>
     internal static class StateTypes
     {
-        /// <summary>No screen recognised; also the default for a builder that never set one.</summary>
+        /// <summary>
+        /// No screen recognised; also the default for a builder that never set one.
+        /// </summary>
         internal const string Unknown = "unknown";
 
-        /// <summary>A menu screen is up. `menu_screen` names which one.</summary>
+        /// <summary>A menu screen is up. <c>menu_screen</c> names which one.</summary>
         internal const string Menu = "menu";
 
         /// <summary>The map screen, or a room that defers to it.</summary>
@@ -58,7 +61,7 @@ public static partial class McpMod
 
         /// <summary>
         /// The read itself failed, e.g. the wrong endpoint for the run mode. Named so it does not
-        /// shadow the `Error(...)` response helper.
+        /// shadow the <c>Error(...)</c> response helper.
         /// </summary>
         internal const string ReadError = "error";
 
