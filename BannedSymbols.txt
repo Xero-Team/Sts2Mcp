@@ -1,0 +1,13 @@
+T:System.Runtime.CompilerServices.Unsafe;Use Span<T>/MemoryMarshal - same codegen, still checked by the compiler's ref-safety rules.
+T:System.Runtime.InteropServices.Marshal;Use MemoryMarshal, Span<T> or SafeHandle instead of raw marshalling.
+T:System.Runtime.InteropServices.NativeMemory;Unmanaged memory is outside this mod's safe subset.
+T:System.Runtime.InteropServices.GCHandle;A GC handle would outlive the game object it points at.
+M:System.Runtime.InteropServices.Marshal.AllocHGlobal(System.Int32);Unmanaged memory is outside this mod's safe subset.
+M:System.Runtime.InteropServices.Marshal.AllocHGlobal(System.IntPtr);Unmanaged memory is outside this mod's safe subset.
+M:System.Runtime.InteropServices.Marshal.FreeHGlobal(System.IntPtr);Unmanaged memory is outside this mod's safe subset.
+M:System.Runtime.InteropServices.Marshal.StructureToPtr``1(``0,System.IntPtr,System.Boolean);Unmanaged memory is outside this mod's safe subset.
+M:System.Runtime.InteropServices.Marshal.PtrToStructure``1(System.IntPtr);Unmanaged memory is outside this mod's safe subset.
+M:System.Runtime.InteropServices.GCHandle.Alloc(System.Object);A GC handle would outlive the game object it points at.
+M:System.GC.Collect;A full collection on the game's main thread is a frame-time spike. Use dotnet-counters/dotMemory to diagnose instead.
+M:System.GC.Collect(System.Int32);A full collection on the game's main thread is a frame-time spike. Use dotnet-counters/dotMemory to diagnose instead.
+M:System.GC.WaitForPendingFinalizers;Blocking the main thread on finalizers guarantees a freeze.

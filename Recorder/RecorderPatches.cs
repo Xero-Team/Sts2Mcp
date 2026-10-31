@@ -1,0 +1,204 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Reflection;
+using HarmonyLib;
+using MegaCrit.Sts2.Core.Debug;
+using MegaCrit.Sts2.Core.Entities.Multiplayer;
+using MegaCrit.Sts2.Core.Entities.Players;
+using MegaCrit.Sts2.Core.GameActions;
+using MegaCrit.Sts2.Core.GameActions.Multiplayer;
+using MegaCrit.Sts2.Core.Multiplayer.Replay;
+using MegaCrit.Sts2.Core.Runs;
+using MegaCrit.Sts2.Core.Saves;
+
+namespace Sts2Mcp.Recorder;
+
+/// <summary>
+/// The recorder's Harmony patches. Applied by hand (not [HarmonyPatch] + PatchAll) so that
+/// "record": false in the config means none of them exists, and so that a single target that
+/// cannot be found fails the whole install instead of leaving a recorder with holes in it.
+///
+/// Every patch only reads: prefixes return void (never skip the original), nothing assigns
+/// __result or ref arguments, and each body forwards to CombatRecorder, which catches everything.
+/// </summary>
+internal static class RecorderPatches
+{
+    private const string HarmonyId = "com.sts2mcp.recorder";
+    private static readonly Harmony s_harmony = new(HarmonyId);
+    private static readonly List<string> s_appliedList = new();
+
+    private static readonly AccessTools.FieldRef<CombatReplayWriter, CombatReplay?> s_replayField =
+        AccessTools.FieldRefAccess<CombatReplayWriter, CombatReplay?>("_replay");
+    private static readonly AccessTools.FieldRef<RunManager, long> s_startTimeField =
+        AccessTools.FieldRefAccess<RunManager, long>("_startTime");
+
+    private static readonly FieldInfo? s_commandsField =
+        AccessTools.Field(typeof(MegaCrit.Sts2.Core.DevConsole.DevConsole), "_commands");
+
+    private static readonly System.Reflection.FieldInfo? s_queuesField =
+        AccessTools.Field(typeof(ActionQueueSet), "_actionQueues");
+
+    internal static IReadOnlyList<string> Applied => s_appliedList;
+
+    internal static CombatReplay? ReplayOf(CombatReplayWriter writer) => s_replayField(writer);
+
+    internal static long RunStartTime() => s_startTimeField(RunManager.Instance);
+
+    internal static void Apply()
+    {
+        Type w = typeof(CombatReplayWriter);
+        Patch(w, nameof(CombatReplayWriter.RecordInitialState), postfix: nameof(InitialStatePostfix));
+        Patch(w, "RecordGameAction", prefix: nameof(EventCountPrefix), postfix: nameof(GameActionPostfix));
+        Patch(w, "RecordActionResume", prefix: nameof(EventCountPrefix), postfix: nameof(ResumePostfix));
+        Patch(w, "RecordPlayerChoice", prefix: nameof(EventCountPrefix), postfix: nameof(ChoicePostfix));
+        Patch(w, "RecordChecksum", prefix: nameof(ChecksumCountPrefix), postfix: nameof(ChecksumPostfix));
+        Patch(w, nameof(CombatReplayWriter.WriteReplay), prefix: nameof(WriteReplayPrefix));
+
+        Type set = typeof(ActionQueueSet);
+        Patch(set, nameof(ActionQueueSet.EnqueueWithoutSynchronizing), postfix: nameof(EnqueuedPostfix));
+        Patch(set, nameof(ActionQueueSet.PauseActionForPlayerChoice), prefix: nameof(PausedPrefix), postfix: nameof(PausedPostfix));
+        Patch(set, nameof(ActionQueueSet.ResumeActionWithoutSynchronizing), postfix: nameof(ResumedPostfix));
+
+        Patch(typeof(ActionQueueSynchronizer), nameof(ActionQueueSynchronizer.RequestEnqueue), prefix: nameof(RequestEnqueuePrefix));
+        Patch(typeof(PlayerChoiceSynchronizer), nameof(PlayerChoiceSynchronizer.ReserveChoiceId), postfix: nameof(ReservePostfix));
+        // BranchingPlayerChoiceContext only forwards to the context it wraps, which is patched itself.
+        foreach (Type? ctx in new[] { typeof(GameActionPlayerChoiceContext), typeof(HookPlayerChoiceContext),
+                                    typeof(BlockingPlayerChoiceContext), typeof(ThrowingPlayerChoiceContext) })
+            Patch(ctx, nameof(PlayerChoiceContext.SignalPlayerChoiceBegun),
+                prefix: nameof(ChoiceBegunPrefix), postfix: nameof(ChoiceBegunPostfix));
+        // Reached through the action's AfterFinished delegate, so a call the JIT cannot inline.
+        // Cancellation is read from GameAction.BeforeCancelled instead of patching the few-line
+        // GameAction.Cancel, which could be inlined into its callers.
+        Patch(typeof(ActionExecutor), "AfterActionFinished", prefix: nameof(ActionFinishedPrefix));
+        Patch(typeof(RunManager), nameof(RunManager.CleanUp), prefix: nameof(CleanUpPrefix), postfix: nameof(CleanUpPostfix));
+        Patch(typeof(MegaCrit.Sts2.Core.DevConsole.DevConsole), nameof(MegaCrit.Sts2.Core.DevConsole.DevConsole.ProcessCommand),
+            prefix: nameof(ConsolePrefix), parameters: new[] { typeof(string) });
+        // Counted only: AC2 asks that recording sends nothing to Sentry (docs/recording.md).
+        foreach (MethodInfo? m in AccessTools.GetDeclaredMethods(typeof(SentryService))
+                     .Where(m => string.Equals(m.Name, nameof(SentryService.CaptureException), StringComparison.Ordinal)))
+        {
+            s_harmony.Patch(m, prefix: new HarmonyMethod(typeof(RecorderPatches), nameof(SentryPrefix)));
+            s_appliedList.Add($"SentryService.CaptureException({m.GetParameters().Length})");
+        }
+    }
+
+    internal static void RemoveAll()
+    {
+        // Nothing else to do: the patches are being removed, so a failure has no caller.
+        CombatRecorder.TryRecordQuietDo(() => s_harmony.UnpatchAll(HarmonyId));
+        s_appliedList.Clear();
+    }
+
+    private static void Patch(Type type, string method, string? prefix = null, string? postfix = null, Type[]? parameters = null)
+    {
+        MethodInfo original = (parameters == null ? AccessTools.DeclaredMethod(type, method) : AccessTools.DeclaredMethod(type, method, parameters))
+            ?? throw new MissingMethodException(type.FullName, method);
+        s_harmony.Patch(original,
+            prefix: prefix == null ? null : new HarmonyMethod(typeof(RecorderPatches), prefix),
+            postfix: postfix == null ? null : new HarmonyMethod(typeof(RecorderPatches), postfix));
+        s_appliedList.Add($"{type.Name}.{method}");
+    }
+
+    // --- CombatReplayWriter --------------------------------------------------------------------
+
+    private static void InitialStatePostfix(CombatReplayWriter __instance, SerializableRun serializableRun)
+    {
+        CombatRecorder.TrackRoomEntry(__instance);
+        CombatRecorder.OnInitialState(__instance, serializableRun);
+    }
+
+    private static void EventCountPrefix(CombatReplayWriter __instance, out int __state)
+        // A replay that is not there yet is the normal case, and -1 already means "unseen".
+        => __state = CombatRecorder.TryRecordQuiet<int?>(
+            () => ReplayOf(__instance)?.events.Count ?? -1) ?? -1;
+
+    private static void GameActionPostfix(CombatReplayWriter __instance, GameAction gameAction, int __state)
+        => CombatRecorder.OnGameEvent(__instance, __state, gameAction);
+
+    private static void ResumePostfix(CombatReplayWriter __instance, int __state)
+        => CombatRecorder.OnGameEvent(__instance, __state, null);
+
+    private static void ChoicePostfix(CombatReplayWriter __instance, int __state)
+        => CombatRecorder.OnGameEvent(__instance, __state, null);
+
+    private static void ChecksumCountPrefix(CombatReplayWriter __instance, out int __state)
+        // Same as EventCountPrefix: -1 means "the prefix could not see the list".
+        => __state = CombatRecorder.TryRecordQuiet<int?>(
+            () => ReplayOf(__instance)?.checksumData.Count ?? -1) ?? -1;
+
+    private static void ChecksumPostfix(CombatReplayWriter __instance, int __state)
+        => CombatRecorder.OnChecksum(__instance, __state);
+
+    private static void WriteReplayPrefix(CombatReplayWriter __instance, bool stopRecording)
+        => CombatRecorder.OnWriteReplay(__instance, stopRecording);
+
+    // --- actions and choices -------------------------------------------------------------------
+
+    private static void EnqueuedPostfix(GameAction gameAction) => CombatRecorder.OnEnqueued(gameAction);
+
+    private static void PausedPrefix(GameAction action, out uint? __state) => __state = action.Id;
+
+    private static void PausedPostfix(GameAction action, PlayerChoiceOptions options, uint? __state)
+        => CombatRecorder.OnPausedForChoice(action, options, __state);
+
+    private static void ResumedPostfix(ActionQueueSet __instance, uint id)
+        => CombatRecorder.OnResumed(id, __instance.NextActionId);
+
+    private static void RequestEnqueuePrefix(GameAction action) => CombatRecorder.OnRequestEnqueue(action);
+
+    private static void ReservePostfix(Player player, uint __result) => CombatRecorder.OnChoiceReserved(player, __result);
+
+    private static void ChoiceBegunPrefix(Player chooser, out uint? __state)
+        // No state means the postfix records the choice without its reserved id.
+        => __state = CombatRecorder.TryRecordQuiet<uint?>(
+            () => CombatRecorder.OnChoiceBegunPrefix(chooser));
+
+    private static void ChoiceBegunPostfix(PlayerChoiceContext __instance, Player chooser, uint? __state)
+        => CombatRecorder.OnChoiceBegun(__instance, chooser, __state);
+
+    private static void SentryPrefix() => CombatRecorder.OnSentryCapture();
+
+    private static void ConsolePrefix(MegaCrit.Sts2.Core.DevConsole.DevConsole __instance, string inputValue)
+        => CombatRecorder.OnConsoleCommand(inputValue, () => GoesThroughQueue(__instance, inputValue));
+
+    /// <summary>
+    /// The same test DevConsole.ProcessCommand makes before enqueueing a ConsoleCmdGameAction:
+    /// not single player (IsSingleplayerOrFakeMultiplayer is false with no run too), the command
+    /// is networked, and there is a local player (none at the menu). Anything else runs directly.
+    /// If the command table cannot be read, the answer is "runs directly" (the safe side).
+    /// </summary>
+    private static bool GoesThroughQueue(MegaCrit.Sts2.Core.DevConsole.DevConsole console, string inputValue)
+    {
+        RunManager rm = RunManager.Instance;
+        if (rm.IsSingleplayerOrFakeMultiplayer)
+            return false;
+        RunState? run = rm.DebugOnlyGetState();
+        if (run == null || MegaCrit.Sts2.Core.Context.LocalContext.GetMe(run) == null)
+            return false;
+        string name = inputValue.Trim().Split(' ')[0].ToLowerInvariant();
+        if (s_commandsField?.GetValue(console) is not System.Collections.IDictionary commands || !commands.Contains(name))
+            return false;
+        return commands[name] is MegaCrit.Sts2.Core.DevConsole.ConsoleCommands.AbstractConsoleCmd cmd && cmd.IsNetworked;
+    }
+
+    /// <summary>Every action in the player queues (read through the private list; nothing is changed).</summary>
+    internal static IEnumerable<GameAction> QueuedActions(ActionQueueSet? set)
+    {
+        if (set == null || s_queuesField?.GetValue(set) is not System.Collections.IEnumerable queues)
+            yield break;
+        foreach (object? q in queues)
+        {
+            if (q == null || AccessTools.Field(q.GetType(), "actions")?.GetValue(q) is not IEnumerable<GameAction> actions)
+                continue;
+            foreach (GameAction? a in actions.ToList())
+                yield return a;
+        }
+    }
+
+    private static void ActionFinishedPrefix(GameAction action) => CombatRecorder.OnActionFinished(action);
+
+    private static void CleanUpPrefix() => CombatRecorder.OnCleanUpStart();
+
+    private static void CleanUpPostfix() => CombatRecorder.OnCleanUpEnd();
+}

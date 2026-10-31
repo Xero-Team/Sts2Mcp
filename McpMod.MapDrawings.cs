@@ -1,0 +1,306 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Net;
+using System.Text.Json;
+using Godot;
+using MegaCrit.Sts2.Core.Context;
+using MegaCrit.Sts2.Core.Nodes.Screens.Map;
+using MegaCrit.Sts2.Core.Runs;
+using MegaCrit.Sts2.Core.Saves.MapDrawing;
+
+namespace Sts2Mcp;
+
+public static partial class McpMod
+{
+    private const int MaxMapDrawingStrokesPerRequest = 64;
+    private const int MaxMapDrawingPointsPerRequest = 2048;
+    private const float MinMapDrawingX = -3f;
+    private const float MaxMapDrawingX = 3f;
+    private const float MinMapDrawingY = -2f;
+    private const float MaxMapDrawingY = 2f;
+
+    private sealed record ParsedMapDrawingStroke(DrawingMode Mode, List<Vector2> Points);
+
+    private static void HandleGetMapDrawings(HttpListenerResponse response)
+        => RunHandler(response, () => SendJson(response, RunOnMainThreadBlocking(BuildMapDrawingsState)),
+            "Failed to read map drawings", "mapdrawings_read_failed");
+
+    private static Dictionary<string, object?> BuildMapDrawingsState()
+    {
+        if (!RunManager.Instance.IsInProgress)
+            return Error("No run in progress");
+
+        NMapScreen? mapScreen = NMapScreen.Instance;
+        NMapDrawings? drawings = mapScreen?.Drawings;
+        if (mapScreen == null || drawings == null)
+            return Error("Map drawing surface is not available");
+
+        var players = new List<Dictionary<string, object?>>();
+        foreach (SerializablePlayerMapDrawings playerDrawings in drawings.GetSerializableMapDrawings().drawings)
+        {
+            var lines = new List<Dictionary<string, object?>>();
+            foreach (SerializableMapDrawingLine line in playerDrawings.lines)
+            {
+                lines.Add(new Dictionary<string, object?>(StringComparer.Ordinal)
+                {
+                    ["mode"] = line.isEraser ? "erase" : "draw",
+                    ["points"] = line.mapPoints
+                        .Select(point => BuildMapDrawingPoint(DecodeSerializedMapDrawingPosition(drawings.Size, point)))
+                        .ToList()
+                });
+            }
+
+            players.Add(new Dictionary<string, object?>(StringComparer.Ordinal)
+            {
+                ["player_id"] = playerDrawings.playerId.ToString(),
+                ["is_local"] = playerDrawings.playerId == LocalContext.NetId,
+                ["lines"] = lines
+            });
+        }
+
+        List<Dictionary<string, object?>> nodes = BuildMapDrawingNodePositions(mapScreen)
+            .OrderBy(pair => pair.Key.row)
+            .ThenBy(pair => pair.Key.col)
+            .Select(pair => new Dictionary<string, object?>(StringComparer.Ordinal)
+            {
+                ["col"] = pair.Key.col,
+                ["row"] = pair.Key.row,
+                ["position"] = BuildMapDrawingPoint(pair.Value)
+            })
+            .ToList();
+
+        return new Dictionary<string, object?>(StringComparer.Ordinal)
+        {
+            ["status"] = "ok",
+            ["coordinate_space"] = BuildMapDrawingCoordinateSpace(),
+            ["nodes"] = nodes,
+            ["players"] = players
+        };
+    }
+
+    private static Dictionary<string, object?> ExecuteMapDraw(Dictionary<string, JsonElement> data)
+    {
+        NMapScreen? mapScreen = NMapScreen.Instance;
+        if (mapScreen == null || (!mapScreen.IsOpen && !IsNodeVisible(mapScreen)))
+            return Error("Map screen is not open");
+
+        NMapDrawings drawings = mapScreen.Drawings;
+        if (drawings == null)
+            return Error("Map drawing surface is not available");
+        if (drawings.IsLocalDrawing())
+            return Error("The local player is already drawing a line");
+        if (!data.TryGetValue("strokes", out JsonElement strokesElement) || strokesElement.ValueKind != JsonValueKind.Array)
+            return Error("Missing 'strokes' array");
+        if (strokesElement.GetArrayLength() == 0)
+            return Error("'strokes' must contain at least one stroke");
+        if (strokesElement.GetArrayLength() > MaxMapDrawingStrokesPerRequest)
+            return Error($"Too many strokes (maximum {MaxMapDrawingStrokesPerRequest})");
+
+        Dictionary<(int col, int row), Vector2> nodePositions = BuildMapDrawingNodePositions(mapScreen);
+        Dictionary<string, object?>? parseError = ParseMapDrawingStrokes(
+            strokesElement, nodePositions, out List<ParsedMapDrawingStroke>? parsedStrokes, out int totalPoints);
+        if (parseError != null)
+            return parseError;
+
+        foreach (ParsedMapDrawingStroke stroke in parsedStrokes)
+        {
+            bool began = false;
+            try
+            {
+                drawings.BeginLineLocal(FromMapDrawingPosition(drawings.Size, stroke.Points[0]), stroke.Mode);
+                began = true;
+                foreach (Vector2 point in stroke.Points.Skip(1))
+                    drawings.UpdateCurrentLinePositionLocal(FromMapDrawingPosition(drawings.Size, point));
+            }
+            finally
+            {
+                if (began && drawings.IsLocalDrawing())
+                    drawings.StopLineLocal();
+            }
+        }
+
+        return new Dictionary<string, object?>(StringComparer.Ordinal)
+        {
+            ["status"] = "ok",
+            ["message"] = $"Added {parsedStrokes.Count} map drawing stroke(s) with {totalPoints} requested point(s)",
+            ["strokes_added"] = parsedStrokes.Count,
+            ["points_requested"] = totalPoints
+        };
+    }
+
+    private static Dictionary<string, object?> ExecuteMapClearDrawings()
+    {
+        NMapScreen? mapScreen = NMapScreen.Instance;
+        if (mapScreen == null || (!mapScreen.IsOpen && !IsNodeVisible(mapScreen)))
+            return Error("Map screen is not open");
+
+        NMapDrawings drawings = mapScreen.Drawings;
+        if (drawings == null)
+            return Error("Map drawing surface is not available");
+        if (drawings.IsLocalDrawing())
+            return Error("The local player is already drawing a line");
+
+        drawings.ClearDrawnLinesLocal();
+        return new Dictionary<string, object?>(StringComparer.Ordinal)
+        {
+            ["status"] = "ok",
+            ["message"] = "Cleared the local player's map drawings"
+        };
+    }
+
+    private static Dictionary<string, object?>? ParseMapDrawingMode(JsonElement stroke, out DrawingMode mode)
+    {
+        mode = DrawingMode.Drawing;
+        if (!stroke.TryGetProperty("mode", out JsonElement modeElement))
+            return null;
+        if (modeElement.ValueKind != JsonValueKind.String)
+            return Error("Stroke 'mode' must be 'draw' or 'erase'");
+
+        switch (modeElement.GetString()?.Trim().ToLowerInvariant())
+        {
+            case "draw":
+            case "drawing":
+                mode = DrawingMode.Drawing;
+                return null;
+            case "erase":
+            case "erasing":
+                mode = DrawingMode.Erasing;
+                return null;
+            default:
+                return Error("Stroke 'mode' must be 'draw' or 'erase'");
+        }
+    }
+
+    private static Dictionary<string, object?>? ParseMapDrawingPoint(
+        JsonElement pointElement,
+        Dictionary<(int col, int row), Vector2> nodePositions,
+        out Vector2 point)
+    {
+        point = default;
+        if (pointElement.ValueKind != JsonValueKind.Object)
+            return Error("Each drawing point must be an object with either x/y or col/row fields");
+
+        bool hasX = pointElement.TryGetProperty("x", out JsonElement xElement);
+        bool hasY = pointElement.TryGetProperty("y", out JsonElement yElement);
+        bool hasCol = pointElement.TryGetProperty("col", out JsonElement colElement);
+        bool hasRow = pointElement.TryGetProperty("row", out JsonElement rowElement);
+
+        if (hasX || hasY)
+        {
+            if (!hasX || !hasY || hasCol || hasRow)
+                return Error("A coordinate point must contain exactly x and y, not node col/row fields");
+            if (!TryGetFiniteSingle(xElement, out float x) || !TryGetFiniteSingle(yElement, out float y))
+                return Error("Drawing point x and y must be finite numbers");
+            if (x is < MinMapDrawingX or > MaxMapDrawingX || y is < MinMapDrawingY or > MaxMapDrawingY)
+                return Error($"Drawing point ({x}, {y}) is outside x=[{MinMapDrawingX},{MaxMapDrawingX}], y=[{MinMapDrawingY},{MaxMapDrawingY}]");
+            point = new Vector2(x, y);
+            return null;
+        }
+
+        if (!hasCol || !hasRow)
+            return Error("Each drawing point must contain either x/y or col/row fields");
+        if (!colElement.TryGetInt32(out int col) || !rowElement.TryGetInt32(out int row))
+            return Error("Drawing node col and row must be integers");
+        if (!nodePositions.TryGetValue((col, row), out point))
+            return Error($"Map node ({col},{row}) was not found in the live map UI");
+        return null;
+    }
+
+    private static bool TryGetFiniteSingle(JsonElement element, out float value)
+    {
+        value = 0f;
+        if (element.ValueKind != JsonValueKind.Number || !element.TryGetSingle(out value))
+            return false;
+        return float.IsFinite(value);
+    }
+
+    private static Dictionary<string, object?>? ParseMapDrawingStrokes(
+        JsonElement strokesElement,
+        Dictionary<(int col, int row), Vector2> nodePositions,
+        out List<ParsedMapDrawingStroke> parsedStrokes,
+        out int totalPoints)
+    {
+        parsedStrokes = new List<ParsedMapDrawingStroke>();
+        totalPoints = 0;
+
+        foreach (JsonElement strokeElement in strokesElement.EnumerateArray())
+        {
+            if (strokeElement.ValueKind != JsonValueKind.Object)
+                return Error("Each stroke must be an object");
+
+            Dictionary<string, object?>? modeResult = ParseMapDrawingMode(strokeElement, out DrawingMode mode);
+            if (modeResult != null)
+                return modeResult;
+
+            if (!strokeElement.TryGetProperty("points", out JsonElement pointsElement) || pointsElement.ValueKind != JsonValueKind.Array)
+                return Error("Each stroke must contain a 'points' array");
+            if (pointsElement.GetArrayLength() == 0)
+                return Error("Each stroke must contain at least one point");
+
+            totalPoints += pointsElement.GetArrayLength();
+            if (totalPoints > MaxMapDrawingPointsPerRequest)
+                return Error($"Too many drawing points (maximum {MaxMapDrawingPointsPerRequest})");
+
+            var points = new List<Vector2>(pointsElement.GetArrayLength());
+            foreach (JsonElement pointElement in pointsElement.EnumerateArray())
+            {
+                Dictionary<string, object?>? pointResult = ParseMapDrawingPoint(pointElement, nodePositions, out Vector2 point);
+                if (pointResult != null)
+                    return pointResult;
+                points.Add(point);
+            }
+            parsedStrokes.Add(new ParsedMapDrawingStroke(mode, points));
+        }
+        return null;
+    }
+
+    private static Dictionary<(int col, int row), Vector2> BuildMapDrawingNodePositions(NMapScreen? mapScreen)
+    {
+        var positions = new Dictionary<(int col, int row), Vector2>();
+        NMapDrawings? drawings = mapScreen?.Drawings;
+        if (mapScreen == null || drawings == null || drawings.Size.Y == 0f)
+            return positions;
+
+        foreach (NMapPoint node in FindAll<NMapPoint>(mapScreen))
+        {
+            if (node.Point == null)
+                continue;
+
+            // A map point Control's origin is its top-left corner; drawings
+            // should cross the visible icon at the centre of every point.
+            // NMapScreen.GetLineEndpoint's normal-point Position is already in
+            // the parent map container's coordinate space and must not be
+            // mistaken for this Control's local drawing anchor.
+            // Follow NMouseHeldMapDrawingInput/NMouseModeMapDrawingInput exactly:
+            // they transform the global pointer through the drawing control's
+            // inverse global transform before calling BeginLineLocal. Keeping
+            // this in drawing-local space avoids mixing the map background's
+            // canvas transform and dimensions with the drawing surface.
+            Vector2 localAnchor = GetMapDrawingNodeAnchor(node.Size);
+            Vector2 globalAnchor = node.GetGlobalTransform() * localAnchor;
+            Vector2 drawingLocalAnchor = drawings.GetGlobalTransform().Inverse() * globalAnchor;
+            positions[(node.Point.coord.col, node.Point.coord.row)] =
+                ToMapDrawingPosition(drawings.Size, drawingLocalAnchor);
+        }
+        return positions;
+    }
+
+    private static Dictionary<string, object?> BuildMapDrawingPoint(Vector2 point)
+    {
+        return new Dictionary<string, object?>(StringComparer.Ordinal) { ["x"] = point.X, ["y"] = point.Y };
+    }
+
+    private static Dictionary<string, object?> BuildMapDrawingCoordinateSpace()
+    {
+        return new Dictionary<string, object?>(StringComparer.Ordinal)
+        {
+            ["name"] = "map_normalized",
+            ["x_min"] = MinMapDrawingX,
+            ["x_max"] = MaxMapDrawingX,
+            ["y_min"] = MinMapDrawingY,
+            ["y_max"] = MaxMapDrawingY,
+            ["description"] = "Resolution-independent coordinates used by the game's saved and multiplayer map drawings"
+        };
+    }
+}

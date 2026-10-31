@@ -1,0 +1,129 @@
+using System;
+using System.Collections.Generic;
+using System.Text.Json;
+using Godot;
+using MegaCrit.Sts2.Core.Combat;
+using MegaCrit.Sts2.Core.Context;
+using MegaCrit.Sts2.Core.Entities.Players;
+using MegaCrit.Sts2.Core.GameActions;
+using MegaCrit.Sts2.Core.Multiplayer.Game;
+using MegaCrit.Sts2.Core.Nodes.Combat;
+using MegaCrit.Sts2.Core.Nodes.Rooms;
+using MegaCrit.Sts2.Core.Runs;
+
+namespace Sts2Mcp;
+
+public static partial class McpMod
+{
+    private static Dictionary<string, object?> ExecuteMultiplayerAction(string action, Dictionary<string, JsonElement> data)
+    {
+        if (!RunManager.Instance.IsInProgress)
+            return Error("No run in progress", "run_not_in_progress");
+
+        if (!RunManager.Instance.NetService.Type.IsMultiplayer())
+            return Error("Not in a multiplayer run. Use /api/v1/singleplayer instead.", "not_multiplayer_run");
+
+        RunState runState = RunManager.Instance.DebugOnlyGetState()!;
+        Player? player = LocalContext.GetMe(runState);
+        if (player == null)
+            return Error("Could not find local player", "local_player_unavailable");
+
+        var tree = Engine.GetMainLoop() as SceneTree;
+        if (tree?.Root != null && IsAnyFtueVisible(tree.Root))
+            return Error("Blocking popup active. Use menu_select with one of the advertised popup options before gameplay actions.", "blocking_popup_active");
+
+        Dictionary<string, object?>? covered = RunSubmenuBlockingError(tree, action);
+        if (covered != null)
+            return covered;
+
+        return action switch
+        {
+            // Delegated to existing sync-safe handlers
+            "open_pause_menu" or "pause" => ExecuteOpenPauseMenu(runState),
+            "play_card" => ExecutePlayCard(player, data),
+            "use_potion" => ExecuteUsePotion(player, data),
+            "discard_potion" => ExecuteDiscardPotion(player, data),
+            "choose_map_node" => ExecuteChooseMapNode(data),
+            "map_draw" => ExecuteMapDraw(data),
+            "map_clear_drawings" => ExecuteMapClearDrawings(),
+            "choose_event_option" => ExecuteChooseEventOption(data),
+            "advance_dialogue" => ExecuteAdvanceDialogue(),
+            "choose_rest_option" => ExecuteChooseRestOption(player, data),
+            "shop_open" => ExecuteShopOpen(player),
+            "shop_purchase" => ExecuteShopPurchase(player, data),
+            "claim_reward" => ExecuteClaimReward(data),
+            "select_card_reward" => ExecuteSelectCardReward(data),
+            "skip_card_reward" => ExecuteSkipCardReward(),
+            "proceed" => ExecuteProceed(),
+            "select_card" => ExecuteSelectCard(data),
+            "confirm_selection" => ExecuteConfirmSelection(),
+            "cancel_selection" => ExecuteCancelSelection(),
+            "select_bundle" => ExecuteSelectBundle(data),
+            "confirm_bundle_selection" => ExecuteConfirmBundleSelection(),
+            "cancel_bundle_selection" => ExecuteCancelBundleSelection(),
+            "combat_select_card" => ExecuteCombatSelectCard(data),
+            "combat_confirm_selection" => ExecuteCombatConfirmSelection(),
+            "select_relic" => ExecuteSelectRelic(data),
+            "skip_relic_selection" => ExecuteSkipRelicSelection(),
+            "claim_treasure_relic" => ExecuteClaimTreasureRelic(data),
+            "crystal_sphere_set_tool" => ExecuteCrystalSphereSetTool(data),
+            "crystal_sphere_click_cell" => ExecuteCrystalSphereClickCell(data),
+            "crystal_sphere_proceed" => ExecuteCrystalSphereProceed(),
+
+            // Multiplayer-specific actions
+            "end_turn" => ExecuteMultiplayerEndTurn(player),
+            "undo_end_turn" => ExecuteUndoEndTurn(player),
+
+            _ => Error($"Unknown multiplayer action: {action}", "unknown_multiplayer_action")
+        };
+    }
+
+    private static Dictionary<string, object?> ExecuteMultiplayerEndTurn(Player player)
+    {
+        if (GetCombatActionBlockedReason(player) is { } blocked)
+            return Error(DescribeCombatRefusal(blocked));
+        if (CombatManager.Instance.IsPlayerReadyToEndTurn(player))
+            return Error("Already submitted end turn - use 'undo_end_turn' to retract");
+
+        // Match the game's own CanTurnBeEnded guard (NEndTurnButton.cs:114-123)
+        NPlayerHand? hand = NCombatRoom.Instance?.Ui?.Hand;
+        if (hand != null && (hand.InCardPlay || hand.CurrentMode != NPlayerHand.Mode.Play))
+            return Error("Cannot end turn while a card is being played or hand is in selection mode");
+
+        ICombatState? combatState = player.Creature.CombatState;
+        if (combatState == null)
+            return Error("No combat state");
+
+        int roundNumber = combatState.RoundNumber;
+        RunManager.Instance.ActionQueueSynchronizer.RequestEnqueue(
+            new EndPlayerTurnAction(player, roundNumber));
+
+        return new Dictionary<string, object?>(StringComparer.Ordinal)
+        {
+            ["status"] = "ok",
+            ["message"] = "Submitted end turn (waiting for other players)"
+        };
+    }
+
+    private static Dictionary<string, object?> ExecuteUndoEndTurn(Player player)
+    {
+        if (GetCombatActionBlockedReason(player) is { } blocked)
+            return Error(DescribeCombatRefusal(blocked));
+        if (!CombatManager.Instance.IsPlayerReadyToEndTurn(player))
+            return Error("Not ready to end turn - nothing to undo");
+
+        ICombatState? combatState = player.Creature.CombatState;
+        if (combatState == null)
+            return Error("No combat state");
+
+        int roundNumber = combatState.RoundNumber;
+        RunManager.Instance.ActionQueueSynchronizer.RequestEnqueue(
+            new UndoEndPlayerTurnAction(player, roundNumber));
+
+        return new Dictionary<string, object?>(StringComparer.Ordinal)
+        {
+            ["status"] = "ok",
+            ["message"] = "Undid end turn - continue playing cards"
+        };
+    }
+}

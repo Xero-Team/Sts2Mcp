@@ -1,0 +1,92 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <OutputType>Library</OutputType>
+    <Nullable>enable</Nullable>
+    <LangVersion>12.0</LangVersion>
+    <!-- Single source of truth for the mod version is mod_manifest.json.
+         Read it at build time and stamp it onto the assembly so the DLL, the
+         runtime `/` endpoint, and the manifest can never drift apart. -->
+    <ModVersion>$([System.Text.RegularExpressions.Regex]::Match($([System.IO.File]::ReadAllText('$(MSBuildThisFileDirectory)mod_manifest.json')), '"version"\s*:\s*"([^"]+)"').Groups[1].Value)</ModVersion>
+    <Version>$(ModVersion)</Version>
+    <!-- Puts the git revision after a '+' in InformationalVersion, which the mod reads back
+         at runtime to report mod_commit (McpMod.BuildCommit). McpMod.Version strips it off
+         again, so the reported version stays the manifest's. Explicit because the default
+         flipped between SDKs. -->
+    <IncludeSourceRevisionInInformationalVersion>true</IncludeSourceRevisionInInformationalVersion>
+    <!-- STS2GameDir is configuration, never a literal: Directory.Build.props resolves it
+         from -p:STS2GameDir, STS2_GAME_DIR, or build.local.props (and derives the
+         platform data directory). ValidateGameInstall below fails with instructions
+         when none of them supplied a path. -->
+  </PropertyGroup>
+
+  <!-- Turn "the game path is not configured" into one actionable line instead of a
+       wall of unresolved-type errors from the compiler. PrepareForBuild runs before
+       the reference assemblies are resolved. -->
+  <Target Name="ValidateGameInstall" BeforeTargets="PrepareForBuild">
+    <Error Condition="'$(STS2GameDir)' == ''"
+           Text="STS2GameDir is not set. Export STS2_GAME_DIR, copy build.local.props.example to build.local.props and edit it, or pass -p:STS2GameDir=&quot;&lt;Slay the Spire 2 install&gt;&quot;." />
+    <Error Condition="'$(STS2GameDir)' != '' and !Exists('$(STS2GameDataDir)/sts2.dll')"
+           Text="sts2.dll was not found under '$(STS2GameDataDir)'. Check that STS2GameDir ('$(STS2GameDir)') is the Slay the Spire 2 install folder." />
+  </Target>
+
+  <!-- Stamp the assembly with the commit it was built from, so a bug report can name the exact
+       build instead of "some 0.4.0". Everything here is best-effort: with no git on PATH or a
+       source drop that is not a repository, SourceRevisionId stays empty and the build still
+       succeeds - InformationalVersion is then the bare version. -->
+  <Target Name="SetSourceRevisionIdFromGit"
+          BeforeTargets="GetAssemblyVersion;GenerateAssemblyInfo;AddSourceRevisionToInformationalVersion"
+          Condition="'$(SourceRevisionId)' == ''">
+    <Exec Command="git rev-parse --short=7 HEAD"
+          WorkingDirectory="$(MSBuildProjectDirectory)"
+          ConsoleToMsBuild="true" ContinueOnError="true" IgnoreExitCode="true"
+          StandardOutputImportance="low">
+      <Output TaskParameter="ConsoleOutput" PropertyName="_GitRevision" />
+      <Output TaskParameter="ExitCode" PropertyName="_GitRevisionExitCode" />
+    </Exec>
+    <!-- A build from an edited tree is not the commit it names; say so rather than mislead. -->
+    <Exec Command="git status --porcelain"
+          WorkingDirectory="$(MSBuildProjectDirectory)"
+          ConsoleToMsBuild="true" ContinueOnError="true" IgnoreExitCode="true"
+          StandardOutputImportance="low"
+          Condition="'$(_GitRevisionExitCode)' == '0' and '$(_GitRevision)' != ''">
+      <Output TaskParameter="ConsoleOutput" PropertyName="_GitWorkingTreeStatus" />
+      <Output TaskParameter="ExitCode" PropertyName="_GitStatusExitCode" />
+    </Exec>
+    <PropertyGroup>
+      <SourceRevisionId Condition="'$(_GitRevisionExitCode)' == '0' and '$(_GitRevision)' != ''">$(_GitRevision.Trim())</SourceRevisionId>
+      <SourceRevisionId Condition="'$(SourceRevisionId)' != '' and '$(_GitStatusExitCode)' == '0' and '$(_GitWorkingTreeStatus)' != ''">$(SourceRevisionId)-dirty</SourceRevisionId>
+    </PropertyGroup>
+  </Target>
+
+  <ItemGroup>
+    <!-- tests/ holds standalone harnesses that compile the mod's own sources
+         against stand-in types; the SDK's default glob must not pull them (or
+         their build output) into the mod assembly. -->
+    <Compile Remove="tests/**" />
+    <None Remove="tests/**" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Reference Include="sts2">
+      <HintPath>$(STS2GameDataDir)/sts2.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="GodotSharp">
+      <HintPath>$(STS2GameDataDir)/GodotSharp.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="0Harmony">
+      <HintPath>$(STS2GameDataDir)/0Harmony.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+  </ItemGroup>
+
+  <!-- Produce a folder that can be copied directly into the game's mods directory. -->
+  <Target Name="PrepareModPackage" AfterTargets="Build">
+    <Delete Files="$(TargetDir)$(AssemblyName).deps.json" />
+    <Copy
+      SourceFiles="$(MSBuildProjectDirectory)/mod_manifest.json"
+      DestinationFiles="$(TargetDir)$(AssemblyName).json" />
+  </Target>
+</Project>

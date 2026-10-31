@@ -1,0 +1,15 @@
+<Project>
+
+  <!--
+    Copy this file to build.local.props (gitignored) and point it at your own
+    Slay the Spire 2 install. Do not commit build.local.props.
+
+    The same value can be supplied without a file by exporting STS2_GAME_DIR, or
+    for one command with -p:STS2GameDir="...". See README.md -> "Build & Install".
+  -->
+
+  <PropertyGroup>
+    <STS2GameDir>/path/to/Steam/steamapps/common/Slay the Spire 2</STS2GameDir>
+  </PropertyGroup>
+
+</Project>

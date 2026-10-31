@@ -1,0 +1,72 @@
+root = true
+
+# Charset is intentionally not pinned: about a third of the .cs files carry a UTF-8 BOM and
+# the rest do not, so `charset = utf-8` would rewrite 20+ files in a commit that has nothing
+# to do with analyzing them. Normalize in its own commit, then add the setting.
+[*]
+insert_final_newline = true
+
+[*.cs]
+indent_style = space
+indent_size = 4
+end_of_line = lf
+trim_trailing_whitespace = true
+
+[*.{csproj,props,targets,xml,json,yml}]
+indent_style = space
+indent_size = 2
+
+[*.py]
+indent_style = space
+indent_size = 4
+
+# --- C# analyzer tuning and formatting ----------------------------------------------------
+# Severity tuning only silences rules that cannot apply to this project. Everything else stays
+# at the severity its analyzer picked: a rule with many hits is a backlog item, not a wrong rule.
+
+[*.cs]
+# Globalization rules: the mod emits machine-readable JSON for an MCP client plus log lines.
+# Nothing formats numbers or dates for a locale, and adding CultureInfo overloads just to
+# satisfy the analyzer would add API nobody calls.
+dotnet_diagnostic.CA1304.severity = none
+dotnet_diagnostic.CA1305.severity = none
+dotnet_diagnostic.CA1307.severity = none
+dotnet_diagnostic.CA1308.severity = none
+dotnet_diagnostic.CA1309.severity = none
+dotnet_diagnostic.CA1310.severity = none
+dotnet_diagnostic.CA1311.severity = none
+dotnet_diagnostic.CA1846.severity = none
+dotnet_diagnostic.CA1863.severity = none
+dotnet_diagnostic.CA1866.severity = none
+dotnet_diagnostic.CA2101.severity = none
+
+# Sonar S3011 "reflection should not be used to increase accessibility": reading private game
+# members through reflection is the mod's whole mechanism (see McpMod.Il.cs), not a smell.
+dotnet_diagnostic.S3011.severity = none
+
+# Formatting rules below mirror what the tree already does, so `dotnet format` is a no-op on
+# a clean file and only reports real drift.
+
+csharp_new_line_before_open_brace = all
+csharp_new_line_before_else = true
+csharp_new_line_before_catch = true
+csharp_new_line_before_finally = true
+csharp_new_line_before_members_in_object_initializers = true
+csharp_new_line_before_members_in_anonymous_types = true
+csharp_indent_case_contents = true
+csharp_indent_switch_labels = true
+csharp_space_after_cast = false
+csharp_space_before_colon_in_inheritance_clause = true
+csharp_space_after_colon_in_inheritance_clause = true
+dotnet_sort_system_directives_first = true
+dotnet_separate_import_directive_groups = false
+
+# `var` policy: only when the type is named on the right-hand side (new / cast / default(T)).
+csharp_style_var_for_built_in_types = false:warning
+csharp_style_var_when_type_is_apparent = true:suggestion
+csharp_style_var_elsewhere = false:warning
+dotnet_diagnostic.IDE0008.severity = warning
+
+# A field only ever written by its constructor or initializer is readonly; the warning keeps
+# that visible in the build instead of leaving it to review.
+dotnet_style_readonly_field = true:warning

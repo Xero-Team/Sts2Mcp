@@ -1,0 +1,264 @@
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using System.Net;
+using System.Reflection;
+using System.Security.Cryptography;
+using System.Text.Json.Nodes;
+using Godot;
+using MegaCrit.Sts2.Core.Multiplayer.Replay;
+using MegaCrit.Sts2.Core.Multiplayer.Serialization;
+using MegaCrit.Sts2.Core.Runs;
+using MegaCrit.Sts2.Core.Runs.History;
+using MegaCrit.Sts2.Core.Saves;
+using Sts2Mcp.Recorder;
+
+namespace Sts2Mcp;
+
+public static partial class McpMod
+{
+    /// <summary>
+    /// GET /api/v1/record/inspect?file=&lt;path&gt; - reads a .mcr (the game's CombatReplay) with the
+    /// game's own PacketReader and lists its parts as digests, so two replays can be compared
+    /// entry by entry without a second implementation of the format.
+    ///
+    /// A verification tool (docs/recording.md "A/B"), not part of the play API: its output
+    /// contains the game's checksums, which are hidden information. Only files under the record
+    /// directory or the current profile's replays/ directory are read.
+    /// </summary>
+    private static void HandleInspectReplay(HttpListenerRequest request, HttpListenerResponse response)
+    {
+        bool pretty = WantsPretty(request);
+        string? file = request.QueryString["file"];
+        if (string.IsNullOrEmpty(file) || !file.EndsWith(".mcr", StringComparison.Ordinal))
+        {
+            SendError(response, 400, "Pass ?file=<path to a .mcr>", pretty);
+            return;
+        }
+        RunHandler(response, () =>
+        {
+            JsonObject result = RunOnMainThreadBlocking(() => InspectReplay(file));
+            if (result["error"] is JsonNode err)
+                SendError(response, 400, err.GetValue<string>(), pretty);
+            else
+                SendJson(response, result, pretty);
+        }, "Inspect failed", null, pretty);
+    }
+
+    /// <summary>
+    /// The run's digest with only the fields that differ between two plays of the same save
+    /// removed: the wall-clock fields (SaveTime, RunTime, WinTime), NumReloads (a "continue" adds
+    /// one), the map drawings, and the players' ids (IdAnonymizer draws them per process; they
+    /// become the player's slot). Everything else - RNG, decks, relics, map, history - stays in.
+    /// Works on the copy this request just read from the file, never on the live run.
+    /// </summary>
+    private static string NormalizedRunDigest(SerializableRun run, Func<SerializableRun, string> digest)
+    {
+        var slots = new Dictionary<ulong, ulong>();
+        for (int i = 0; i < run.Players.Count; i++)
+        {
+            slots[run.Players[i].NetId] = (ulong)i;
+            run.Players[i].NetId = (ulong)i;
+        }
+        foreach (List<MapPointHistoryEntry> act in run.MapPointHistory)
+            foreach (MapPointHistoryEntry entry in act)
+                foreach (PlayerMapPointHistoryEntry stat in entry.PlayerStats)
+                    stat.PlayerId = slots.TryGetValue(stat.PlayerId, out ulong slot) ? slot : ulong.MaxValue;
+        run.SaveTime = 0;
+        run.RunTime = 0;
+        run.WinTime = 0;
+        run.NumReloads = 0;
+        run.MapDrawings = null;
+        return digest(run);
+    }
+
+    /// <summary>
+    /// One element of a serialized list: a short digest when the game can pack it, a bracketed
+    /// list of digests when the element is itself a sequence, otherwise its text.
+    /// </summary>
+    private static string DescribePart(object? value, Func<IPacketSerializable, string> digest)
+    {
+        if (value is IPacketSerializable packable)
+            return digest(packable)[..12];
+        if (value is System.Collections.IEnumerable inner and not string)
+            return "[" + string.Join(",", inner.Cast<object?>().Select(y => y is IPacketSerializable yp ? digest(yp)[..12] : y?.ToString())) + "]";
+        return value?.ToString() ?? "";
+    }
+
+    private static JsonObject RunParts(SerializableRun run, Func<IPacketSerializable, string> digest)
+    {
+        var parts = new JsonObject();
+        foreach (PropertyInfo p in typeof(SerializableRun).GetProperties(System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Public))
+        {
+            if (p.GetIndexParameters().Length != 0 || p.GetMethod == null)
+                continue;
+            // A property that throws is skipped; an actual null value is still reported.
+            (bool readable, object? v) = TryReadQuiet<(bool Readable, object? Value)>(
+                () => (true, p.GetValue(run)));
+            if (!readable)
+                continue;
+            string d = v switch
+            {
+                null => "null",
+                IPacketSerializable ps => digest(ps),
+                System.Collections.IEnumerable seq and not string => string.Join(",", seq.Cast<object?>().Select(x => DescribePart(x, digest))),
+                _ => v.ToString() ?? "",
+            };
+            // Lists stay item by item (short digests), so the item that differs can be named.
+            parts[p.Name] = d.Length > 64 && v is not System.Collections.IEnumerable
+                ? Convert.ToHexString(SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(d))).ToLowerInvariant() : d;
+        }
+        // The history of the current act, entry by entry and field by field (the save rewrites it).
+        parts["last_act_history"] = BuildLastActHistory(run, digest);
+        return parts;
+    }
+
+    private static JsonArray BuildLastActHistory(
+        SerializableRun run,
+        Func<IPacketSerializable, string> digest)
+    {
+        var history = new JsonArray();
+        if (run.MapPointHistory.Count == 0)
+            return history;
+
+        foreach (MapPointHistoryEntry entry in run.MapPointHistory[^1])
+        {
+            var e = new JsonObject
+            {
+                ["type"] = entry.MapPointType.ToString(),
+                ["rooms"] = string.Join(";", entry.Rooms.Cast<object?>().Select(x => x is IPacketSerializable xp ? digest(xp)[..12] : x?.ToString())),
+            };
+            var stats = new JsonArray();
+            foreach (PlayerMapPointHistoryEntry stat in entry.PlayerStats)
+                stats.Add(DescribePlayerStats(stat, digest));
+            e["player_stats"] = stats;
+            history.Add(e);
+        }
+        return history;
+    }
+
+    private static JsonObject DescribePlayerStats(object stat, Func<IPacketSerializable, string> digest)
+    {
+        var row = new JsonObject();
+        foreach (PropertyInfo sp in stat.GetType().GetProperties(System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Public))
+        {
+            if (sp.GetIndexParameters().Length != 0 || sp.GetMethod == null)
+                continue;
+            (bool readable, object? value) = TryReadQuiet<(bool Readable, object? Value)>(
+                () => (true, sp.GetValue(stat)));
+            if (!readable)
+                continue;
+            row[sp.Name] = value switch
+            {
+                null => null,
+                string str => str,
+                System.Collections.ICollection c => string.Join(";", c.Cast<object?>().Select(x =>
+                    x is IPacketSerializable xp ? digest(xp)[..12] : x?.ToString())),
+                _ => value.ToString(),
+            };
+        }
+        return row;
+    }
+
+    private static JsonArray BuildReplayEvents(
+        CombatReplay replay,
+        Func<IPacketSerializable, string> digest)
+    {
+        var events = new JsonArray();
+        for (int i = 0; i < replay.events.Count; i++)
+        {
+            CombatReplayEvent e = replay.events[i];
+            var entry = new JsonObject
+            {
+                ["index"] = i,
+                ["type"] = e.eventType.ToString(),
+                ["sha256"] = digest(e),
+                // Each .mcr anonymizes player ids with values drawn per process (IdAnonymizer), so
+                // two replays of the same play differ there; this digest leaves the id out.
+                ["sha256_without_player"] = digest(e with { playerId = e.playerId.HasValue ? 0UL : null }),
+            };
+            switch (e.eventType)
+            {
+                case CombatReplayEventType.GameAction:
+                    entry["action"] = RecordObserve.DescribeNetAction(e.action, CombatRecorder.SlotOf);
+                    break;
+                case CombatReplayEventType.HookAction:
+                    entry["hook_id"] = e.hookId;
+                    break;
+                case CombatReplayEventType.ResumeAction:
+                    entry["action_id"] = e.actionId;
+                    break;
+                case CombatReplayEventType.PlayerChoice:
+                    entry["choice_id"] = e.choiceId;
+                    entry["result"] = RecordObserve.DescribeChoiceResult(e.playerChoiceResult, CombatRecorder.SlotOf);
+                    break;
+            }
+            events.Add(entry);
+        }
+        return events;
+    }
+
+    private static JsonArray BuildReplayChecksums(
+        CombatReplay replay,
+        Func<IPacketSerializable, string> digest)
+        => new(replay.checksumData.Select((c, i) => (JsonNode)new JsonObject
+        {
+            ["index"] = i,
+            ["checksum_id"] = c.checksumData.id,
+            ["checksum"] = c.checksumData.checksum,
+            ["context"] = c.context,
+            ["sha256"] = digest(c),
+        }).ToArray());
+
+    private static JsonObject InspectReplay(string file)
+    {
+        string full = Path.GetFullPath(file);
+        string recordRoot = Path.GetFullPath(CombatRecorder.Root) + Path.DirectorySeparatorChar;
+        string replays = Path.GetFullPath(ProjectSettings.GlobalizePath(
+            SaveManager.Instance.GetProfileScopedPath("replays"))) + Path.DirectorySeparatorChar;
+        if (!full.StartsWith(recordRoot, StringComparison.Ordinal) && !full.StartsWith(replays, StringComparison.Ordinal))
+            return new JsonObject { ["error"] = $"Only files under {recordRoot} or {replays} can be inspected" };
+        if (!File.Exists(full))
+            return new JsonObject { ["error"] = $"No such file: {full}" };
+
+        byte[] bytes = File.ReadAllBytes(full);
+        var reader = new PacketReader();
+        reader.Reset(bytes);
+        CombatReplay replay = reader.Read<CombatReplay>();
+
+        var writer = new PacketWriter { WarnOnGrow = false };
+        string Digest<T>(T value) where T : IPacketSerializable
+        {
+            writer.Reset();
+            writer.Write(value);
+            writer.ZeroByteRemainder();
+            return Convert.ToHexString(SHA256.HashData(writer.Buffer.AsSpan(0, writer.BytePosition))).ToLowerInvariant();
+        }
+
+        JsonArray events = BuildReplayEvents(replay, Digest);
+        JsonArray checksums = BuildReplayChecksums(replay, Digest);
+
+        return new JsonObject
+        {
+            ["file"] = full,
+            ["bytes"] = bytes.Length,
+            ["sha256"] = Convert.ToHexString(SHA256.HashData(bytes)).ToLowerInvariant(),
+            ["version"] = replay.version,
+            ["git_commit"] = replay.gitCommit,
+            ["model_id_hash"] = replay.modelIdHash,
+            ["next_action_id"] = replay.nextActionId,
+            ["next_hook_id"] = replay.nextHookId,
+            ["next_checksum_id"] = replay.nextChecksumId,
+            ["choice_ids"] = new JsonArray(replay.choiceIds.Select(c => (JsonNode)JsonValue.Create(c)).ToArray()),
+            ["reward_ids"] = new JsonArray(replay.rewardIds.Select(c => (JsonNode)JsonValue.Create(c)).ToArray()),
+            ["start_time"] = replay.serializableRun.StartTime,
+            ["serializable_run_sha256"] = Digest(replay.serializableRun),
+            ["serializable_run_sha256_normalized"] = NormalizedRunDigest(replay.serializableRun, Digest),
+            // Per property of the normalized run, so a difference can be located.
+            ["serializable_run_parts"] = RunParts(replay.serializableRun, x => Digest(x)),
+            ["events"] = events,
+            ["checksums"] = checksums,
+        };
+    }
+}

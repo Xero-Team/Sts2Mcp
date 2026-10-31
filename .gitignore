@@ -1,0 +1,39 @@
+bin/
+obj/
+out/
+lib/
+# Python
+__pycache__/
+*.pyc
+*.pyo
+mcp/.venv/
+
+# Claude Code
+# .claude/
+.mcp.json
+CLAUDE.md
+GUIDE.md
+
+# Machine-local build config (game install path); see build.local.props.example
+build.local.props
+
+# Rider / ReSharper per-user settings
+*.DotSettings.user
+
+# Qoder
+.qoder.json
+
+start.md
+PULL_REQUEST_DRAFT.md
+
+# Rider / IntelliJ
+/.idea/.idea.Sts2Mcp/.idea/.gitignore
+/.idea/.idea.Sts2Mcp/.idea/.name
+/.idea/.idea.Sts2Mcp/.idea/awsToolkit.xml
+/.idea/.idea.Sts2Mcp/.idea/encodings.xml
+/.idea/.idea.Sts2Mcp/.idea/indexLayout.xml
+/.idea/.idea.Sts2Mcp/.idea/vcs.xml
+/.idea/sts2-mcp.iml
+
+# Local planning
+todo.md

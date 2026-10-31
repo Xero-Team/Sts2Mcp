@@ -1,0 +1,152 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Net;
+using MegaCrit.Sts2.Core.Context;
+using MegaCrit.Sts2.Core.Entities.Players;
+using MegaCrit.Sts2.Core.Models;
+using MegaCrit.Sts2.Core.Models.PotionPools;
+using MegaCrit.Sts2.Core.Runs;
+using MegaCrit.Sts2.Core.Saves;
+using MegaCrit.Sts2.Core.Unlocks;
+
+namespace Sts2Mcp;
+
+// The potion pools the game rolls against are STATIC for the duration of a run,
+// exactly as the card pools are: PotionPoolModel.GetUnlockedPotions is a pure
+// function of the unlock state. Serving them here rather than on every state
+// poll keeps the ~10 Hz state build off the enumeration entirely.
+//
+// This is the missing half of predicting a merchant's shelf. Everything else it
+// stocks is already derivable — cards and prices off `player.rng.shops`, relics
+// out of /api/v1/relicbag — but PotionFactory.CreateRandomPotion does
+// `rng.NextItem(list.Where(rarity))` over the *unlocked* pool, so without the
+// list in declaration order a client can predict a potion's rarity and price
+// but never which potion it is.
+//
+// Run-scoped, NOT profile-scoped: in multiplayer `player.UnlockState` is the
+// union of every player's, so clients must refetch when a run starts.
+public static partial class McpMod
+{
+    // Order is load-bearing. `Rng.NextItem` indexes straight into the list
+    // GetUnlockedPotions returns, so the declaration order of each pool's
+    // GenerateAllPotions() IS the mapping from roll to potion. Never sort.
+    private static readonly object s_potionPoolsCacheLock = new();
+    private static UnlockState? s_potionPoolsCacheUnlocks;
+    private static Dictionary<string, object?>? s_potionPoolsCache;
+
+    /// <summary>
+    /// GET /api/v1/potionpools — every unlocked potion pool, in draw order.
+    /// </summary>
+    private static void HandleGetPotionPools(HttpListenerResponse response)
+        => RunHandler(response, () => SendJson(response, RunOnMainThreadBlocking(BuildPotionPools)),
+            "Failed to build potion pools", "potionpools_build_failed");
+
+    internal static object GetPotionPools()
+    {
+        return BuildPotionPools();
+    }
+
+    private static Dictionary<string, object?> BuildPotionPools()
+    {
+        UnlockState? unlockState = ResolvePotionPoolUnlockState(out string? source);
+        if (unlockState == null)
+            return new Dictionary<string, object?>(StringComparer.Ordinal) { ["error"] = "No profile or run data available." };
+
+        lock (s_potionPoolsCacheLock)
+        {
+            // The UnlockState instance is stable for a run, so reference
+            // equality is a sound cache key and costs nothing to check.
+            if (s_potionPoolsCache != null && ReferenceEquals(s_potionPoolsCacheUnlocks, unlockState))
+                return s_potionPoolsCache;
+        }
+
+        var pools = new Dictionary<string, object?>(StringComparer.Ordinal);
+        foreach (PotionPoolModel pool in ModelDb.AllPotionPools)
+        {
+            // PotionPoolModel has no Title (unlike CardPoolModel), so the
+            // ModelId entry is the stable key — "SHARED_POTION_POOL" and so on.
+            string? title = SafeGet(() => (object?)pool.Id?.Entry) as string;
+            if (string.IsNullOrWhiteSpace(title) || pools.ContainsKey(title))
+                continue;
+
+            // A modded or malformed pool must not take down the response.
+            List<PotionModel>? potions = TryReadQuiet<List<PotionModel>?>(
+                () => pool.GetUnlockedPotions(unlockState).ToList());
+            if (potions == null)
+                continue;
+
+            pools[title] = new Dictionary<string, object?>(StringComparer.Ordinal)
+            {
+                ["potions"] = potions.Select(BuildPotionPoolEntry).ToList()
+            };
+        }
+
+        // PotionFactory.GetPotionOptions concatenates the character's own pool
+        // with SharedPotionPool, in that order, so a client needs to know which
+        // pool belongs to which character to rebuild the same list.
+        var characters = new Dictionary<string, object?>(StringComparer.Ordinal);
+        foreach (CharacterModel character in ModelDb.AllCharacters)
+        {
+            string? name = SafeGetText(() => character.Title);
+            if (!string.IsNullOrWhiteSpace(name))
+                characters[name] = SafeGet(() => (object?)character.PotionPool?.Id?.Entry);
+        }
+
+        var result = new Dictionary<string, object?>(StringComparer.Ordinal)
+        {
+            ["source"] = source,
+            ["characters"] = characters,
+            ["shared_pool"] = SafeGet(() => (object?)ModelDb.PotionPool<SharedPotionPool>()?.Id?.Entry),
+            ["pools"] = pools
+        };
+
+        lock (s_potionPoolsCacheLock)
+        {
+            s_potionPoolsCacheUnlocks = unlockState;
+            s_potionPoolsCache = result;
+        }
+        return result;
+    }
+
+    private static Dictionary<string, object?> BuildPotionPoolEntry(PotionModel potion)
+    {
+        return new Dictionary<string, object?>(StringComparer.Ordinal)
+        {
+            ["id"] = potion.Id.Entry,
+            ["name"] = SafeGetText(() => potion.Title) ?? potion.Id.Entry,
+            ["rarity"] = potion.Rarity.ToString(),
+            // PotionFactory.CreateRandomPotionInCombat filters on this; the
+            // out-of-combat path (shops, rewards) does not.
+            ["can_be_generated_in_combat"] = SafeGet(() => (object?)potion.CanBeGeneratedInCombat)
+        };
+    }
+
+    /// <summary>
+    /// The run's unlock state, falling back to the profile between runs.
+    /// Mirrors ResolveCardPoolUnlockState, minus the multiplayer constraint —
+    /// PotionPoolModel.GetUnlockedPotions does not take one.
+    /// </summary>
+    private static UnlockState? ResolvePotionPoolUnlockState(out string source)
+    {
+        if (RunManager.Instance?.IsInProgress == true)
+        {
+            RunState? runState = RunManager.Instance.DebugOnlyGetState();
+            Player? player = runState != null ? LocalContext.GetMe(runState) : null;
+            if (player != null)
+            {
+                source = "run";
+                return player.UnlockState;
+            }
+        }
+
+        ProgressState? progress = SaveManager.Instance?.Progress;
+        if (progress == null)
+        {
+            source = "none";
+            return null;
+        }
+        source = "profile";
+        return new UnlockState(progress);
+    }
+}

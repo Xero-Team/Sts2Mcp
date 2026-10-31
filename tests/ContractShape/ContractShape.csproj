@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net9.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- The shipped contract types, compiled as-is: no Godot, no game DLLs. -->
+    <Compile Include="../../Core/Contracts/ContractJson.cs" Link="ContractJson.cs" />
+    <Compile Include="../../Core/Contracts/ErrorResponse.cs" Link="ErrorResponse.cs" />
+    <Compile Include="../../Core/Contracts/UnavailableResponse.cs" Link="UnavailableResponse.cs" />
+    <Compile Include="../../Core/Contracts/SettingsResponse.cs" Link="SettingsResponse.cs" />
+    <Compile Include="../../Core/Contracts/SettingsDisplay.cs" Link="SettingsDisplay.cs" />
+    <Compile Include="../../Core/Contracts/SettingsAudio.cs" Link="SettingsAudio.cs" />
+    <Compile Include="../../Core/Contracts/SettingsGameplay.cs" Link="SettingsGameplay.cs" />
+    <Compile Include="../../Core/Contracts/SettingsMods.cs" Link="SettingsMods.cs" />
+  </ItemGroup>
+</Project>
